@@ -2,52 +2,37 @@
 
 Emulation scenarios for NDN using [Mini-NDN](https://github.com/named-data/mini-ndn) with [NDNd](https://github.com/named-data/ndnd) (YaNFD forwarder + DV routing) instead of NFD + NLSR.
 
+Everything runs inside a Docker container — no manual setup required.
+
 ## Prerequisites
 
-A running Mini-NDN Docker container:
+- Docker
+
+## Quick Start
+
+Build the image (one-time):
 
 ```bash
-docker run -m 4g --cpus=4 -it --privileged \
-    -v /lib/modules:/lib/modules \
-    ghcr.io/named-data/mini-ndn:master bash
+docker build -t atlas-scenarios .
 ```
 
-## Setup (inside the container)
-
-### 1. Install Go 1.24+
-
-The container ships Go 1.18 which is too old for NDNd. Install a newer version:
+Run the included demo (3-node file transfer test):
 
 ```bash
-wget -q https://go.dev/dl/go1.24.1.linux-amd64.tar.gz -O /tmp/go.tar.gz
-rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go.tar.gz
-export PATH=/usr/local/go/bin:$HOME/go/bin:$PATH
+docker run --rm --privileged atlas-scenarios
 ```
 
-### 2. Install NDNd
+Run a specific experiment:
 
 ```bash
-go install github.com/named-data/ndnd/cmd/ndnd@latest
-cp ~/go/bin/ndnd /usr/local/bin/
+docker run --rm --privileged atlas-scenarios emu/ndnd_demo.py
 ```
 
-Verify:
+Drop into an interactive shell inside the container:
 
 ```bash
-ndnd --help
+docker run --rm --privileged -it atlas-scenarios bash
 ```
-
-### 3. Install Mini-NDN NDNd modules
-
-Copy the three integration files into your Mini-NDN installation:
-
-```bash
-cp emu/ndnd.py   /mini-ndn/minindn/apps/ndnd.py
-cp emu/dv.py     /mini-ndn/minindn/apps/dv.py
-cp emu/dv_util.py /mini-ndn/minindn/helpers/dv_util.py
-```
-
-That's it — no other changes to Mini-NDN are needed.
 
 ## Repository Structure
 
@@ -56,19 +41,19 @@ emu/
 ├── ndnd.py       # NDNd_FW  — Mini-NDN Application for the YaNFD forwarder
 ├── dv.py         # NDNd_DV  — Mini-NDN Application for the DV routing daemon
 ├── dv_util.py    # setup() / converge() helpers for DV routing
-└── ndnd_demo.py  # Example experiment: 3-node ping test
-```
-
-## Quick Start
-
-```bash
-# (inside the container, after setup)
-sudo python3 /root/atlas-scenarios/emu/ndnd_demo.py
+├── ndnd_demo.py  # Example experiment: 3-node file transfer test
 ```
 
 ## Writing Your Own Experiment
 
-Minimal example — replace `Nfd`/`Nlsr` with NDNd:
+Add a new Python file under `emu/`, rebuild the image, and run it:
+
+```bash
+docker build -t atlas-scenarios .
+docker run --rm --privileged atlas-scenarios emu/my_experiment.py
+```
+
+Minimal experiment template — replace `Nfd`/`Nlsr` with NDNd:
 
 ```python
 from minindn.minindn import Minindn
@@ -87,8 +72,6 @@ ndn.start()
 AppManager(ndn, ndn.net.hosts, NDNd_FW)
 
 # 2) Start DV routing on all nodes (replaces NLSR)
-#    Automatically initializes trust, generates per-node keys,
-#    discovers neighbors from the topology, and starts ndn-dv.
 dv_util.setup(ndn, network=NETWORK)
 
 # 3) Wait for routing to converge
