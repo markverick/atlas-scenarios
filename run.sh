@@ -156,7 +156,7 @@ case "$1" in
         "${sim_cmd[@]}" "$REPO_DIR/sim/${subcmd}.py" --ns3-dir "$NS3_DIR" "$@"
 
         echo "=== Plotting ==="
-        python3 "$REPO_DIR/plot.py"
+        "${sim_cmd[@]}" "$REPO_DIR/plot.py"
         ;;
     *)
         usage
