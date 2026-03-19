@@ -4,8 +4,8 @@ Emulation and simulation scenarios for NDN using [NDNd](https://github.com/named
 
 | Mode | Engine | What it measures |
 |---|---|---|
-| **Emulation** | [Mini-NDN](https://github.com/named-data/mini-ndn) + real NDNd processes | Convergence, transfer, memory |
-| **Simulation** | [ndndSIM](https://github.com/markverick/ndndSIM) (ns-3 + NDNd via CGo) | Convergence (deterministic) |
+| **Emulation** | [Mini-NDN](https://github.com/named-data/mini-ndn) + real NDNd processes | Convergence, transfer, memory, total traffic |
+| **Simulation** | [ndndSIM](https://github.com/markverick/ndndSIM) (ns-3 + NDNd via CGo) | Convergence (RIB-based), total traffic, DV/user traffic split |
 
 Both produce CSV results in the same schema so they can be plotted side-by-side.
 
@@ -77,13 +77,42 @@ sudo ./run.sh emu scalability --grids 2 3 4 5 --trials 1
 
 Output: `results/emu/scalability.csv`, `results/sim/scalability.csv`
 
+### Reproducible paper run (single JSON config)
+
+Use a checked-in scenario config so experiments are exactly repeatable:
+
+```bash
+# Run both emu + sim + plot in one shot
+sudo ./run.sh both scalability --config scenarios/paper.json
+
+# Or run each separately
+sudo ./run.sh emu scalability --config scenarios/paper.json
+./run.sh sim scalability --config scenarios/paper.json
+./run.sh plot
+```
+
+The JSON schema is implemented in `lib/config.py`:
+
+- `grids`: list of grid sizes
+- `delay_ms`: per-link delay in ms
+- `bandwidth_mbps`: per-link bandwidth
+- `trials`: repetitions per grid size
+- `window_s`: common observation window for both emu and sim
+- `advertise_interval`: DV advertisement interval (ms, `0` = default)
+- `router_dead_interval`: DV dead interval (ms, `0` = default)
+- `cores`: CPU core limit (`0` = no limit)
+
 ### Comparison Plots
 
 ```bash
 ./run.sh plot
 ```
 
-Output: `results/plots/convergence.png`, `results/plots/memory.png`
+Output:
+- `results/plots/convergence.png`
+- `results/plots/memory.png`
+- `results/plots/total_traffic.png`
+- `results/plots/dv_overhead.png`
 
 ### All Options
 
@@ -91,10 +120,13 @@ Output: `results/plots/convergence.png`, `results/plots/memory.png`
 ./run.sh                     # Show help
 
 # Emulation
-sudo ./run.sh emu scalability --grids 2 3 4 5 6 --trials 3 --delay 10ms --bw 10
+sudo ./run.sh emu scalability --grids 2 3 4 5 6 --trials 3 --delay 10ms --bw 10 --window 60
 
 # Simulation
-./run.sh sim scalability --grids 2 3 4 5 6 --delay 10 --sim-time 60
+./run.sh sim scalability --grids 2 3 4 5 6 --delay 10 --window 60
+
+# Combined
+sudo ./run.sh both scalability --config scenarios/paper.json
 
 # Plots
 ./run.sh plot --emu results/emu/scalability.csv --sim results/sim/scalability.csv --out results/plots
@@ -109,7 +141,8 @@ setup.sh                    # Build all deps from source
 run.sh                      # Unified experiment runner
 lib/                        # Shared Python modules
 ├── topology.py             #   Grid topology builder (emu + sim)
-└── result_adapter.py       #   Unified result adapter (TrialResult, CSV writer)
+├── result_adapter.py       #   Unified result adapter (TrialResult, CSV writer)
+└── config.py               #   JSON scenario config loader
 sim/                        # Simulation scenarios
 ├── atlas-scenario.cc       #   Parameterised ndndSIM C++ scenario
 ├── _helpers.py             #   Shared ns-3 build/run utilities
@@ -123,6 +156,9 @@ emu/                        # Emulation scenarios
 ├── demo.py                 #   3-node file transfer demo
 └── scalability.py          #   NxN grid scalability test
 plot.py                     # Comparison plot generator
+scenarios/                  # Reproducible scenario configs
+├── paper.json
+└── quick.json
 deps/                       # Built dependencies (gitignored)
 results/                    # Output CSVs and plots (gitignored)
 ```
@@ -185,7 +221,7 @@ See the [ndndSIM README](https://github.com/markverick/ndndSIM) for the full API
 Both emu and sim produce identical CSV columns:
 
 ```csv
-grid_size,num_nodes,num_links,trial,convergence_s,transfer_ok,avg_mem_kb
+grid_size,num_nodes,num_links,trial,convergence_s,transfer_ok,avg_mem_kb,total_packets,total_bytes,dv_packets,dv_bytes,user_packets,user_bytes
 ```
 
 ---
