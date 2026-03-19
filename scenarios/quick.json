@@ -1,0 +1,15 @@
+{
+    "_comment": "Quick sanity check — small grids, 1 trial, short sim",
+
+    "grids":          [2, 3],
+    "delay_ms":       10,
+    "bandwidth_mbps": 10,
+
+    "trials":    1,
+    "window_s":  30.0,
+
+    "advertise_interval":   0,
+    "router_dead_interval": 0,
+
+    "cores": 0
+}

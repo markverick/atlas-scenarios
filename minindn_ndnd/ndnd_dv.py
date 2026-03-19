@@ -14,7 +14,7 @@ class NDNd_DV(Application):
     config: str
     network: str
 
-    def __init__(self, node, network=DEFAULT_NETWORK):
+    def __init__(self, node, network=DEFAULT_NETWORK, dv_config=None):
         Application.__init__(self, node)
         self.network = network
 
@@ -26,7 +26,7 @@ class NDNd_DV(Application):
 
         self.init_keys()
 
-        config = {
+        cfg = {
             'dv': {
                 'network': network,
                 'router': f"{network}/{node.name}",
@@ -35,10 +35,15 @@ class NDNd_DV(Application):
                 'neighbors': list(self.neighbors()),
             }
         }
+        if dv_config:
+            cfg['dv'].update(dv_config)
+            # Prevent overriding per-node identity fields
+            cfg['dv']['network'] = network
+            cfg['dv']['router'] = f"{network}/{node.name}"
 
         self.config = f'{self.homeDir}/dv.config.json'
         with open(self.config, 'w') as f:
-            json.dump(config, f, indent=4)
+            json.dump(cfg, f, indent=4)
 
     def start(self):
         Application.start(self, ['ndnd', 'dv', 'run', self.config],

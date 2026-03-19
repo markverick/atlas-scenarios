@@ -22,6 +22,12 @@ FIELDNAMES = [
     "convergence_s",
     "transfer_ok",
     "avg_mem_kb",
+    "total_packets",
+    "total_bytes",
+    "dv_packets",
+    "dv_bytes",
+    "user_packets",
+    "user_bytes",
 ]
 
 
@@ -35,6 +41,12 @@ class TrialResult:
     convergence_s: float = -1
     transfer_ok: bool = False
     avg_mem_kb: int = 0
+    total_packets: int = 0
+    total_bytes: int = 0
+    dv_packets: int = 0
+    dv_bytes: int = 0
+    user_packets: int = 0
+    user_bytes: int = 0
 
 
 class ResultWriter:
@@ -101,8 +113,39 @@ def parse_conv_trace(conv_trace_path):
         return -1
 
 
+def parse_link_trace(link_trace_path):
+    """Parse a link-tracer CSV and return aggregate traffic counters.
+
+    Returns dict with keys: total_packets, total_bytes,
+    dv_packets, dv_bytes, user_packets, user_bytes.
+    """
+    result = dict(total_packets=0, total_bytes=0,
+                  dv_packets=0, dv_bytes=0,
+                  user_packets=0, user_bytes=0)
+    if not link_trace_path or not os.path.isfile(link_trace_path):
+        return result
+
+    with open(link_trace_path) as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            for cat in ("DvAdvert", "PrefixSync", "Mgmt",
+                        "UserInterest", "UserData", "Other"):
+                pkts = int(row.get(f"{cat}_Pkts", 0))
+                bts = int(row.get(f"{cat}_Bytes", 0))
+                result["total_packets"] += pkts
+                result["total_bytes"] += bts
+                if cat in ("DvAdvert", "PrefixSync", "Mgmt"):
+                    result["dv_packets"] += pkts
+                    result["dv_bytes"] += bts
+                elif cat in ("UserInterest", "UserData"):
+                    result["user_packets"] += pkts
+                    result["user_bytes"] += bts
+    return result
+
+
 def sim_trial_result(grid_size, num_nodes, num_links, rate_trace_path,
-                     trial=1, producer_start=0.5, conv_trace_path=None):
+                     trial=1, producer_start=0.5, conv_trace_path=None,
+                     link_trace_path=None):
     """Build a TrialResult from ndndSIM outputs.
 
     If conv_trace_path is provided, uses the direct RIB-based convergence
@@ -112,6 +155,7 @@ def sim_trial_result(grid_size, num_nodes, num_links, rate_trace_path,
         conv = parse_conv_trace(conv_trace_path)
     else:
         conv = parse_sim_convergence(rate_trace_path, producer_start)
+    traffic = parse_link_trace(link_trace_path)
     return TrialResult(
         grid_size=grid_size,
         num_nodes=num_nodes,
@@ -120,13 +164,17 @@ def sim_trial_result(grid_size, num_nodes, num_links, rate_trace_path,
         convergence_s=conv,
         transfer_ok=conv >= 0,
         avg_mem_kb=0,
+        **traffic,
     )
 
 
 # ── Emu adapter ─────────────────────────────────────────────────────
 
 def emu_trial_result(grid_size, num_nodes, num_links, convergence_s,
-                     transfer_ok, avg_mem_kb, trial=1):
+                     transfer_ok, avg_mem_kb, trial=1,
+                     total_packets=0, total_bytes=0,
+                     dv_packets=0, dv_bytes=0,
+                     user_packets=0, user_bytes=0):
     """Build a TrialResult from emulation measurements."""
     return TrialResult(
         grid_size=grid_size,
@@ -136,4 +184,10 @@ def emu_trial_result(grid_size, num_nodes, num_links, convergence_s,
         convergence_s=convergence_s,
         transfer_ok=transfer_ok,
         avg_mem_kb=avg_mem_kb,
+        total_packets=total_packets,
+        total_bytes=total_bytes,
+        dv_packets=dv_packets,
+        dv_bytes=dv_bytes,
+        user_packets=user_packets,
+        user_bytes=user_bytes,
     )

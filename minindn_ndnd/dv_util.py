@@ -8,7 +8,7 @@ from minindn.apps.app_manager import AppManager
 from minindn.apps.ndnd_dv import NDNd_DV, DEFAULT_NETWORK
 
 
-def setup(ndn: Minindn, network=DEFAULT_NETWORK) -> float:
+def setup(ndn: Minindn, network=DEFAULT_NETWORK, dv_config=None) -> float:
     """Start DV routing on all nodes (initializes trust, creates keys).
 
     Returns the wall-clock timestamp of when DV apps were started, so
@@ -18,7 +18,8 @@ def setup(ndn: Minindn, network=DEFAULT_NETWORK) -> float:
 
     NDNd_DV.init_trust(network)
     info('Starting ndn-dv on nodes\n')
-    AppManager(ndn, ndn.net.hosts, NDNd_DV, network=network)
+    AppManager(ndn, ndn.net.hosts, NDNd_DV, network=network,
+               dv_config=dv_config)
     return time.time()
 
 

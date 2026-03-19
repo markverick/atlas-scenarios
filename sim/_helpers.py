@@ -5,6 +5,7 @@ Provides ns-3 directory resolution, scenario installation,
 and parameterized scenario execution.
 """
 
+import json
 import os
 import re
 import shutil
@@ -82,7 +83,8 @@ def sync_scenario(ns3_dir):
 
 def run_scenario(ns3_dir, *, topo, rate_trace, sim_time=60.0,
                  consumer=None, producer=None, prefix="/ndn/test",
-                 frequency=10.0, cores=0, conv_trace=None):
+                 frequency=10.0, cores=0, conv_trace=None,
+                 link_trace=None, dv_config=None):
     """Build ns-3 and run the atlas scenario with the given parameters.
 
     Args:
@@ -96,15 +98,23 @@ def run_scenario(ns3_dir, *, topo, rate_trace, sim_time=60.0,
         frequency:  Consumer Interest frequency in Hz.
         cores:      Parallel build cores (0 = all available).
         conv_trace: Output convergence time file path (absolute).
+        link_trace: Output link traffic CSV path (absolute).
+        dv_config:  Dict of DV config overrides (JSON keys from Go config).
     """
     sync_scenario(ns3_dir)
+
+    # Ensure Go 1.24+ is in PATH for the CGo build step
+    env = os.environ.copy()
+    go_dir = "/usr/local/go/bin"
+    if os.path.isfile(os.path.join(go_dir, "go")) and go_dir not in env.get("PATH", ""):
+        env["PATH"] = go_dir + ":" + env.get("PATH", "")
 
     ns3_bin = os.path.join(ns3_dir, "ns3")
     build_cmd = [ns3_bin, "build"]
     if cores > 0:
         build_cmd += ["-j", str(cores)]
     subprocess.run(build_cmd, cwd=ns3_dir, check=True,
-                   capture_output=True)
+                   capture_output=True, env=env)
 
     run_args = [
         f"--topo={topo}",
@@ -119,6 +129,10 @@ def run_scenario(ns3_dir, *, topo, rate_trace, sim_time=60.0,
         run_args.append(f"--producer={producer}")
     if conv_trace:
         run_args.append(f"--convTrace={conv_trace}")
+    if link_trace:
+        run_args.append(f"--linkTrace={link_trace}")
+    if dv_config:
+        run_args.append(f"--dvConfig={json.dumps(dv_config, separators=(',', ':'))}")
 
     cmd_str = f"{TARGET_NAME} " + " ".join(run_args)
     subprocess.run([ns3_bin, "run", cmd_str], cwd=ns3_dir, check=True)

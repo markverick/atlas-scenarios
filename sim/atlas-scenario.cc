@@ -23,6 +23,7 @@
 
 // ndndSIM headers
 #include "ns3/ndndsim-app-helper.h"
+#include "ns3/ndndsim-link-tracer.h"
 #include "ns3/ndndsim-rate-tracer.h"
 #include "ns3/ndndsim-stack-helper.h"
 #include "ns3/ndndsim-stack.h"
@@ -78,7 +79,9 @@ main(int argc, char* argv[])
     std::string producerName;
     std::string prefix = "/ndn/test";
     std::string rateTrace = "rate-trace.csv";
+    std::string linkTrace;
     std::string convTrace;
+    std::string dvConfig;
     double simTime = 60.0;
     double frequency = 10.0;
     double traceInterval = 0.05; // 50 ms
@@ -89,10 +92,12 @@ main(int argc, char* argv[])
     cmd.AddValue("producer", "Producer node name (default: last node)", producerName);
     cmd.AddValue("prefix", "NDN name prefix", prefix);
     cmd.AddValue("rateTrace", "Output rate trace CSV path", rateTrace);
+    cmd.AddValue("linkTrace", "Output link traffic CSV path", linkTrace);
     cmd.AddValue("convTrace", "Output convergence time file path", convTrace);
     cmd.AddValue("simTime", "Simulation time in seconds", simTime);
     cmd.AddValue("frequency", "Consumer Interest frequency (Hz)", frequency);
     cmd.AddValue("traceInterval", "Rate trace sampling interval in seconds", traceInterval);
+    cmd.AddValue("dvConfig", "DV config JSON overlay (overrides defaults)", dvConfig);
     cmd.Parse(argc, argv);
 
     NS_ABORT_MSG_IF(topoFile.empty(), "--topo is required");
@@ -134,7 +139,7 @@ main(int argc, char* argv[])
 
     NdndStackHelper stackHelper;
     stackHelper.Install(nodes);
-    NdndStackHelper::EnableDvRouting("/ndn", nodes);
+    NdndStackHelper::EnableDvRouting("/ndn", nodes, dvConfig);
 
     // ─── Convergence Detection ─────────────────────────────────────
 
@@ -166,6 +171,18 @@ main(int argc, char* argv[])
 
     NdndRateTracer::InstallAll(rateTrace, Seconds(traceInterval));
 
+    // ─── Link Traffic Tracer ───────────────────────────────────────
+
+    std::shared_ptr<NdndLinkTracer> linkTracer;
+    if (!linkTrace.empty())
+    {
+        linkTracer = NdndLinkTracer::Create(linkTrace, Seconds(traceInterval));
+        for (const auto& link : reader.GetLinks())
+        {
+            linkTracer->ConnectLink(link.devices);
+        }
+    }
+
     // ─── Run ───────────────────────────────────────────────────────
 
     Simulator::Stop(Seconds(simTime));
@@ -183,6 +200,11 @@ main(int argc, char* argv[])
         {
             ofs << -1 << std::endl;
         }
+    }
+
+    if (linkTracer)
+    {
+        linkTracer->Stop();
     }
 
     NdndStackHelper::DestroyBridge();

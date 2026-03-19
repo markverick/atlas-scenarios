@@ -108,21 +108,55 @@ case "$1" in
         shift
         [[ $# -lt 1 ]] && { echo "Usage: ./run.sh sim <demo|scalability> [opts]"; exit 1; }
         subcmd="$1"; shift
+
+        # ns-3 refuses to build as root; drop to the invoking user if under sudo
+        run_cmd=(python3)
+        if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
+            run_cmd=(sudo -u "$SUDO_USER" env "PATH=$PATH" "PYTHONPATH=$PYTHONPATH" python3)
+        fi
+
         case "$subcmd" in
             demo)
-                exec python3 "$REPO_DIR/sim/demo.py" --ns3-dir "$NS3_DIR" "$@"
+                exec "${run_cmd[@]}" "$REPO_DIR/sim/demo.py" --ns3-dir "$NS3_DIR" "$@"
                 ;;
             scalability)
-                exec python3 "$REPO_DIR/sim/scalability.py" --ns3-dir "$NS3_DIR" "$@"
+                exec "${run_cmd[@]}" "$REPO_DIR/sim/scalability.py" --ns3-dir "$NS3_DIR" "$@"
                 ;;
             *)
-                exec python3 "$REPO_DIR/sim/$subcmd" --ns3-dir "$NS3_DIR" "$@"
+                exec "${run_cmd[@]}" "$REPO_DIR/sim/$subcmd" --ns3-dir "$NS3_DIR" "$@"
                 ;;
         esac
         ;;
     plot)
         shift
         exec python3 "$REPO_DIR/plot.py" "$@"
+        ;;
+    both)
+        shift
+        [[ $# -lt 1 ]] && { echo "Usage: sudo ./run.sh both <demo|scalability> [opts]"; exit 1; }
+        subcmd="$1"; shift
+
+        # Must be run as root (emu needs sudo; sim will drop privs internally)
+        [[ $EUID -ne 0 ]] && { echo "ERROR: 'both' must be run with sudo"; exit 1; }
+
+        # ns-3 build user (drop privs for sim)
+        sim_cmd=(python3)
+        if [[ -n "$SUDO_USER" ]]; then
+            sim_cmd=(sudo -u "$SUDO_USER" env "PATH=$PATH" "PYTHONPATH=$PYTHONPATH" python3)
+        fi
+
+        echo "=== Running emulation ==="
+        cleanup_minindn
+        python3 "$REPO_DIR/emu/${subcmd}.py" "$@"
+        if [[ -d "$REPO_DIR/results" && -n "$SUDO_USER" ]]; then
+            chown -R "$SUDO_USER:$SUDO_USER" "$REPO_DIR/results"
+        fi
+
+        echo "=== Running simulation ==="
+        "${sim_cmd[@]}" "$REPO_DIR/sim/${subcmd}.py" --ns3-dir "$NS3_DIR" "$@"
+
+        echo "=== Plotting ==="
+        python3 "$REPO_DIR/plot.py"
         ;;
     *)
         usage
