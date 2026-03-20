@@ -1,5 +1,5 @@
 #!/bin/bash
-# setup.sh — Build all dependencies from source inside deps/
+# setup.sh -- Build all dependencies from source inside deps/
 #
 # Prerequisites (must be installed system-wide):
 #   - go 1.22+    (https://go.dev/dl/)
@@ -27,10 +27,10 @@ export PATH="$BIN_DIR:$GOPATH/bin:$PATH"
 export CGO_ENABLED=1
 
 info() { echo -e "\n\033[1;34m==>\033[0m \033[1m$*\033[0m"; }
-ok()   { echo -e "    \033[1;32m✓\033[0m $*"; }
-err()  { echo -e "    \033[1;31m✗\033[0m $*" >&2; }
+ok()   { echo -e "    \033[1;32mOK\033[0m $*"; }
+err()  { echo -e "    \033[1;31mFAIL\033[0m $*" >&2; }
 
-# ── Preflight checks ───────────────────────────────────────────
+# -- Preflight checks --
 info "Checking prerequisites"
 MISSING=()
 for cmd in go gcc g++ cmake git python3 sudo; do
@@ -50,7 +50,7 @@ ok "go $GO_VER, $(gcc --version | head -1), $(cmake --version | head -1)"
 
 mkdir -p "$DEPS_DIR" "$BIN_DIR"
 
-# ── 1. System packages (build deps only) ───────────────────────
+# -- 1. System packages (build deps only) --
 info "Installing system build dependencies"
 sudo apt-get update -qq
 sudo apt-get install -y --no-install-recommends \
@@ -63,7 +63,7 @@ sudo apt-get install -y --no-install-recommends \
     cgroup-tools 2>/dev/null || true
 ok "System packages"
 
-# ── 2. Mininet from source ─────────────────────────────────────
+# -- 2. Mininet from source --
 info "Building Mininet from source"
 if [[ ! -d "$DEPS_DIR/mininet" ]]; then
     git clone --depth 1 https://github.com/mininet/mininet.git "$DEPS_DIR/mininet"
@@ -75,7 +75,7 @@ sudo pip3 install --break-system-packages . 2>/dev/null \
     || sudo pip3 install .
 ok "Mininet installed"
 
-# ── 3. Mini-NDN from source ────────────────────────────────────
+# -- 3. Mini-NDN from source --
 info "Building Mini-NDN from source"
 if [[ ! -d "$DEPS_DIR/mini-ndn" ]]; then
     git clone --depth 1 https://github.com/named-data/mini-ndn.git "$DEPS_DIR/mini-ndn"
@@ -89,20 +89,13 @@ sudo pip3 install --break-system-packages -e . 2>/dev/null \
     || sudo pip3 install -e .
 ok "Mini-NDN installed (with NDNd modules)"
 
-# ── 4. NDNd from source ────────────────────────────────────────
-info "Building NDNd from source"
-go install github.com/named-data/ndnd/cmd/ndnd@latest
-cp "$GOPATH/bin/ndnd" "$BIN_DIR/"
-sudo cp "$BIN_DIR/ndnd" /usr/local/bin/
-ok "NDNd → $BIN_DIR/ndnd"
-
-# ── 5. Python plotting deps ────────────────────────────────────
+# -- 4. Python plotting deps --
 info "Installing Python plotting dependencies"
 pip3 install --break-system-packages --user matplotlib numpy 2>/dev/null \
     || pip3 install --user matplotlib numpy
 ok "matplotlib, numpy"
 
-# ── 6. ns-3 (tag ns-3.47) + ndndSIM ────────────────────────────
+# -- 5. ns-3 (tag ns-3.47) + ndndSIM --
 info "Building ns-3 (tag ns-3.47) + ndndSIM"
 if [[ ! -d "$DEPS_DIR/ns-3" ]]; then
     git clone --branch ns-3.47 --depth 1 \
@@ -137,9 +130,30 @@ CMAKE
 fi
 ./ns3 configure --enable-examples --enable-tests
 ./ns3 build
-ok "ns-3 + ndndSIM built → $DEPS_DIR/ns-3"
+ok "ns-3 + ndndSIM built -> $DEPS_DIR/ns-3"
 
-# ── Done ────────────────────────────────────────────────────────
+# -- 6. NDNd binaries from local ndndSIM source --
+# Build from the same Go source that the ns-3 sim links against,
+# so emu and sim use identical NDN library code.
+NDND_SRC="$DEPS_DIR/ns-3/contrib/ndndSIM/ndnd"
+info "Building NDNd from local source ($NDND_SRC)"
+
+# Find Go toolchain that satisfies go.mod (1.25+); auto-downloaded into GOPATH
+GO_BIN="$(ls "$GOPATH"/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.*.linux-amd64/bin/go 2>/dev/null | sort -V | tail -1)"
+if [[ -z "$GO_BIN" || ! -x "$GO_BIN" ]]; then
+    # First run: let system Go trigger the toolchain download
+    GO_BIN="$(command -v go)"
+fi
+
+(cd "$NDND_SRC" && GOPATH="$GOPATH" GOFLAGS=-mod=mod "$GO_BIN" build -o "$BIN_DIR/ndnd" ./cmd/ndnd/)
+sudo cp "$BIN_DIR/ndnd" /usr/local/bin/
+ok "NDNd daemon -> $BIN_DIR/ndnd (from ndndSIM source)"
+
+# Also build emu traffic tool (identical Go library as sim)
+(cd "$NDND_SRC" && GOPATH="$GOPATH" GOFLAGS=-mod=mod "$GO_BIN" build -o "$REPO_DIR/emu/ndnd-traffic" ./cmd/traffic/)
+ok "emu/ndnd-traffic -> $REPO_DIR/emu/ndnd-traffic"
+
+# -- Done --
 info "Setup complete!"
 echo ""
 echo "  Binaries:  $BIN_DIR/ndnd"

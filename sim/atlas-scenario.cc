@@ -82,6 +82,7 @@ main(int argc, char* argv[])
     std::string linkTrace;
     std::string convTrace;
     std::string dvConfig;
+    std::string network = "/minindn";
     double simTime = 60.0;
     double frequency = 10.0;
     double traceInterval = 0.05; // 50 ms
@@ -98,6 +99,7 @@ main(int argc, char* argv[])
     cmd.AddValue("frequency", "Consumer Interest frequency (Hz)", frequency);
     cmd.AddValue("traceInterval", "Rate trace sampling interval in seconds", traceInterval);
     cmd.AddValue("dvConfig", "DV config JSON overlay (overrides defaults)", dvConfig);
+    cmd.AddValue("network", "DV network prefix (default: /minindn)", network);
     cmd.Parse(argc, argv);
 
     NS_ABORT_MSG_IF(topoFile.empty(), "--topo is required");
@@ -139,14 +141,14 @@ main(int argc, char* argv[])
 
     NdndStackHelper stackHelper;
     stackHelper.Install(nodes);
-    NdndStackHelper::EnableDvRouting("/ndn", nodes, dvConfig);
+    NdndStackHelper::EnableDvRouting(network, nodes, dvConfig);
 
     // ─── Convergence Detection ─────────────────────────────────────
 
     // DV starts immediately at t=0 when EnableDvRouting is called.
     // Schedule periodic checks starting at t=traceInterval.
     double dvStartTime = 0.0;
-    std::string dvNetwork = "/ndn";
+    std::string dvNetwork = network;
     Simulator::Schedule(Seconds(traceInterval),
                         &CheckConvergence, nodes, nodes.GetN(), dvStartTime, traceInterval,
                         dvNetwork);

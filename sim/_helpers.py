@@ -84,7 +84,7 @@ def sync_scenario(ns3_dir):
 def run_scenario(ns3_dir, *, topo, rate_trace, sim_time=60.0,
                  consumer=None, producer=None, prefix="/ndn/test",
                  frequency=10.0, cores=0, conv_trace=None,
-                 link_trace=None, dv_config=None):
+                 link_trace=None, dv_config=None, network="/minindn"):
     """Build ns-3 and run the atlas scenario with the given parameters.
 
     Args:
@@ -122,6 +122,7 @@ def run_scenario(ns3_dir, *, topo, rate_trace, sim_time=60.0,
         f"--simTime={sim_time}",
         f"--prefix={prefix}",
         f"--frequency={frequency}",
+        f"--network={network}",
     ]
     if consumer:
         run_args.append(f"--consumer={consumer}")

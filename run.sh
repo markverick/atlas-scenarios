@@ -1,5 +1,5 @@
 #!/bin/bash
-# run.sh — Unified runner for atlas-scenarios
+# run.sh -- Unified runner for atlas-scenarios
 #
 # Usage:
 #   ./run.sh setup                           Install everything from source
@@ -21,6 +21,23 @@ if [[ -x /usr/local/go/bin/go ]]; then
 fi
 export PATH="$DEPS_DIR/bin:$DEPS_DIR/gopath/bin:$PATH"
 export PYTHONPATH="$REPO_DIR:$PYTHONPATH"
+
+NDND_SRC="$NS3_DIR/contrib/ndndSIM/ndnd"
+GOPATH_DIR="$DEPS_DIR/gopath"
+
+# Build emu/ndnd-traffic from the same ndnd source that sim uses.
+# This ensures identical Go library code on both sides.
+build_ndnd_traffic() {
+    local out="$REPO_DIR/emu/ndnd-traffic"
+    # Find Go 1.25 toolchain (downloaded by setup into GOPATH)
+    local go_bin
+    go_bin="$(ls "$GOPATH_DIR"/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.*.linux-amd64/bin/go 2>/dev/null | sort -V | tail -1)"
+    if [[ -z "$go_bin" || ! -x "$go_bin" ]]; then
+        go_bin="$(command -v go)"   # fallback to system Go
+    fi
+    echo "Building emu/ndnd-traffic from $NDND_SRC (go: $go_bin)"
+    (cd "$NDND_SRC" && GOPATH="$GOPATH_DIR" GOFLAGS=-mod=mod "$go_bin" build -o "$out" ./cmd/traffic/)
+}
 
 usage() {
     cat <<'EOF'
@@ -86,6 +103,7 @@ case "$1" in
         [[ $# -lt 1 ]] && { echo "Usage: ./run.sh emu <demo|scalability> [opts]"; exit 1; }
         subcmd="$1"; shift
         cleanup_minindn
+        build_ndnd_traffic
         case "$subcmd" in
             demo)
                 python3 "$REPO_DIR/emu/demo.py" "$@"
@@ -147,6 +165,7 @@ case "$1" in
 
         echo "=== Running emulation ==="
         cleanup_minindn
+        build_ndnd_traffic
         python3 "$REPO_DIR/emu/${subcmd}.py" "$@"
         if [[ -d "$REPO_DIR/results" && -n "$SUDO_USER" ]]; then
             chown -R "$SUDO_USER:$SUDO_USER" "$REPO_DIR/results"
@@ -156,7 +175,7 @@ case "$1" in
         "${sim_cmd[@]}" "$REPO_DIR/sim/${subcmd}.py" --ns3-dir "$NS3_DIR" "$@"
 
         echo "=== Plotting ==="
-        "${sim_cmd[@]}" "$REPO_DIR/plot.py"
+        python3 "$REPO_DIR/plot.py"
         ;;
     *)
         usage
