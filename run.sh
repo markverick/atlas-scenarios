@@ -25,6 +25,30 @@ export PYTHONPATH="$REPO_DIR:$PYTHONPATH"
 NDND_SRC="$NS3_DIR/contrib/ndndSIM/ndnd"
 GOPATH_DIR="$DEPS_DIR/gopath"
 
+ensure_ns3_ready() {
+    if [[ ! -x "$NS3_DIR/ns3" ]]; then
+        echo "ERROR: ns-3 not found at $NS3_DIR"
+        echo "Run ./setup.sh first"
+        exit 1
+    fi
+
+    # Reconfigure each run so newly-added Go files are picked up by cmake globs.
+    # This is fast and avoids stale build confusion.
+    echo "[sim] Configuring ns-3"
+    if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
+        (cd "$NS3_DIR" && sudo -u "$SUDO_USER" env "PATH=$PATH" ./ns3 configure -d release)
+    else
+        (cd "$NS3_DIR" && ./ns3 configure -d release)
+    fi
+
+    echo "[sim] Building ns-3"
+    if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
+        (cd "$NS3_DIR" && sudo -u "$SUDO_USER" env "PATH=$PATH" ./ns3 build)
+    else
+        (cd "$NS3_DIR" && ./ns3 build)
+    fi
+}
+
 # Build emu/ndnd-traffic from the same ndnd source that sim uses.
 # This ensures identical Go library code on both sides.
 build_ndnd_traffic() {
@@ -127,6 +151,8 @@ case "$1" in
         [[ $# -lt 1 ]] && { echo "Usage: ./run.sh sim <demo|scalability> [opts]"; exit 1; }
         subcmd="$1"; shift
 
+        ensure_ns3_ready
+
         # ns-3 refuses to build as root; drop to the invoking user if under sudo
         run_cmd=(python3)
         if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
@@ -172,6 +198,7 @@ case "$1" in
         fi
 
         echo "=== Running simulation ==="
+        ensure_ns3_ready
         "${sim_cmd[@]}" "$REPO_DIR/sim/${subcmd}.py" --ns3-dir "$NS3_DIR" "$@"
 
         echo "=== Plotting ==="

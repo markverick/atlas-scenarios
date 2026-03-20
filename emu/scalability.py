@@ -28,7 +28,10 @@ from minindn.helpers import dv_util
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from lib.config import add_config_arg, load_config, dv_config_from
 from lib.topology import build_grid_topo, grid_stats
-from lib.result_adapter import ResultWriter, emu_trial_result
+from lib.result_adapter import (
+    ResultWriter,
+    emu_trial_result,
+)
 
 NETWORK = "/minindn"
 

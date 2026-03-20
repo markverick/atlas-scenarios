@@ -84,7 +84,8 @@ def sync_scenario(ns3_dir):
 def run_scenario(ns3_dir, *, topo, rate_trace, sim_time=60.0,
                  consumer=None, producer=None, prefix="/ndn/test",
                  frequency=10.0, cores=0, conv_trace=None,
-                 link_trace=None, dv_config=None, network="/minindn"):
+                 link_trace=None, dv_config=None, network="/minindn",
+                 run_log=None):
     """Build ns-3 and run the atlas scenario with the given parameters.
 
     Args:
@@ -100,6 +101,7 @@ def run_scenario(ns3_dir, *, topo, rate_trace, sim_time=60.0,
         conv_trace: Output convergence time file path (absolute).
         link_trace: Output link traffic CSV path (absolute).
         dv_config:  Dict of DV config overrides (JSON keys from Go config).
+        run_log:    Optional path to capture scenario stdout/stderr logs.
     """
     sync_scenario(ns3_dir)
 
@@ -113,8 +115,33 @@ def run_scenario(ns3_dir, *, topo, rate_trace, sim_time=60.0,
     build_cmd = [ns3_bin, "build"]
     if cores > 0:
         build_cmd += ["-j", str(cores)]
-    subprocess.run(build_cmd, cwd=ns3_dir, check=True,
-                   capture_output=True, env=env)
+    subprocess.run(build_cmd, cwd=ns3_dir, check=True, env=env)
+
+    # ── Freshness check: fail loudly if Go sources are newer than the built artifact ──
+    # cmake's GLOB_RECURSE is evaluated at configure time, not build time. If you add
+    # a new .go file without re-running cmake configure, the archive won't be rebuilt.
+    # This check catches that and any other cmake dependency-tracking gap.
+    so_path = os.path.join(ns3_dir, "build", "lib", "libns3.47-ndndSIM.so")
+    ndnd_sim_dir = os.path.join(ns3_dir, "contrib", "ndndSIM", "ndnd", "sim")
+    if os.path.isfile(so_path) and os.path.isdir(ndnd_sim_dir):
+        so_mtime = os.path.getmtime(so_path)
+        stale = [
+            f for f in _walk_go_sources(ndnd_sim_dir)
+            if os.path.getmtime(f) > so_mtime
+        ]
+        if stale:
+            rel = [os.path.relpath(f, ns3_dir) for f in stale]
+            raise RuntimeError(
+                "Go source files are newer than the built shared library — "
+                "cmake dependency tracking missed them. "
+                "Re-run cmake configure (./ns3 configure) then build again.\n"
+                "Stale sources:\n" + "\n".join(f"  {r}" for r in rel)
+            )
+
+    # Resolve topo path: if not absolute, make it relative to ns3_dir
+    if not os.path.isabs(topo):
+        topo = os.path.join(ns3_dir, topo)
+    topo = os.path.abspath(topo)
 
     run_args = [
         f"--topo={topo}",
@@ -135,11 +162,90 @@ def run_scenario(ns3_dir, *, topo, rate_trace, sim_time=60.0,
     if dv_config:
         run_args.append(f"--dvConfig={json.dumps(dv_config, separators=(',', ':'))}")
 
-    cmd_str = f"{TARGET_NAME} " + " ".join(run_args)
-    subprocess.run([ns3_bin, "run", cmd_str], cwd=ns3_dir, check=True)
+    # Find and run the scenario executable directly (not through ns3 wrapper)
+    # The binary is built as ns3.47-ndndsim-atlas-scenario-default
+    scenario_exe = None
+    build_dir = os.path.join(ns3_dir, "build")
+    for root, dirs, files in os.walk(os.path.join(build_dir, "contrib/ndndSIM")):
+        for f in files:
+            if f.startswith("ns3.") and "ndndsim-atlas-scenario" in f and f.endswith("-default"):
+                scenario_exe = os.path.join(root, f)
+                break
+        if scenario_exe:
+            break
+
+    if not scenario_exe:
+        raise RuntimeError(
+            f"ndndsim-atlas-scenario executable not found in {build_dir}/contrib/ndndSIM/"
+        )
+
+    if run_log:
+        os.makedirs(os.path.dirname(os.path.abspath(run_log)), exist_ok=True)
+        with open(run_log, "w") as lf:
+            subprocess.run([scenario_exe] + run_args, check=True,
+                           stdout=lf, stderr=lf)
+    else:
+        subprocess.run([scenario_exe] + run_args, check=True, capture_output=False)
+
+    # ── Validate outputs — a silent empty file is a hidden failure ────────────
+    errors = []
+
+    # rate_trace must have at least one data row (not just the header)
+    if os.path.isfile(rate_trace):
+        with open(rate_trace) as f:
+            lines = [l for l in f if l.strip()]
+        if len(lines) <= 1:
+            errors.append(
+                f"rate_trace '{rate_trace}' has no data rows (only header or empty) — "
+                "simulation likely produced no traffic at all"
+            )
+    else:
+        errors.append(f"rate_trace '{rate_trace}' was not created by the simulation")
+
+    # conv_trace must contain a non-negative float (DV must converge)
+    if conv_trace:
+        if os.path.isfile(conv_trace):
+            try:
+                val = float(open(conv_trace).read().strip())
+                if val < 0:
+                    errors.append(
+                        f"conv_trace '{conv_trace}' reports convergence=-1 — "
+                        "DV routing never converged during the simulation"
+                    )
+            except (ValueError, OSError) as exc:
+                errors.append(f"conv_trace '{conv_trace}' is unreadable: {exc}")
+        else:
+            errors.append(f"conv_trace '{conv_trace}' was not created by the simulation")
+
+    # link_trace must have at least one data row
+    if link_trace:
+        if os.path.isfile(link_trace):
+            with open(link_trace) as f:
+                lines = [l for l in f if l.strip()]
+            if len(lines) <= 1:
+                errors.append(
+                    f"link_trace '{link_trace}' has no data rows — "
+                    "no packets were traced on any link"
+                )
+        else:
+            errors.append(f"link_trace '{link_trace}' was not created by the simulation")
+
+    if errors:
+        raise RuntimeError(
+            "Simulation completed but produced invalid output:\n"
+            + "\n".join(f"  • {e}" for e in errors)
+        )
 
 
 def _file_differs(path_a, path_b):
     """Return True if two files have different contents."""
     with open(path_a, "rb") as a, open(path_b, "rb") as b:
         return a.read() != b.read()
+
+
+def _walk_go_sources(root):
+    """Yield absolute paths of all non-test .go files under root."""
+    for dirpath, _, filenames in os.walk(root):
+        for name in filenames:
+            if name.endswith(".go") and not name.endswith("_test.go"):
+                yield os.path.join(dirpath, name)

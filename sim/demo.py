@@ -18,7 +18,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from lib.topology import generate_ndnsim_linear_topo
-from lib.result_adapter import parse_conv_trace, parse_link_trace, parse_sim_convergence
+from lib.result_adapter import parse_conv_trace, parse_link_trace
 from sim._helpers import resolve_ns3_dir, run_scenario
 
 NODES = ["a", "b", "c"]
@@ -64,7 +64,7 @@ def main():
         ns3_dir,
         topo=topo_rel,
         rate_trace=rate_csv,
-        sim_time=args.sim_time,
+        sim_time=args.window,
         consumer="a",
         producer="c",
         prefix="/ndn/c/test",
@@ -78,12 +78,7 @@ def main():
     if conv >= 0:
         print(f"SUCCESS: DV converged in {conv}s (direct RIB measurement)")
     else:
-        # Fallback to rate-trace heuristic
-        conv = parse_sim_convergence(rate_csv)
-        if conv >= 0:
-            print(f"SUCCESS: DV converged, first Data at ~{conv}s after producer start")
-        else:
-            print("FAIL: no Data packets received")
+        print("FAIL: no ns-3 convergence trace available")
 
     traffic = parse_link_trace(link_csv)
     print(f"  total_pkts={traffic['total_packets']}"
