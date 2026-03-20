@@ -9,6 +9,26 @@ Emulation and simulation scenarios for NDN using [NDNd](https://github.com/named
 
 Both produce CSV results in the same schema so they can be plotted side-by-side.
 
+### How Emu and Sim Stay Aligned
+
+The two modes are designed to produce comparable measurements by sharing
+the same NDNd codebase and aligning their configurations:
+
+| Aspect | Emulation | Simulation |
+|--------|-----------|------------|
+| **Forwarder** | Real NDNd (Go binary) | Same NDNd `fw.Thread` via CGo |
+| **DV routing** | NDNd DV protocol (SVS v3) | Same DV protocol in Go |
+| **Security** | Ed25519 signing (`ndn-cxx` keychain) | Ed25519 signing (Go `SimTrust` keychain) |
+| **Byte counting** | UDP payload (= NDNLPv2 wire bytes) | `NdnPayloadTag` (= same LP bytes) |
+| **Network prefix** | Configurable (`/minindn` default) | Same, via `--network` CLI param |
+| **Time window** | Filtered to `[0, window_s]` | Sim duration = `window_s` |
+| **DV intervals** | `0` = use NDNd defaults | Same defaults |
+| **Topology** | Mininet P2P links | ns-3 `PointToPointNetDevice` links |
+
+Both paths produce identical per-packet average sizes for user traffic (Interest
+~41.6 B, Data ~1113.6 B) and DV advertisements (steady-state ~300 B/pkt) when
+run with matching parameters.
+
 ---
 
 ## Prerequisites
@@ -224,11 +244,42 @@ Both emu and sim produce identical CSV columns:
 grid_size,num_nodes,num_links,trial,convergence_s,transfer_ok,avg_mem_kb,total_packets,total_bytes,dv_packets,dv_bytes,user_packets,user_bytes
 ```
 
+The `dv_*` columns cover DV advertisements + prefix sync. The `user_*` columns
+cover application Interests and Data. All byte counts are at the NDNLPv2 wire
+level (excluding L2 headers) so emu and sim are directly comparable.
+
+---
+
+## Architecture Notes
+
+### Emulation (Mini-NDN)
+
+Each Mininet host runs a real NDNd process. Traffic is captured on virtual
+interfaces using `ndnd-traffic` (a custom CLI tool built from NDNd), which
+reads raw UDP payloads and classifies NDN packets by TLV type and name
+prefix. The capture window is filtered to `[0, window_s]` to match the
+simulation duration.
+
+### Simulation (ndndSIM)
+
+Each ns-3 node runs a real NDNd `fw.Thread` (FIB, PIT, CS) bridged via CGo.
+The `NdndLinkTracer` classifies L2 frames by NDN packet type at the MAC layer.
+An `NdnPayloadTag` marks the LP-level payload start so byte counts exclude
+Ethernet/PPP headers — matching the emu's UDP payload counting.
+
+DV routing uses the same Go DV protocol with SVS v3 sync. Ed25519 trust
+(root key + per-node certificates) is set up automatically by the Go
+`SimTrust` module, producing the same signing overhead as real deployments.
+
+See the [ndndSIM README](https://github.com/markverick/ndndSIM) for the full
+simulation API including stack helpers, tracers, and DV routing configuration.
+
 ---
 
 ## Links
 
-- [NDNd](https://github.com/named-data/ndnd)
-- [ndndSIM](https://github.com/markverick/ndndSIM)
-- [Mini-NDN](https://github.com/named-data/mini-ndn)
-- [ns-3](https://www.nsnam.org/)
+- [NDNd](https://github.com/named-data/ndnd) — upstream forwarder
+- [NDNd fork](https://github.com/markverick/ndnd) — fork with `sim/` package for ndndSIM
+- [ndndSIM](https://github.com/markverick/ndndSIM) — ns-3 contrib module
+- [Mini-NDN](https://github.com/named-data/mini-ndn) — Mininet-based NDN emulator
+- [ns-3](https://www.nsnam.org/) — discrete-event network simulator
