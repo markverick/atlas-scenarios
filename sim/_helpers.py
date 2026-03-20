@@ -19,6 +19,9 @@ _REPO_DIR = os.path.join(os.path.dirname(__file__), "..")
 TARGET_NAME = "ndndsim-atlas-scenario"
 CC_FILENAME = f"{TARGET_NAME}.cc"
 
+MULTIHOP_TARGET_NAME = "ndndsim-atlas-multihop-scenario"
+MULTIHOP_CC_FILENAME = f"{MULTIHOP_TARGET_NAME}.cc"
+
 
 def resolve_ns3_dir(ns3_dir_arg=None):
     """Return absolute path to ns-3 root, or exit on failure."""
@@ -37,9 +40,15 @@ def sync_scenario(ns3_dir):
     and appends a CMakeLists.txt entry if not already present.
     Idempotent and fast — safe to call on every run.
     """
-    src = os.path.join(os.path.abspath(_REPO_DIR), "sim", "atlas-scenario.cc")
+    _sync_target(ns3_dir, "atlas-scenario.cc", TARGET_NAME, CC_FILENAME,
+                 "Atlas general-purpose scenario")
+
+
+def _sync_target(ns3_dir, src_basename, target_name, cc_filename, cmake_comment):
+    """Install a single C++ scenario source into ndndSIM/examples and register it."""
+    src = os.path.join(os.path.abspath(_REPO_DIR), "sim", src_basename)
     dst_dir = os.path.join(ns3_dir, "contrib", "ndndSIM", "examples")
-    dst = os.path.join(dst_dir, CC_FILENAME)
+    dst = os.path.join(dst_dir, cc_filename)
 
     # Copy .cc if missing or outdated
     if not os.path.isfile(dst) or _file_differs(src, dst):
@@ -58,12 +67,12 @@ def sync_scenario(ns3_dir):
         if os.path.isfile(stale_cc):
             os.remove(stale_cc)
 
-    if TARGET_NAME not in cmake_text:
+    if target_name not in cmake_text:
         cmake_text += textwrap.dedent(f"""
-            # Atlas general-purpose scenario
+            # {cmake_comment}
             build_lib_example(
-                NAME {TARGET_NAME}
-                SOURCE_FILES {CC_FILENAME}
+                NAME {target_name}
+                SOURCE_FILES {cc_filename}
                 LIBRARIES_TO_LINK
                     ${{libndndSIM}}
                     ${{libcore}}
@@ -249,3 +258,122 @@ def _walk_go_sources(root):
         for name in filenames:
             if name.endswith(".go") and not name.endswith("_test.go"):
                 yield os.path.join(dirpath, name)
+
+
+def sync_multihop_scenario(ns3_dir):
+    """Ensure atlas-multihop-scenario.cc is installed and registered in ns-3."""
+    _sync_target(ns3_dir, "atlas-multihop-scenario.cc",
+                 MULTIHOP_TARGET_NAME, MULTIHOP_CC_FILENAME,
+                 "Atlas multi-hop DV routing changes scenario")
+
+
+def run_multihop_scenario(ns3_dir, *, topo, results_file, rate_trace,
+                          prefix="/app/data", network="/minindn",
+                          consumer="a", producer="d",
+                          link_down_src="b", link_down_dst="c",
+                          sim_time=90.0, dv_config=None,
+                          cores=0, run_log=None):
+    """Build ns-3 and run the multihop scenario.
+
+    Args:
+        ns3_dir:      Absolute path to ns-3 root.
+        topo:         Topology file path (relative to ns3_dir or absolute).
+        results_file: Output JSON results path (absolute).
+        rate_trace:   Output rate-trace CSV path (absolute).
+        prefix:       App prefix to test.
+        network:      DV network prefix.
+        consumer:     Consumer node name.
+        producer:     Producer node name.
+        link_down_src:  Source node of link to fail.
+        link_down_dst:  Destination node of link to fail.
+        sim_time:     Total simulation time in seconds.
+        dv_config:    Dict of DV config overrides.
+        cores:        Parallel build cores (0 = all).
+        run_log:      Optional path to capture stdout/stderr.
+    """
+    # Sync both the original scenario (may already be registered) and multihop
+    sync_scenario(ns3_dir)
+    sync_multihop_scenario(ns3_dir)
+
+    # Ensure Go 1.24+ is in PATH for the CGo build step
+    env = os.environ.copy()
+    go_dir = "/usr/local/go/bin"
+    if os.path.isfile(os.path.join(go_dir, "go")) and go_dir not in env.get("PATH", ""):
+        env["PATH"] = go_dir + ":" + env.get("PATH", "")
+
+    ns3_bin = os.path.join(ns3_dir, "ns3")
+    build_cmd = [ns3_bin, "build"]
+    if cores > 0:
+        build_cmd += ["-j", str(cores)]
+    subprocess.run(build_cmd, cwd=ns3_dir, check=True, env=env)
+
+    # Freshness check for Go sources
+    so_path = os.path.join(ns3_dir, "build", "lib", "libns3.47-ndndSIM.so")
+    ndnd_sim_dir = os.path.join(ns3_dir, "contrib", "ndndSIM", "ndnd", "sim")
+    if os.path.isfile(so_path) and os.path.isdir(ndnd_sim_dir):
+        so_mtime = os.path.getmtime(so_path)
+        stale = [
+            f for f in _walk_go_sources(ndnd_sim_dir)
+            if os.path.getmtime(f) > so_mtime
+        ]
+        if stale:
+            rel = [os.path.relpath(f, ns3_dir) for f in stale]
+            raise RuntimeError(
+                "Go source files are newer than the built shared library — "
+                "cmake dependency tracking missed them. "
+                "Re-run cmake configure (./ns3 configure) then build again.\n"
+                "Stale sources:\n" + "\n".join(f"  {r}" for r in rel)
+            )
+
+    # Resolve topo path
+    if not os.path.isabs(topo):
+        topo = os.path.join(ns3_dir, topo)
+    topo = os.path.abspath(topo)
+
+    run_args = [
+        f"--topo={topo}",
+        f"--resultsFile={results_file}",
+        f"--rateTrace={rate_trace}",
+        f"--prefix={prefix}",
+        f"--network={network}",
+        f"--consumer={consumer}",
+        f"--producer={producer}",
+        f"--linkDownSrc={link_down_src}",
+        f"--linkDownDst={link_down_dst}",
+        f"--simTime={sim_time}",
+    ]
+    if dv_config:
+        run_args.append(f"--dvConfig={json.dumps(dv_config, separators=(',', ':'))}")
+
+    # Find the multihop scenario executable
+    scenario_exe = None
+    build_dir = os.path.join(ns3_dir, "build")
+    target_substr = "ndndsim-atlas-multihop-scenario"
+    for root, dirs, files in os.walk(os.path.join(build_dir, "contrib/ndndSIM")):
+        for f in files:
+            if f.startswith("ns3.") and target_substr in f:
+                candidate = os.path.join(root, f)
+                # Prefer the -default variant if it exists; otherwise use the plain one
+                if scenario_exe is None or f.endswith("-default"):
+                    scenario_exe = candidate
+        if scenario_exe:
+            break
+
+    if not scenario_exe:
+        raise RuntimeError(
+            f"ndndsim-atlas-multihop-scenario executable not found in {build_dir}/contrib/ndndSIM/"
+        )
+
+    if run_log:
+        os.makedirs(os.path.dirname(os.path.abspath(run_log)), exist_ok=True)
+        with open(run_log, "w") as lf:
+            subprocess.run([scenario_exe] + run_args, check=True,
+                           stdout=lf, stderr=lf)
+    else:
+        subprocess.run([scenario_exe] + run_args, check=True, capture_output=False)
+
+    # Validate results file was created
+    if not os.path.isfile(results_file):
+        raise RuntimeError(
+            f"Results file '{results_file}' was not created by the simulation"
+        )

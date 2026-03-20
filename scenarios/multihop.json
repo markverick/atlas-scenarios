@@ -1,0 +1,81 @@
+{
+    "_comment": "Multi-hop DV routing changes — link failure/recovery and prefix withdrawal/re-announcement",
+
+    "topology": {
+        "nodes": ["a", "b", "c", "d"],
+        "links": [
+            {"src": "a", "dst": "b", "delay": "10ms", "bw": 10},
+            {"src": "b", "dst": "c", "delay": "10ms", "bw": 10},
+            {"src": "c", "dst": "d", "delay": "10ms", "bw": 10}
+        ]
+    },
+
+    "network": "/minindn",
+    "consumer": "a",
+    "producer": "d",
+    "app_prefix": "/app/data",
+
+    "advertise_interval":   2000,
+    "router_dead_interval": 10000,
+
+    "dv_converge_timeout_s":  30,
+    "traffic_fetch_timeout_s": 5,
+
+    "phases": [
+        {
+            "name": "initial_convergence",
+            "description": "All links up, DV converged, app prefix announced — traffic flows a→d",
+            "actions": [
+                {"type": "announce_prefix", "node": "d", "prefix": "/app/data"}
+            ],
+            "assert": [
+                {"type": "prefix_reachable",  "from": "a", "prefix": "/app/data"},
+                {"type": "traffic_flows"}
+            ]
+        },
+        {
+            "name": "link_failure",
+            "description": "Link b--c goes down — app prefix unreachable from a, traffic blocked",
+            "actions": [
+                {"type": "link_down", "src": "b", "dst": "c"}
+            ],
+            "assert": [
+                {"type": "prefix_unreachable", "from": "a", "prefix": "/minindn/d"},
+                {"type": "traffic_blocked"}
+            ]
+        },
+        {
+            "name": "link_recovery",
+            "description": "Link b--c comes back up — app prefix reachable again, traffic flows",
+            "actions": [
+                {"type": "link_up", "src": "b", "dst": "c"}
+            ],
+            "assert": [
+                {"type": "prefix_reachable",  "from": "a", "prefix": "/app/data"},
+                {"type": "traffic_flows"}
+            ]
+        },
+        {
+            "name": "prefix_withdrawal",
+            "description": "Producer on d withdraws /app/data — prefix disappears from a's RIB, traffic blocked",
+            "actions": [
+                {"type": "withdraw_prefix", "node": "d", "prefix": "/app/data"}
+            ],
+            "assert": [
+                {"type": "prefix_unreachable", "from": "a", "prefix": "/app/data"},
+                {"type": "traffic_blocked"}
+            ]
+        },
+        {
+            "name": "prefix_reannounce",
+            "description": "Producer on d re-announces /app/data — prefix reappears in a's RIB, traffic flows",
+            "actions": [
+                {"type": "announce_prefix", "node": "d", "prefix": "/app/data"}
+            ],
+            "assert": [
+                {"type": "prefix_reachable",  "from": "a", "prefix": "/app/data"},
+                {"type": "traffic_flows"}
+            ]
+        }
+    ]
+}

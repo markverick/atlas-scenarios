@@ -97,6 +97,25 @@ sudo ./run.sh emu scalability --grids 2 3 4 5 --trials 1
 
 Output: `results/emu/scalability.csv`, `results/sim/scalability.csv`
 
+### Multi-hop DV Routing Test (4-node linear)
+
+```bash
+sudo ./run.sh emu multihop       # emulation (Mini-NDN)
+./run.sh sim multihop            # simulation (ndndSIM)
+```
+
+Topology: a — b — c — d. Tests 5 phases of DV routing changes:
+
+| Phase | Action | Assertions |
+|-------|--------|------------|
+| initial_convergence | Announce `/app/data` on d | Prefix reachable from a, traffic flows a→d |
+| link_failure | Drop all packets on b↔c | Producer's DV router unreachable, traffic blocked |
+| link_recovery | Restore b↔c link | Prefix reachable again, traffic flows |
+| prefix_withdrawal | Withdraw `/app/data` from DV on d | Prefix gone from a's RIB, traffic blocked |
+| prefix_reannounce | Re-announce `/app/data` on d | Prefix back, traffic flows |
+
+Scenario definition: `scenarios/multihop.json`. Reports 10 assertions (2 per phase).
+
 ### Reproducible paper run (single JSON config)
 
 Use a checked-in scenario config so experiments are exactly repeatable:
@@ -165,20 +184,24 @@ lib/                        # Shared Python modules
 └── config.py               #   JSON scenario config loader
 sim/                        # Simulation scenarios
 ├── atlas-scenario.cc       #   Parameterised ndndSIM C++ scenario
+├── atlas-multihop-scenario.cc  # Multi-hop DV routing changes C++ scenario
 ├── _helpers.py             #   Shared ns-3 build/run utilities
 ├── demo.py                 #   3-node linear ndndSIM demo
-└── scalability.py          #   NxN grid ndndSIM scalability test
+├── scalability.py          #   NxN grid ndndSIM scalability test
+└── multihop.py             #   Multi-hop DV routing test runner
 minindn_ndnd/               # Mini-NDN integration for NDNd
 ├── ndnd_fw.py              #   NDNd_FW — YaNFD forwarder Application
 ├── ndnd_dv.py              #   NDNd_DV — DV routing Application
 └── dv_util.py              #   setup() / converge() helpers
 emu/                        # Emulation scenarios
 ├── demo.py                 #   3-node file transfer demo
-└── scalability.py          #   NxN grid scalability test
+├── scalability.py          #   NxN grid scalability test
+└── multihop.py             #   Multi-hop DV routing test runner
 plot.py                     # Comparison plot generator
 scenarios/                  # Reproducible scenario configs
 ├── paper.json
-└── quick.json
+├── quick.json
+└── multihop.json           #   Multi-hop DV routing test definition
 deps/                       # Built dependencies (gitignored)
 results/                    # Output CSVs and plots (gitignored)
 ```

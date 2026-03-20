@@ -124,7 +124,7 @@ case "$1" in
         ;;
     emu)
         shift
-        [[ $# -lt 1 ]] && { echo "Usage: ./run.sh emu <demo|scalability> [opts]"; exit 1; }
+        [[ $# -lt 1 ]] && { echo "Usage: ./run.sh emu <demo|scalability|multihop> [opts]"; exit 1; }
         subcmd="$1"; shift
         cleanup_minindn
         build_ndnd_traffic
@@ -134,6 +134,9 @@ case "$1" in
                 ;;
             scalability)
                 python3 "$REPO_DIR/emu/scalability.py" "$@"
+                ;;
+            multihop)
+                python3 "$REPO_DIR/emu/multihop.py" "$@"
                 ;;
             *)
                 python3 "$REPO_DIR/emu/$subcmd" "$@"
@@ -148,7 +151,7 @@ case "$1" in
         ;;
     sim)
         shift
-        [[ $# -lt 1 ]] && { echo "Usage: ./run.sh sim <demo|scalability> [opts]"; exit 1; }
+        [[ $# -lt 1 ]] && { echo "Usage: ./run.sh sim <demo|scalability|multihop> [opts]"; exit 1; }
         subcmd="$1"; shift
 
         ensure_ns3_ready
@@ -165,6 +168,9 @@ case "$1" in
                 ;;
             scalability)
                 exec "${run_cmd[@]}" "$REPO_DIR/sim/scalability.py" --ns3-dir "$NS3_DIR" "$@"
+                ;;
+            multihop)
+                exec "${run_cmd[@]}" "$REPO_DIR/sim/multihop.py" --ns3-dir "$NS3_DIR" "$@"
                 ;;
             *)
                 exec "${run_cmd[@]}" "$REPO_DIR/sim/$subcmd" --ns3-dir "$NS3_DIR" "$@"
