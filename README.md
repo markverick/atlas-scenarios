@@ -7,6 +7,10 @@ Emulation and simulation scenarios for NDN using [NDNd](https://github.com/named
 | **Emulation** | [Mini-NDN](https://github.com/named-data/mini-ndn) + real NDNd processes | Convergence, transfer, memory, total traffic |
 | **Simulation** | [ndndSIM](https://github.com/markverick/ndndSIM) (ns-3 + NDNd via CGo) | Convergence (RIB-based), total traffic, DV/user traffic split |
 
+Scenarios include scalability tests (NxN grids with app traffic), routing-only
+measurement (DV traffic burst with no app traffic), and multi-hop DV routing
+change tests.
+
 Both produce CSV results in the same schema so they can be plotted side-by-side.
 
 ### How Emu and Sim Stay Aligned
@@ -97,6 +101,25 @@ sudo ./run.sh emu scalability --grids 2 3 4 5 --trials 1
 
 Output: `results/emu/scalability.csv`, `results/sim/scalability.csv`
 
+### Routing-Only Traffic Measurement
+
+```bash
+sudo ./run.sh emu routing --config scenarios/routing.json
+./run.sh sim routing --config scenarios/routing.json
+```
+
+Pure DV routing measurement with **no application traffic**. Measures routing
+protocol overhead (packet counts, bytes, convergence time) on NxN grids.
+
+Both sim and emu record per-packet event data:
+- **Sim**: `NdndLinkTracer` per-packet mode → `packet-trace-*.csv`
+- **Emu**: tcpdump pcap → parsed per-packet with `lib/pcap.py`
+
+Convergence is measured identically on both sides: span from the first
+`RouterReachable` event to the event completing all FIBs.
+
+Scenario definition: `scenarios/routing.json`.
+
 ### Multi-hop DV Routing Test (4-node linear)
 
 ```bash
@@ -144,14 +167,27 @@ The JSON schema is implemented in `lib/config.py`:
 ### Comparison Plots
 
 ```bash
-./run.sh plot
+./run.sh plot                  # Scalability plots
+./run.sh plot-routing          # Routing aggregate plots
+python3 plot_routing_timeseries.py  # Per-packet time-series plots
 ```
 
-Output:
+Scalability output:
 - `results/plots/convergence.png`
 - `results/plots/memory.png`
 - `results/plots/total_traffic.png`
 - `results/plots/dv_overhead.png`
+
+Routing output:
+- `results/plots/routing_convergence.png`
+- `results/plots/routing_packets.png`
+- `results/plots/routing_bytes.png`
+
+Routing time-series (Wireshark-style per-packet):
+- `results/plots/routing_timeseries_scatter_NxN.png`
+- `results/plots/routing_timeseries_cumulative_NxN.png`
+- `results/plots/routing_timeseries_rate_NxN.png`
+- `results/plots/routing_timeseries_byterate_NxN.png`
 
 ### All Options
 
@@ -185,23 +221,35 @@ lib/                        # Shared Python modules
 sim/                        # Simulation scenarios
 ├── atlas-scenario.cc       #   Parameterised ndndSIM C++ scenario
 ├── atlas-multihop-scenario.cc  # Multi-hop DV routing changes C++ scenario
+├── atlas-routing-scenario.cc   # Routing-only scenario (no app traffic)
 ├── _helpers.py             #   Shared ns-3 build/run utilities
 ├── demo.py                 #   3-node linear ndndSIM demo
 ├── scalability.py          #   NxN grid ndndSIM scalability test
-└── multihop.py             #   Multi-hop DV routing test runner
+├── multihop.py             #   Multi-hop DV routing test runner
+└── routing.py              #   Routing-only traffic measurement
 minindn_ndnd/               # Mini-NDN integration for NDNd
 ├── ndnd_fw.py              #   NDNd_FW — YaNFD forwarder Application
 ├── ndnd_dv.py              #   NDNd_DV — DV routing Application
 └── dv_util.py              #   setup() / converge() helpers
 emu/                        # Emulation scenarios
+├── _helpers.py             #   Shared emu helpers (grid setup, tcpdump, etc.)
 ├── demo.py                 #   3-node file transfer demo
 ├── scalability.py          #   NxN grid scalability test
-└── multihop.py             #   Multi-hop DV routing test runner
-plot.py                     # Comparison plot generator
+├── multihop.py             #   Multi-hop DV routing test runner
+└── routing.py              #   Routing-only traffic measurement
+lib/                        # Shared Python modules
+├── topology.py             #   Grid topology builder (emu + sim)
+├── result_adapter.py       #   Unified result adapter (TrialResult, CSV writer)
+├── config.py               #   JSON scenario config loader
+└── pcap.py                 #   NDN-over-UDP pcap parser (per-packet + aggregate)
+plot.py                     # Scalability comparison plots
+plot_routing.py             # Routing aggregate plots (convergence, packets, bytes)
+plot_routing_timeseries.py  # Wireshark-style per-packet time-series plots
 scenarios/                  # Reproducible scenario configs
 ├── paper.json
 ├── quick.json
-└── multihop.json           #   Multi-hop DV routing test definition
+├── multihop.json           #   Multi-hop DV routing test definition
+└── routing.json            #   Routing-only scenario config
 deps/                       # Built dependencies (gitignored)
 results/                    # Output CSVs and plots (gitignored)
 ```
@@ -290,9 +338,17 @@ The `NdndLinkTracer` classifies L2 frames by NDN packet type at the MAC layer.
 An `NdnPayloadTag` marks the LP-level payload start so byte counts exclude
 Ethernet/PPP headers — matching the emu's UDP payload counting.
 
+The link tracer supports two modes:
+- **Interval-sampled** (default): aggregates counters over configurable periods
+- **Per-packet**: logs every packet with exact ns-3 timestamp, category, and size
+
 DV routing uses the same Go DV protocol with SVS v3 sync. Ed25519 trust
 (root key + per-node certificates) is set up automatically by the Go
 `SimTrust` module, producing the same signing overhead as real deployments.
+
+Routing convergence is measured event-driven via `RouterReachableEvent` in the
+Go DV code — span from the first event to the event completing all FIBs.
+No probe prefix or app traffic is needed.
 
 See the [ndndSIM README](https://github.com/markverick/ndndSIM) for the full
 simulation API including stack helpers, tracers, and DV routing configuration.

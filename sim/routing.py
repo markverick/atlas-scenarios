@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-ndndSIM DV scalability scenario — NxN grid topologies.
+ndndSIM routing-only scenario — measure DV routing traffic burst.
 
-Generates topology files, runs the parameterized atlas scenario for
-each grid size, and writes results through the result adapter.
+Runs DV routing on NxN grid topologies with NO application traffic.
+Measures routing packet counts, traffic volume, and convergence time.
 
 Usage:
-  python3 sim/scalability.py
-  python3 sim/scalability.py --grids 2 3 4 5 --delay 10 --sim-time 60
+  python3 sim/routing.py
+  python3 sim/routing.py --config scenarios/routing.json
 """
 
 import argparse
@@ -17,13 +17,14 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from lib.config import add_grid_scenario_args, apply_config_overrides
 from lib.topology import generate_ndnsim_topo, grid_stats
-from lib.result_adapter import ResultWriter, sim_trial_result
-from sim._helpers import resolve_ns3_dir, run_scenario
+from lib.result_adapter import ResultWriter, TrialResult, parse_conv_trace, parse_link_trace
+from sim._helpers import resolve_ns3_dir, run_routing_scenario
 
 
 def main():
-    parser = argparse.ArgumentParser(description="ndndSIM DV scalability grid")
-    add_grid_scenario_args(parser, default_out="results/sim")
+    parser = argparse.ArgumentParser(description="ndndSIM routing-only traffic measurement")
+    add_grid_scenario_args(parser, default_out="results/sim_routing",
+                           default_window=30.0)
     parser.add_argument("--ns3-dir", default=None,
                         help="Path to ns-3 root (default: deps/ns-3 or NS3_DIR env)")
     args = parser.parse_args()
@@ -46,35 +47,43 @@ def main():
             topo_rel = os.path.relpath(topo_path, ns3_dir)
 
             for trial in range(1, args.trials + 1):
-                tag = f"{grid_size}x{grid_size}-t{trial}"
-                rate_csv = os.path.abspath(os.path.join(
-                    args.out, f"rate-trace-{tag}.csv"))
+                tag = f"routing-{grid_size}x{grid_size}-t{trial}"
                 conv_file = os.path.abspath(os.path.join(
                     args.out, f"conv-{tag}.txt"))
                 link_csv = os.path.abspath(os.path.join(
                     args.out, f"link-trace-{tag}.csv"))
+                pkt_csv = os.path.abspath(os.path.join(
+                    args.out, f"packet-trace-{tag}.csv"))
 
-                print(f"\n=== Sim grid {grid_size}x{grid_size}, trial {trial} ===")
-                run_scenario(
+                print(f"\n=== Routing-only: grid {grid_size}x{grid_size}, trial {trial} ===")
+                run_routing_scenario(
                     ns3_dir,
                     topo=topo_rel,
-                    rate_trace=rate_csv,
                     sim_time=args.window,
                     cores=args.cores,
                     conv_trace=conv_file,
                     link_trace=link_csv,
+                    packet_trace=pkt_csv,
                     dv_config=dv_config or None,
                 )
 
-                result = sim_trial_result(grid_size, num_nodes, num_links,
-                                          rate_csv, trial=trial,
-                                          conv_trace_path=conv_file,
-                                          link_trace_path=link_csv)
+                conv = parse_conv_trace(conv_file)
+                traffic = parse_link_trace(link_csv)
+                result = TrialResult(
+                    grid_size=grid_size,
+                    num_nodes=num_nodes,
+                    num_links=num_links,
+                    trial=trial,
+                    convergence_s=conv,
+                    transfer_ok=conv >= 0,
+                    **traffic,
+                )
                 writer.write(result)
                 print(f"  convergence={result.convergence_s}s"
+                      f"  dv_pkts={result.dv_packets}"
+                      f"  dv_bytes={result.dv_bytes}"
                       f"  total_pkts={result.total_packets}"
-                      f"  total_bytes={result.total_bytes}"
-                      f"  dv_bytes={result.dv_bytes}")
+                      f"  total_bytes={result.total_bytes}")
 
     print(f"\nResults written to {out_csv}")
 

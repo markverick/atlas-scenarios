@@ -181,6 +181,56 @@ def parse_dv_update_span_logs(log_paths, prefix="/ndn/test"):
     return round(last_add - first_global, 4)
 
 
+def parse_router_reachable_logs(log_paths, num_nodes):
+    """Compute routing convergence from DV 'Router is now reachable' events.
+
+    Convergence = (timestamp of event completing all FIBs) − (first event).
+    Each log file corresponds to one node.  Convergence is achieved when
+    every node has learned routes to all other (num_nodes − 1) routers.
+
+    Returns convergence in seconds (float, 4 d.p.) or −1 on failure.
+    """
+    if not log_paths or num_nodes < 2:
+        return -1
+
+    target = num_nodes - 1
+    first_event_ts = None
+    last_completion_ts = None
+    all_complete = True
+
+    for path in log_paths or []:
+        if not path or not os.path.isfile(path):
+            all_complete = False
+            continue
+        seen = set()
+        node_complete_ts = None
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if 'msg="Router is now reachable"' not in line:
+                    continue
+                m = re.search(r"time=([^\s]+)", line)
+                if not m:
+                    continue
+                ts = _parse_log_time_to_epoch(m.group(1))
+                if ts is None:
+                    continue
+                if first_event_ts is None or ts < first_event_ts:
+                    first_event_ts = ts
+                nm = re.search(r"\bname=([^\s]+)", line)
+                if nm:
+                    seen.add(nm.group(1))
+                if len(seen) >= target and node_complete_ts is None:
+                    node_complete_ts = ts
+        if node_complete_ts is None:
+            all_complete = False
+        elif last_completion_ts is None or node_complete_ts > last_completion_ts:
+            last_completion_ts = node_complete_ts
+
+    if not all_complete or first_event_ts is None or last_completion_ts is None:
+        return -1
+    return round(last_completion_ts - first_event_ts, 4)
+
+
 def parse_link_trace(link_trace_path):
     """Parse a link-tracer CSV and return aggregate traffic counters.
 
@@ -231,29 +281,4 @@ def sim_trial_result(grid_size, num_nodes, num_links, rate_trace_path,
         transfer_ok=conv >= 0,
         avg_mem_kb=0,
         **traffic,
-    )
-
-
-# ── Emu adapter ─────────────────────────────────────────────────────
-
-def emu_trial_result(grid_size, num_nodes, num_links, convergence_s,
-                     transfer_ok, avg_mem_kb, trial=1,
-                     total_packets=0, total_bytes=0,
-                     dv_packets=0, dv_bytes=0,
-                     user_packets=0, user_bytes=0):
-    """Build a TrialResult from emulation measurements."""
-    return TrialResult(
-        grid_size=grid_size,
-        num_nodes=num_nodes,
-        num_links=num_links,
-        trial=trial,
-        convergence_s=convergence_s,
-        transfer_ok=transfer_ok,
-        avg_mem_kb=avg_mem_kb,
-        total_packets=total_packets,
-        total_bytes=total_bytes,
-        dv_packets=dv_packets,
-        dv_bytes=dv_bytes,
-        user_packets=user_packets,
-        user_bytes=user_bytes,
     )

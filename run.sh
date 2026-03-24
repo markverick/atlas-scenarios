@@ -71,9 +71,12 @@ Commands:
   setup                      Install all dependencies from source
   emu demo                   Run 3-node file transfer demo (needs sudo)
   emu scalability [opts]     Run NxN grid scalability test (needs sudo)
+  emu routing [opts]         Run routing-only traffic measurement (needs sudo)
   sim demo [opts]            Run 3-node ndndSIM demo
   sim scalability [opts]     Run NxN grid ndndSIM scalability test
+  sim routing [opts]         Run routing-only ndndSIM traffic measurement
   plot [opts]                Generate comparison plots from CSV results
+  plot-routing [opts]        Generate routing-only traffic plots
 
 Emulation options (emu scalability):
   --grids 2 3 4 5            Grid sizes to test
@@ -124,7 +127,7 @@ case "$1" in
         ;;
     emu)
         shift
-        [[ $# -lt 1 ]] && { echo "Usage: ./run.sh emu <demo|scalability|multihop> [opts]"; exit 1; }
+        [[ $# -lt 1 ]] && { echo "Usage: ./run.sh emu <demo|scalability|multihop|routing> [opts]"; exit 1; }
         subcmd="$1"; shift
         cleanup_minindn
         build_ndnd_traffic
@@ -137,6 +140,9 @@ case "$1" in
                 ;;
             multihop)
                 python3 "$REPO_DIR/emu/multihop.py" "$@"
+                ;;
+            routing)
+                python3 "$REPO_DIR/emu/routing.py" "$@"
                 ;;
             *)
                 python3 "$REPO_DIR/emu/$subcmd" "$@"
@@ -151,7 +157,7 @@ case "$1" in
         ;;
     sim)
         shift
-        [[ $# -lt 1 ]] && { echo "Usage: ./run.sh sim <demo|scalability|multihop> [opts]"; exit 1; }
+        [[ $# -lt 1 ]] && { echo "Usage: ./run.sh sim <demo|scalability|multihop|routing> [opts]"; exit 1; }
         subcmd="$1"; shift
 
         ensure_ns3_ready
@@ -172,6 +178,9 @@ case "$1" in
             multihop)
                 exec "${run_cmd[@]}" "$REPO_DIR/sim/multihop.py" --ns3-dir "$NS3_DIR" "$@"
                 ;;
+            routing)
+                exec "${run_cmd[@]}" "$REPO_DIR/sim/routing.py" --ns3-dir "$NS3_DIR" "$@"
+                ;;
             *)
                 exec "${run_cmd[@]}" "$REPO_DIR/sim/$subcmd" --ns3-dir "$NS3_DIR" "$@"
                 ;;
@@ -180,6 +189,10 @@ case "$1" in
     plot)
         shift
         exec python3 "$REPO_DIR/plot.py" "$@"
+        ;;
+    plot-routing)
+        shift
+        exec python3 "$REPO_DIR/plot_routing.py" "$@"
         ;;
     both)
         shift

@@ -22,6 +22,9 @@ CC_FILENAME = f"{TARGET_NAME}.cc"
 MULTIHOP_TARGET_NAME = "ndndsim-atlas-multihop-scenario"
 MULTIHOP_CC_FILENAME = f"{MULTIHOP_TARGET_NAME}.cc"
 
+ROUTING_TARGET_NAME = "ndndsim-atlas-routing-scenario"
+ROUTING_CC_FILENAME = f"{ROUTING_TARGET_NAME}.cc"
+
 
 def resolve_ns3_dir(ns3_dir_arg=None):
     """Return absolute path to ns-3 root, or exit on failure."""
@@ -113,41 +116,8 @@ def run_scenario(ns3_dir, *, topo, rate_trace, sim_time=60.0,
         run_log:    Optional path to capture scenario stdout/stderr logs.
     """
     sync_scenario(ns3_dir)
+    _build_ns3(ns3_dir, cores)
 
-    # Ensure Go 1.24+ is in PATH for the CGo build step
-    env = os.environ.copy()
-    go_dir = "/usr/local/go/bin"
-    if os.path.isfile(os.path.join(go_dir, "go")) and go_dir not in env.get("PATH", ""):
-        env["PATH"] = go_dir + ":" + env.get("PATH", "")
-
-    ns3_bin = os.path.join(ns3_dir, "ns3")
-    build_cmd = [ns3_bin, "build"]
-    if cores > 0:
-        build_cmd += ["-j", str(cores)]
-    subprocess.run(build_cmd, cwd=ns3_dir, check=True, env=env)
-
-    # ── Freshness check: fail loudly if Go sources are newer than the built artifact ──
-    # cmake's GLOB_RECURSE is evaluated at configure time, not build time. If you add
-    # a new .go file without re-running cmake configure, the archive won't be rebuilt.
-    # This check catches that and any other cmake dependency-tracking gap.
-    so_path = os.path.join(ns3_dir, "build", "lib", "libns3.47-ndndSIM.so")
-    ndnd_sim_dir = os.path.join(ns3_dir, "contrib", "ndndSIM", "ndnd", "sim")
-    if os.path.isfile(so_path) and os.path.isdir(ndnd_sim_dir):
-        so_mtime = os.path.getmtime(so_path)
-        stale = [
-            f for f in _walk_go_sources(ndnd_sim_dir)
-            if os.path.getmtime(f) > so_mtime
-        ]
-        if stale:
-            rel = [os.path.relpath(f, ns3_dir) for f in stale]
-            raise RuntimeError(
-                "Go source files are newer than the built shared library — "
-                "cmake dependency tracking missed them. "
-                "Re-run cmake configure (./ns3 configure) then build again.\n"
-                "Stale sources:\n" + "\n".join(f"  {r}" for r in rel)
-            )
-
-    # Resolve topo path: if not absolute, make it relative to ns3_dir
     if not os.path.isabs(topo):
         topo = os.path.join(ns3_dir, topo)
     topo = os.path.abspath(topo)
@@ -171,30 +141,8 @@ def run_scenario(ns3_dir, *, topo, rate_trace, sim_time=60.0,
     if dv_config:
         run_args.append(f"--dvConfig={json.dumps(dv_config, separators=(',', ':'))}")
 
-    # Find and run the scenario executable directly (not through ns3 wrapper)
-    # The binary is built as ns3.47-ndndsim-atlas-scenario-default
-    scenario_exe = None
-    build_dir = os.path.join(ns3_dir, "build")
-    for root, dirs, files in os.walk(os.path.join(build_dir, "contrib/ndndSIM")):
-        for f in files:
-            if f.startswith("ns3.") and "ndndsim-atlas-scenario" in f and f.endswith("-default"):
-                scenario_exe = os.path.join(root, f)
-                break
-        if scenario_exe:
-            break
-
-    if not scenario_exe:
-        raise RuntimeError(
-            f"ndndsim-atlas-scenario executable not found in {build_dir}/contrib/ndndSIM/"
-        )
-
-    if run_log:
-        os.makedirs(os.path.dirname(os.path.abspath(run_log)), exist_ok=True)
-        with open(run_log, "w") as lf:
-            subprocess.run([scenario_exe] + run_args, check=True,
-                           stdout=lf, stderr=lf)
-    else:
-        subprocess.run([scenario_exe] + run_args, check=True, capture_output=False)
+    _run_exe(_find_scenario_exe(ns3_dir, "ndndsim-atlas-scenario"),
+             run_args, run_log)
 
     # ── Validate outputs — a silent empty file is a hidden failure ────────────
     errors = []
@@ -260,6 +208,66 @@ def _walk_go_sources(root):
                 yield os.path.join(dirpath, name)
 
 
+def _build_ns3(ns3_dir, cores=0):
+    """Build ns-3 with Go on PATH and check Go source freshness."""
+    env = os.environ.copy()
+    go_dir = "/usr/local/go/bin"
+    if os.path.isfile(os.path.join(go_dir, "go")) and go_dir not in env.get("PATH", ""):
+        env["PATH"] = go_dir + ":" + env.get("PATH", "")
+
+    ns3_bin = os.path.join(ns3_dir, "ns3")
+    build_cmd = [ns3_bin, "build"]
+    if cores > 0:
+        build_cmd += ["-j", str(cores)]
+    subprocess.run(build_cmd, cwd=ns3_dir, check=True, env=env)
+
+    so_path = os.path.join(ns3_dir, "build", "lib", "libns3.47-ndndSIM.so")
+    ndnd_sim_dir = os.path.join(ns3_dir, "contrib", "ndndSIM", "ndnd", "sim")
+    if os.path.isfile(so_path) and os.path.isdir(ndnd_sim_dir):
+        so_mtime = os.path.getmtime(so_path)
+        stale = [
+            f for f in _walk_go_sources(ndnd_sim_dir)
+            if os.path.getmtime(f) > so_mtime
+        ]
+        if stale:
+            rel = [os.path.relpath(f, ns3_dir) for f in stale]
+            raise RuntimeError(
+                "Go source files are newer than the built shared library — "
+                "cmake dependency tracking missed them. "
+                "Re-run cmake configure (./ns3 configure) then build again.\n"
+                "Stale sources:\n" + "\n".join(f"  {r}" for r in rel)
+            )
+
+
+def _find_scenario_exe(ns3_dir, target_substr):
+    """Find the built ns-3 scenario executable containing target_substr."""
+    build_dir = os.path.join(ns3_dir, "build")
+    scenario_exe = None
+    for root, _dirs, files in os.walk(os.path.join(build_dir, "contrib/ndndSIM")):
+        for f in files:
+            if f.startswith("ns3.") and target_substr in f:
+                candidate = os.path.join(root, f)
+                if scenario_exe is None or f.endswith("-default"):
+                    scenario_exe = candidate
+        if scenario_exe:
+            break
+    if not scenario_exe:
+        raise RuntimeError(
+            f"{target_substr} executable not found in {build_dir}/contrib/ndndSIM/"
+        )
+    return scenario_exe
+
+
+def _run_exe(exe, run_args, run_log=None):
+    """Run a scenario executable, optionally capturing output to a log file."""
+    if run_log:
+        os.makedirs(os.path.dirname(os.path.abspath(run_log)), exist_ok=True)
+        with open(run_log, "w") as lf:
+            subprocess.run([exe] + run_args, check=True, stdout=lf, stderr=lf)
+    else:
+        subprocess.run([exe] + run_args, check=True, capture_output=False)
+
+
 def sync_multihop_scenario(ns3_dir):
     """Ensure atlas-multihop-scenario.cc is installed and registered in ns-3."""
     _sync_target(ns3_dir, "atlas-multihop-scenario.cc",
@@ -291,41 +299,10 @@ def run_multihop_scenario(ns3_dir, *, topo, results_file, rate_trace,
         cores:        Parallel build cores (0 = all).
         run_log:      Optional path to capture stdout/stderr.
     """
-    # Sync both the original scenario (may already be registered) and multihop
     sync_scenario(ns3_dir)
     sync_multihop_scenario(ns3_dir)
+    _build_ns3(ns3_dir, cores)
 
-    # Ensure Go 1.24+ is in PATH for the CGo build step
-    env = os.environ.copy()
-    go_dir = "/usr/local/go/bin"
-    if os.path.isfile(os.path.join(go_dir, "go")) and go_dir not in env.get("PATH", ""):
-        env["PATH"] = go_dir + ":" + env.get("PATH", "")
-
-    ns3_bin = os.path.join(ns3_dir, "ns3")
-    build_cmd = [ns3_bin, "build"]
-    if cores > 0:
-        build_cmd += ["-j", str(cores)]
-    subprocess.run(build_cmd, cwd=ns3_dir, check=True, env=env)
-
-    # Freshness check for Go sources
-    so_path = os.path.join(ns3_dir, "build", "lib", "libns3.47-ndndSIM.so")
-    ndnd_sim_dir = os.path.join(ns3_dir, "contrib", "ndndSIM", "ndnd", "sim")
-    if os.path.isfile(so_path) and os.path.isdir(ndnd_sim_dir):
-        so_mtime = os.path.getmtime(so_path)
-        stale = [
-            f for f in _walk_go_sources(ndnd_sim_dir)
-            if os.path.getmtime(f) > so_mtime
-        ]
-        if stale:
-            rel = [os.path.relpath(f, ns3_dir) for f in stale]
-            raise RuntimeError(
-                "Go source files are newer than the built shared library — "
-                "cmake dependency tracking missed them. "
-                "Re-run cmake configure (./ns3 configure) then build again.\n"
-                "Stale sources:\n" + "\n".join(f"  {r}" for r in rel)
-            )
-
-    # Resolve topo path
     if not os.path.isabs(topo):
         topo = os.path.join(ns3_dir, topo)
     topo = os.path.abspath(topo)
@@ -345,35 +322,63 @@ def run_multihop_scenario(ns3_dir, *, topo, results_file, rate_trace,
     if dv_config:
         run_args.append(f"--dvConfig={json.dumps(dv_config, separators=(',', ':'))}")
 
-    # Find the multihop scenario executable
-    scenario_exe = None
-    build_dir = os.path.join(ns3_dir, "build")
-    target_substr = "ndndsim-atlas-multihop-scenario"
-    for root, dirs, files in os.walk(os.path.join(build_dir, "contrib/ndndSIM")):
-        for f in files:
-            if f.startswith("ns3.") and target_substr in f:
-                candidate = os.path.join(root, f)
-                # Prefer the -default variant if it exists; otherwise use the plain one
-                if scenario_exe is None or f.endswith("-default"):
-                    scenario_exe = candidate
-        if scenario_exe:
-            break
-
-    if not scenario_exe:
-        raise RuntimeError(
-            f"ndndsim-atlas-multihop-scenario executable not found in {build_dir}/contrib/ndndSIM/"
-        )
-
-    if run_log:
-        os.makedirs(os.path.dirname(os.path.abspath(run_log)), exist_ok=True)
-        with open(run_log, "w") as lf:
-            subprocess.run([scenario_exe] + run_args, check=True,
-                           stdout=lf, stderr=lf)
-    else:
-        subprocess.run([scenario_exe] + run_args, check=True, capture_output=False)
+    _run_exe(_find_scenario_exe(ns3_dir, "ndndsim-atlas-multihop-scenario"),
+             run_args, run_log)
 
     # Validate results file was created
     if not os.path.isfile(results_file):
         raise RuntimeError(
             f"Results file '{results_file}' was not created by the simulation"
         )
+
+
+def sync_routing_scenario(ns3_dir):
+    """Ensure atlas-routing-scenario.cc is installed and registered in ns-3."""
+    _sync_target(ns3_dir, "atlas-routing-scenario.cc",
+                 ROUTING_TARGET_NAME, ROUTING_CC_FILENAME,
+                 "Atlas routing-only scenario (no app traffic)")
+
+
+def run_routing_scenario(ns3_dir, *, topo, sim_time=30.0, cores=0,
+                         conv_trace=None, link_trace=None, packet_trace=None,
+                         dv_config=None, network="/minindn",
+                         run_log=None):
+    """Build ns-3 and run the routing-only scenario (no app traffic)."""
+    sync_scenario(ns3_dir)
+    sync_routing_scenario(ns3_dir)
+    _build_ns3(ns3_dir, cores)
+
+    if not os.path.isabs(topo):
+        topo = os.path.join(ns3_dir, topo)
+    topo = os.path.abspath(topo)
+
+    run_args = [
+        f"--topo={topo}",
+        f"--simTime={sim_time}",
+        f"--network={network}",
+    ]
+    if conv_trace:
+        run_args.append(f"--convTrace={conv_trace}")
+    if link_trace:
+        run_args.append(f"--linkTrace={link_trace}")
+    if packet_trace:
+        run_args.append(f"--packetTrace={packet_trace}")
+    if dv_config:
+        run_args.append(f"--dvConfig={json.dumps(dv_config, separators=(',', ':'))}")
+
+    _run_exe(_find_scenario_exe(ns3_dir, "ndndsim-atlas-routing-scenario"),
+             run_args, run_log)
+
+    # Validate link trace
+    if link_trace:
+        if not os.path.isfile(link_trace):
+            raise RuntimeError(
+                f"link_trace '{link_trace}' was not created by the simulation"
+            )
+        with open(link_trace) as f:
+            lines = [l for l in f if l.strip()]
+        if len(lines) <= 1:
+            raise RuntimeError(
+                f"link_trace '{link_trace}' has no data rows — "
+                "no packets were traced on any link"
+            )
