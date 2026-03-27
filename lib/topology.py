@@ -40,6 +40,23 @@ def grid_stats(n):
     return n * n, 2 * n * (n - 1)
 
 
+def grid_links(n):
+    """Return list of (src, dst) link pairs for an NxN grid."""
+    links = []
+    for r in range(n):
+        for c in range(n):
+            if c + 1 < n:
+                links.append((f"n{r}_{c}", f"n{r}_{c+1}"))
+            if r + 1 < n:
+                links.append((f"n{r}_{c}", f"n{r+1}_{c}"))
+    return links
+
+
+def grid_nodes(n):
+    """Return list of node names for an NxN grid."""
+    return [f"n{r}_{c}" for r in range(n) for c in range(n)]
+
+
 def linear_stats(n):
     """Return (num_nodes, num_links) for an N-node linear chain."""
     return n, n - 1

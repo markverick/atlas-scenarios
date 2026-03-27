@@ -9,7 +9,10 @@ Generates:
   4. churn_time_io.png        — Time-series I/O with event markers (one_step vs two_step)
   5. churn_time_io_cdf.png    — Cumulative routing traffic over time
   6. churn_cdf.png            — CDF of routing packet sizes
-  6. churn_summary.md         — Markdown summary table
+  7. churn_phase2_io.png      — Time-series I/O (churn phase only)
+  8. churn_phase2_io_cdf.png  — Cumulative routing traffic (churn phase only)
+  9. churn_phase2_cdf.png     — CDF of routing packet sizes (churn phase only)
+ 10. churn_summary.md         — Markdown summary table
 
 Usage:
   python3 plot_churn.py [--sim results/sim_churn] [--emu results/emu_churn] [--out results/plots]
@@ -19,6 +22,7 @@ import argparse
 import csv
 import os
 import sys
+from datetime import datetime
 
 import matplotlib
 matplotlib.use("Agg")
@@ -27,6 +31,39 @@ import numpy as np
 
 
 CATEGORIES = ["DvAdvert", "PrefixSync", "Mgmt"]
+
+# Event type → (short label, color)
+_EVENT_STYLE = {
+    "link_down":        ("link dn",  "#e74c3c"),
+    "link_up":          ("link up",  "#2ecc71"),
+    "prefix_withdraw":  ("pfx rm",   "#e67e22"),
+    "prefix_announce":  ("pfx add",  "#3498db"),
+}
+
+
+def load_event_log(rdir):
+    """Load churn event markers from event-log CSV files in *rdir*.
+
+    Returns list of (time, short_label, color) tuples, de-duplicated by time+type.
+    """
+    import glob
+    events = []
+    seen = set()
+    for path in sorted(glob.glob(os.path.join(rdir, "event-log-*.csv"))):
+        with open(path) as f:
+            for row in csv.DictReader(f):
+                etype = row.get("Event", "")
+                if etype not in _EVENT_STYLE:
+                    continue
+                t = float(row["Time"])
+                key = (round(t, 2), etype)
+                if key in seen:
+                    continue
+                seen.add(key)
+                lbl, clr = _EVENT_STYLE[etype]
+                events.append((t, lbl, clr))
+    events.sort()
+    return events
 
 
 def load_churn_csv(path):
@@ -198,16 +235,6 @@ def plot_time_io(sim_dir, emu_dir, out_dir, phase2_start=30.0):
     """Time-series I/O from per-packet traces: one_step vs two_step, with event markers."""
     fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
 
-    # Churn events: (time, short_label, color, y_frac)
-    # Stagger heights to avoid overlap
-    p = phase2_start
-    churn_events = [
-        (p + 0.1, "link dn",  "#e74c3c", 0.95),
-        (p + 2.0, "pfx rm",   "#e67e22", 0.82),
-        (p + 5.1, "link up",  "#2ecc71", 0.95),
-        (p + 7.0, "pfx add",  "#3498db", 0.82),
-    ]
-
     for ax, rdir, title in [(axes[0], sim_dir, "Simulation"),
                              (axes[1], emu_dir, "Emulation")]:
         if not rdir:
@@ -244,9 +271,11 @@ def plot_time_io(sim_dir, emu_dir, out_dir, phase2_start=30.0):
         # Phase boundary
         ax.axvline(x=phase2_start, color='gray', linestyle=':', alpha=0.5)
 
-        # Event markers — staggered heights
+        # Dynamic event markers from event-log CSVs
+        churn_events = load_event_log(rdir) if rdir else []
         ymax = ax.get_ylim()[1]
-        for t, lbl, clr, yfrac in churn_events:
+        for i, (t, lbl, clr) in enumerate(churn_events):
+            yfrac = 0.95 if i % 2 == 0 else 0.82
             ax.axvline(x=t, color=clr, linestyle='--', linewidth=0.8, alpha=0.6)
             ax.text(t, ymax * yfrac, lbl, ha='center', va='top',
                     fontsize=6, color=clr, fontweight='bold',
@@ -269,14 +298,6 @@ def plot_time_io_cdf(sim_dir, emu_dir, out_dir, phase2_start=30.0):
     """Cumulative routing traffic over time, split by traffic type per mode."""
     import glob
     fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
-
-    p = phase2_start
-    churn_events = [
-        (p + 0.1, "link dn",  "#e74c3c", 0.95),
-        (p + 2.0, "pfx rm",   "#e67e22", 0.82),
-        (p + 5.1, "link up",  "#2ecc71", 0.95),
-        (p + 7.0, "pfx add",  "#3498db", 0.82),
-    ]
 
     # mode → base color; category → linestyle
     mode_colors = {"two_step": "#e74c3c", "one_step": "#2ecc71", "baseline": "#999999"}
@@ -316,11 +337,11 @@ def plot_time_io_cdf(sim_dir, emu_dir, out_dir, phase2_start=30.0):
         # Phase boundary
         ax.axvline(x=phase2_start, color='gray', linestyle=':', alpha=0.5)
 
-        # Event markers — at bottom, staggered
+        # Dynamic event markers from event-log CSVs
+        churn_events = load_event_log(rdir) if rdir else []
         ymin, ymax = ax.get_ylim()
-        for t, lbl, clr, yfrac in churn_events:
-            # Map 0.95 → 0.05, 0.82 → 0.18 (flip to bottom)
-            bfrac = 1.0 - yfrac
+        for i, (t, lbl, clr) in enumerate(churn_events):
+            bfrac = 0.05 if i % 2 == 0 else 0.18
             ax.axvline(x=t, color=clr, linestyle='--', linewidth=0.8, alpha=0.6)
             ax.text(t, ymin + (ymax - ymin) * bfrac, lbl, ha='center', va='bottom',
                     fontsize=6, color=clr, fontweight='bold',
@@ -384,11 +405,188 @@ def plot_cdf(sim_dir, emu_dir, out_dir):
     print(f"  Saved {out}")
 
 
-def write_summary(sim_rows, emu_rows, out_dir):
+# ---- Churn-phase-only plots ----
+
+def plot_phase2_io(sim_dir, emu_dir, out_dir, phase2_start=30.0):
+    """Time-series I/O from per-packet traces, churn phase only."""
+    import glob
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
+
+    for ax, rdir, title in [(axes[0], sim_dir, "Simulation"),
+                             (axes[1], emu_dir, "Emulation")]:
+        if not rdir:
+            ax.set_title(f"{title} (no data)")
+            continue
+
+        for mode, color, ls in [("two_step", "#e74c3c", "-"),
+                                 ("one_step", "#2ecc71", "-"),
+                                 ("baseline", "#999999", "--")]:
+            pattern = os.path.join(rdir, f"packet-trace-{mode}-*.csv")
+            files = sorted(glob.glob(pattern))
+            if not files:
+                continue
+            events = [(t, cat, b) for t, cat, b in load_packet_trace(files[0])
+                      if t >= phase2_start]
+            if not events:
+                continue
+
+            max_t = max(t for t, _, _ in events)
+            bin_width = 0.5
+            n_bins = int((max_t - phase2_start) / bin_width) + 1
+            bins = np.zeros(n_bins)
+            for t, cat, b in events:
+                if cat in ("DvAdvert", "PrefixSync", "Mgmt"):
+                    idx = min(int((t - phase2_start) / bin_width), n_bins - 1)
+                    bins[idx] += b / 1024
+            times = phase2_start + np.arange(n_bins) * bin_width
+            ax.plot(times, bins, color=color, linestyle=ls, linewidth=1.2,
+                    label=mode.replace("_", " "), alpha=0.8)
+
+        churn_events = load_event_log(rdir) if rdir else []
+        ymax = ax.get_ylim()[1]
+        for i, (t, lbl, clr) in enumerate(churn_events):
+            yfrac = 0.95 if i % 2 == 0 else 0.82
+            ax.axvline(x=t, color=clr, linestyle='--', linewidth=0.8, alpha=0.6)
+            ax.text(t, ymax * yfrac, lbl, ha='center', va='top',
+                    fontsize=6, color=clr, fontweight='bold',
+                    bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.7, ec=clr, lw=0.5))
+
+        ax.set_xlabel("Time (s)")
+        ax.set_title(title)
+        ax.legend(loc='upper left')
+
+    axes[0].set_ylabel("Routing Traffic (KB / 0.5s)")
+    fig.suptitle("Churn Phase — Time-Series Routing Traffic", fontsize=13)
+    fig.tight_layout()
+    out = os.path.join(out_dir, "churn_phase2_io.png")
+    fig.savefig(out, dpi=150)
+    plt.close(fig)
+    print(f"  Saved {out}")
+
+
+def plot_phase2_io_cdf(sim_dir, emu_dir, out_dir, phase2_start=30.0):
+    """Cumulative routing traffic over time, churn phase only."""
+    import glob
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
+
+    mode_colors = {"two_step": "#e74c3c", "one_step": "#2ecc71", "baseline": "#999999"}
+    cat_styles = {"DvAdvert": "-", "PrefixSync": "--", "Mgmt": ":"}
+    cat_order = ["DvAdvert", "PrefixSync", "Mgmt"]
+
+    for ax, rdir, title in [(axes[0], sim_dir, "Simulation"),
+                             (axes[1], emu_dir, "Emulation")]:
+        if not rdir:
+            ax.set_title(f"{title} (no data)")
+            continue
+
+        for mode in ("two_step", "one_step", "baseline"):
+            pattern = os.path.join(rdir, f"packet-trace-{mode}-*.csv")
+            files = sorted(glob.glob(pattern))
+            if not files:
+                continue
+            events = [(t, cat, b) for t, cat, b in load_packet_trace(files[0])
+                      if t >= phase2_start]
+            if not events:
+                continue
+
+            color = mode_colors[mode]
+            mode_label = mode.replace("_", " ")
+
+            for cat in cat_order:
+                cat_events = sorted((t, b) for t, c, b in events if c == cat)
+                if not cat_events:
+                    continue
+                times = [t for t, _ in cat_events]
+                cum_kb = np.cumsum([b / 1024 for _, b in cat_events])
+                ls = cat_styles[cat]
+                lw = 1.8 if cat == "DvAdvert" else 1.3
+                ax.plot(times, cum_kb, color=color, linestyle=ls, linewidth=lw,
+                        label=f"{mode_label} · {cat} ({cum_kb[-1]:.0f} KB)",
+                        alpha=0.85)
+
+        churn_events = load_event_log(rdir) if rdir else []
+        ymin, ymax = ax.get_ylim()
+        for i, (t, lbl, clr) in enumerate(churn_events):
+            bfrac = 0.05 if i % 2 == 0 else 0.18
+            ax.axvline(x=t, color=clr, linestyle='--', linewidth=0.8, alpha=0.6)
+            ax.text(t, ymin + (ymax - ymin) * bfrac, lbl, ha='center', va='bottom',
+                    fontsize=6, color=clr, fontweight='bold',
+                    bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.7, ec=clr, lw=0.5))
+
+        ax.set_xlabel("Time (s)")
+        ax.set_title(title)
+        ax.legend(loc='upper left', fontsize=7, ncol=2)
+
+    axes[0].set_ylabel("Cumulative Routing Traffic (KB)")
+    fig.suptitle("Churn Phase — Cumulative Routing Traffic (by type)", fontsize=13)
+    fig.tight_layout()
+    out = os.path.join(out_dir, "churn_phase2_io_cdf.png")
+    fig.savefig(out, dpi=150)
+    plt.close(fig)
+    print(f"  Saved {out}")
+
+
+def plot_phase2_cdf(sim_dir, emu_dir, out_dir, phase2_start=30.0):
+    """CDF of per-packet routing traffic sizes, churn phase only."""
+    import glob
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
+
+    for ax, rdir, title in [(axes[0], sim_dir, "Simulation"),
+                             (axes[1], emu_dir, "Emulation")]:
+        if not rdir:
+            ax.set_title(f"{title} (no data)")
+            continue
+
+        for mode, color, ls in [("two_step", "#e74c3c", "-"),
+                                 ("one_step", "#2ecc71", "-"),
+                                 ("baseline", "#999999", "--")]:
+            pattern = os.path.join(rdir, f"packet-trace-{mode}-*.csv")
+            files = sorted(glob.glob(pattern))
+            if not files:
+                continue
+            events = [(t, cat, b) for t, cat, b in load_packet_trace(files[0])
+                      if t >= phase2_start]
+            if not events:
+                continue
+
+            sizes = sorted(b for _, cat, b in events
+                           if cat in ("DvAdvert", "PrefixSync", "Mgmt"))
+            if not sizes:
+                continue
+            cdf_y = np.arange(1, len(sizes) + 1) / len(sizes)
+            ax.plot(sizes, cdf_y, color=color, linestyle=ls, linewidth=1.5,
+                    label=f"{mode.replace('_', ' ')} ({len(sizes)} pkts)", alpha=0.85)
+
+        ax.set_xlabel("Packet Size (bytes)")
+        ax.set_title(title)
+        ax.legend(fontsize=9)
+        ax.grid(True, alpha=0.3)
+
+    axes[0].set_ylabel("CDF")
+    fig.suptitle("Churn Phase — CDF of Routing Packet Sizes", fontsize=13)
+    fig.tight_layout()
+    out = os.path.join(out_dir, "churn_phase2_cdf.png")
+    fig.savefig(out, dpi=150)
+    plt.close(fig)
+    print(f"  Saved {out}")
+
+
+def write_summary(sim_rows, emu_rows, out_dir, sim_dir="", emu_dir=""):
     """Write a markdown summary with scenario design, results tables, and interpretation."""
     out = os.path.join(out_dir, "churn_summary.md")
     with open(out, "w") as f:
         f.write("# Churn Scenario Summary\n\n")
+
+        # --- Last run timestamps ---
+        timestamps = []
+        for label, rdir in [("Simulation", sim_dir), ("Emulation", emu_dir)]:
+            csv_path = os.path.join(rdir, "churn.csv") if rdir else ""
+            if csv_path and os.path.isfile(csv_path):
+                mtime = os.path.getmtime(csv_path)
+                ts = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
+                timestamps.append(f"**{label}**: {ts}")
+        if timestamps:
+            f.write("**Last run**: " + " | ".join(timestamps) + "\n\n")
 
         # --- Scenario Design ---
         f.write("## Scenario Design\n\n")
@@ -441,14 +639,19 @@ def write_summary(sim_rows, emu_rows, out_dir):
         f.write("### Two Phases\n\n"
                 f"1. **Convergence phase** (0–{half:.0f} s): All routers boot, run DV until "
                 "converged, then announce synthetic prefixes. Measures initial routing overhead.\n"
-                f"2. **Churn phase** ({half:.0f}–{half*2:.0f} s): Four deterministic events are injected "
-                f"on a single edge ({edge}):\n\n"
-                "| Time (s) | Event | Description |\n"
-                "|----------|-------|-------------|\n"
-                f"| {half+0.1:.1f} | link\\_down | Fail the edge {edge} |\n"
-                f"| {half+2.0:.1f} | prefix\\_withdraw | Remove `{pfx}` from {churn_node} |\n"
-                f"| {half+5.1:.1f} | link\\_up | Restore the edge {edge} |\n"
-                f"| {half+7.0:.1f} | prefix\\_announce | Re-announce `{pfx}` on {churn_node} |\n\n")
+                f"2. **Churn phase** ({half:.0f}–{half*2:.0f} s): Dynamic events are injected "
+                f"on a single edge ({edge}).\n\n")
+
+        # Read actual events from event-log CSVs
+        ref_dir = sim_dir if os.path.isdir(sim_dir or "") else (emu_dir if os.path.isdir(emu_dir or "") else "")
+        evt_list = load_event_log(ref_dir) if ref_dir else []
+        if evt_list:
+            f.write("| Time (s) | Event |\n|----------|-------|\n")
+            for t, lbl, _ in evt_list:
+                f.write(f"| {t:.1f} | {lbl} |\n")
+            f.write("\n")
+        else:
+            f.write("*(No event log found.)*\n\n")
 
         f.write("### Three Modes\n\n"
                 "- **baseline**: one\\_step enabled, 0 prefixes → pure DV overhead\n"
@@ -561,7 +764,10 @@ def main():
     plot_time_io(args.sim, args.emu, args.out, phase2_start)
     plot_time_io_cdf(args.sim, args.emu, args.out, phase2_start)
     plot_cdf(args.sim, args.emu, args.out)
-    write_summary(sim_rows, emu_rows, args.out)
+    plot_phase2_io(args.sim, args.emu, args.out, phase2_start)
+    plot_phase2_io_cdf(args.sim, args.emu, args.out, phase2_start)
+    plot_phase2_cdf(args.sim, args.emu, args.out, phase2_start)
+    write_summary(sim_rows, emu_rows, args.out, args.sim, args.emu)
     print("Done.")
 
 

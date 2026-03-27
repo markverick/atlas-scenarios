@@ -9,6 +9,7 @@ so that adding a new topology requires only:
 
 import csv
 import os
+import random
 import sys
 
 # --- Shared constants ---
@@ -117,6 +118,101 @@ def build_churn_events(num_prefixes, phase2_start, *,
     return events
 
 
+def build_random_churn_events(num_prefixes, phase2_start, *,
+                              link_src, link_dst, churn_node,
+                              window_end, seed=42, num_cycles=3,
+                              interval=5.0, recovery_delay=3.0,
+                              all_links=None, all_nodes=None,
+                              prefix_churn_rate=0.0):
+    """Build stochastic churn events drawn from exponential distributions.
+
+    Two independent event streams are generated:
+
+    1. **Link failures**: ``num_cycles`` fail/recover pairs.  Each cycle
+       picks a random link from *all_links* (or falls back to the single
+       *link_src*/*link_dst*).  Inter-cycle gaps and recovery times are
+       drawn from Exp(1/interval) and Exp(1/recovery_delay) respectively.
+
+    2. **Prefix churn** (if *prefix_churn_rate* > 0): an independent
+       Poisson stream of withdraw/re-announce pairs on randomly chosen
+       nodes from *all_nodes*.  Each withdrawal is re-announced after a
+       random Exp(1/recovery_delay) pause.  If *prefix_churn_rate* is 0,
+       prefix events are coupled to link events as before (one
+       withdraw/announce per link cycle on the affected link's source).
+
+    Parameters
+    ----------
+    all_links : list[(str, str)] | None
+        Full list of links to sample from.  ``None`` → single link.
+    all_nodes : list[str] | None
+        Full list of node names to sample from.  ``None`` → *churn_node*.
+    prefix_churn_rate : float
+        Mean prefix-churn events per second (independent stream).
+        0 means prefix events are coupled to link failures (legacy behaviour).
+    """
+    if not all_links and (link_src is None or link_dst is None):
+        return []
+
+    rng = random.Random(seed)
+    events = []
+    links_pool = all_links if all_links else [(link_src, link_dst)]
+    nodes_pool = all_nodes if all_nodes else ([churn_node] if churn_node else [])
+
+    # --- Stream 1: link failures ---
+    t = phase2_start
+    for _ in range(num_cycles):
+        gap = rng.expovariate(1.0 / interval)
+        t_down = t + gap
+        if t_down >= window_end - 1.0:
+            break
+
+        recovery = max(rng.expovariate(1.0 / recovery_delay), 1.0)
+        t_up = t_down + recovery
+        if t_up >= window_end - 0.5:
+            t_up = window_end - 0.5
+
+        src, dst = rng.choice(links_pool)
+        events.append({"time": round(t_down, 3), "type": "link_down",
+                       "src": src, "dst": dst})
+        events.append({"time": round(t_up, 3), "type": "link_up",
+                       "src": src, "dst": dst})
+
+        # Coupled prefix churn (legacy)
+        if prefix_churn_rate == 0 and num_prefixes > 0 and nodes_pool:
+            node = src if src in nodes_pool else rng.choice(nodes_pool)
+            pfx = f"/data/{node}/pfx0"
+            t_withdraw = min(t_down + 0.5, t_up - 0.1)
+            t_announce = min(t_up + 0.5, window_end - 0.1)
+            events.append({"time": round(t_withdraw, 3), "type": "prefix_withdraw",
+                           "node": node, "prefix": pfx})
+            events.append({"time": round(t_announce, 3), "type": "prefix_announce",
+                           "node": node, "prefix": pfx})
+
+        t = t_up + 1.0
+
+    # --- Stream 2: independent prefix churn (Poisson) ---
+    if prefix_churn_rate > 0 and num_prefixes > 0 and nodes_pool:
+        t = phase2_start
+        while True:
+            gap = rng.expovariate(prefix_churn_rate)
+            t_withdraw = t + gap
+            if t_withdraw >= window_end - 2.0:
+                break
+            node = rng.choice(nodes_pool)
+            pfx_idx = rng.randint(0, num_prefixes - 1)
+            pfx = f"/data/{node}/pfx{pfx_idx}"
+            pause = max(rng.expovariate(1.0 / recovery_delay), 1.0)
+            t_announce = min(t_withdraw + pause, window_end - 0.1)
+            events.append({"time": round(t_withdraw, 3), "type": "prefix_withdraw",
+                           "node": node, "prefix": pfx})
+            events.append({"time": round(t_announce, 3), "type": "prefix_announce",
+                           "node": node, "prefix": pfx})
+            t = t_withdraw
+
+    events.sort(key=lambda e: e["time"])
+    return events
+
+
 # --- Packet trace parsers ---
 
 def parse_packet_trace_by_phase(path, phase_boundary):
@@ -200,6 +296,11 @@ def make_tag(mode, topo_id_str, num_prefixes, trial):
 def auto_plot(out_dir, *, sim_dir="", emu_dir=""):
     """Run plot_churn.py after a churn run.
 
+    Auto-detects the sibling runner directory so that plots always
+    include both sim and emu data when available.  For example, if
+    out_dir is ``results/sim_churn_random``, we look for
+    ``results/emu_churn_random`` and vice-versa.
+
     Derives plot output directory from out_dir:
       results/sim_churn_3x3    → results/plots_3x3
       results/sim_churn_sprint → results/plots_sprint
@@ -210,12 +311,23 @@ def auto_plot(out_dir, *, sim_dir="", emu_dir=""):
     if not os.path.isfile(script):
         return
     base = os.path.basename(os.path.normpath(out_dir))
+    parent = os.path.dirname(out_dir) or "results"
+
+    # Auto-detect sibling runner directory
+    if not sim_dir and base.startswith("emu_churn"):
+        candidate = os.path.join(parent, base.replace("emu_churn", "sim_churn", 1))
+        if os.path.isdir(candidate):
+            sim_dir = candidate
+    if not emu_dir and base.startswith("sim_churn"):
+        candidate = os.path.join(parent, base.replace("sim_churn", "emu_churn", 1))
+        if os.path.isdir(candidate):
+            emu_dir = candidate
+
     suffix = base
     for prefix in ("sim_churn", "emu_churn"):
         if suffix.startswith(prefix):
             suffix = suffix[len(prefix):].lstrip("_")
             break
-    parent = os.path.dirname(out_dir) or "results"
     plot_out = os.path.join(parent, f"plots_{suffix}" if suffix else "plots")
     subprocess.run([sys.executable, script,
                     "--sim", sim_dir or "",

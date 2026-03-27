@@ -1,0 +1,19 @@
+{
+    "_comment": "Churn scenario with random failure distribution (Sprint PoP, 5 min)",
+    "topology": "sprint",
+    "delay_ms": 10,
+    "bandwidth_mbps": 10,
+    "trials": 1,
+    "window_s": 300.0,
+    "advertise_interval": 5000,
+    "router_dead_interval": 30000,
+    "prefix_sync_delay": 2000,
+    "num_prefixes": 5,
+    "cores": 0,
+    "churn_mode":           "random",
+    "churn_seed":           42,
+    "churn_num_cycles":     12,
+    "churn_interval":       8.0,
+    "churn_recovery_delay": 4.0,
+    "churn_prefix_rate":    0.15
+}

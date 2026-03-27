@@ -40,9 +40,11 @@ from emu._helpers import (
 from minindn.helpers import dv_util
 from lib.churn_common import (
     FIELDNAMES, KNOWN_TOPOLOGIES,
+    build_churn_events, build_random_churn_events,
     parse_packet_events_by_phase, build_result_rows,
     make_tag, auto_plot, default_out_dir, grid_churn_targets,
 )
+from lib.topology import grid_links, grid_nodes
 
 
 # ---- Host-level prefix management (topology-agnostic) ----
@@ -73,52 +75,68 @@ def withdraw_all(announced):
 
 # ---- Churn event scheduler ----
 
-def schedule_churn_events(ndn, hosts, num_prefixes, phase2_start_epoch,
-                          *, link_src, link_dst, churn_node):
+def schedule_churn_events(ndn, hosts, churn_events, dv_start):
     """Schedule churn events as timed threads (wall-clock based).
 
-    Events:
-      +0.1s : link_down  link_src -- link_dst
-      +2.0s : prefix_withdraw on churn_node (if prefixes > 0)
-      +5.1s : link_up    link_src -- link_dst
-      +7.0s : prefix_announce  on churn_node (if prefixes > 0)
+    Parameters
+    ----------
+    churn_events : list[dict]
+        Event dicts with keys: time (absolute sim-relative), type, and
+        src/dst (for link events) or node/prefix (for prefix events).
+        Same format as build_churn_events() / build_random_churn_events().
+    dv_start : float
+        Epoch time when DV started (wall-clock reference).
     """
-    if link_src is None or link_dst is None:
-        return []
-
-    src_host = next(h for h in hosts if h.name == churn_node)
+    host_map = {h.name: h for h in hosts}
     timers = []
+    # Mininet node.cmd() is not thread-safe; serialize all churn actions.
+    lock = threading.Lock()
 
-    def do_link_down():
-        info(f"  CHURN: link DOWN {link_src}--{link_dst}\n")
-        ndn.net.configLinkStatus(link_src, link_dst, "down")
+    for ev in churn_events:
+        delay = dv_start + ev["time"] - time.time()
+        if delay < 0:
+            delay = 0
 
-    def do_link_up():
-        info(f"  CHURN: link UP {link_src}--{link_dst}\n")
-        ndn.net.configLinkStatus(link_src, link_dst, "up")
+        etype = ev["type"]
+        if etype == "link_down":
+            src, dst = ev["src"], ev["dst"]
+            def do_link_down(s=src, d=dst):
+                info(f"  CHURN: link DOWN {s}--{d}\n")
+                with lock:
+                    ndn.net.configLinkStatus(s, d, "down")
+            t = threading.Timer(delay, do_link_down)
 
-    t1 = threading.Timer(phase2_start_epoch + 0.1 - time.time(), do_link_down)
-    t2 = threading.Timer(phase2_start_epoch + 5.1 - time.time(), do_link_up)
-    t1.start()
-    t2.start()
-    timers.extend([t1, t2])
+        elif etype == "link_up":
+            src, dst = ev["src"], ev["dst"]
+            def do_link_up(s=src, d=dst):
+                info(f"  CHURN: link UP {s}--{d}\n")
+                with lock:
+                    ndn.net.configLinkStatus(s, d, "up")
+            t = threading.Timer(delay, do_link_up)
 
-    if num_prefixes > 0 and churn_node:
-        pfx = f"/data/{churn_node}/pfx0"
+        elif etype == "prefix_withdraw":
+            node_name, pfx = ev["node"], ev["prefix"]
+            host = host_map[node_name]
+            def do_withdraw(h=host, p=pfx, n=node_name):
+                info(f"  CHURN: prefix WITHDRAW {n} {p}\n")
+                with lock:
+                    withdraw_prefix(h, p)
+            t = threading.Timer(delay, do_withdraw)
 
-        def do_withdraw():
-            info(f"  CHURN: prefix WITHDRAW {churn_node} {pfx}\n")
-            withdraw_prefix(src_host, pfx)
+        elif etype == "prefix_announce":
+            node_name, pfx = ev["node"], ev["prefix"]
+            host = host_map[node_name]
+            def do_announce(h=host, p=pfx, n=node_name):
+                info(f"  CHURN: prefix ANNOUNCE {n} {p}\n")
+                with lock:
+                    h.cmd(f'ndnd put --expose "{p}" < /dev/null &')
+            t = threading.Timer(delay, do_announce)
 
-        def do_reannounce():
-            info(f"  CHURN: prefix ANNOUNCE {churn_node} {pfx}\n")
-            src_host.cmd(f'ndnd put --expose "{pfx}" < /dev/null &')
+        else:
+            continue
 
-        t3 = threading.Timer(phase2_start_epoch + 2.0 - time.time(), do_withdraw)
-        t4 = threading.Timer(phase2_start_epoch + 7.0 - time.time(), do_reannounce)
-        t3.start()
-        t4.start()
-        timers.extend([t3, t4])
+        t.start()
+        timers.append(t)
 
     return timers
 
@@ -129,7 +147,8 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
                      grid_size, num_nodes, num_links,
                      link_src, link_dst, churn_node,
                      trial, mode, num_prefixes, window_s,
-                     dv_config, sim_time, deadline, out_dir):
+                     dv_config, sim_time, deadline, out_dir, cfg=None,
+                     all_links=None, all_nodes=None):
     """Run one variant and return a list of result dicts."""
     tag = make_tag(mode, topo_id_str, num_prefixes, trial)
     pfx_count = num_prefixes if mode != "baseline" else 0
@@ -162,9 +181,36 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
 
     # Schedule churn events
     phase2_start_epoch = dv_start + phase2_start_rel
-    timers = schedule_churn_events(
-        ndn, ndn.net.hosts, pfx_count, phase2_start_epoch,
-        link_src=link_src, link_dst=link_dst, churn_node=churn_node)
+    churn_mode = (cfg or {}).get("churn_mode", "fixed")
+    if churn_mode == "random":
+        churn_events = build_random_churn_events(
+            pfx_count, phase2_start_rel,
+            link_src=link_src, link_dst=link_dst, churn_node=churn_node,
+            window_end=sim_time,
+            seed=cfg.get("churn_seed", 42),
+            num_cycles=cfg.get("churn_num_cycles", 3),
+            interval=cfg.get("churn_interval", 5.0),
+            recovery_delay=cfg.get("churn_recovery_delay", 3.0),
+            all_links=all_links,
+            all_nodes=all_nodes,
+            prefix_churn_rate=cfg.get("churn_prefix_rate", 0.0))
+    else:
+        churn_events = build_churn_events(
+            pfx_count, phase2_start_rel,
+            link_src=link_src, link_dst=link_dst, churn_node=churn_node)
+    timers = schedule_churn_events(ndn, ndn.net.hosts, churn_events, dv_start)
+
+    # Write event log CSV (for plot markers)
+    evt_csv = os.path.join(out_dir, f"event-log-{tag}.csv")
+    with open(evt_csv, "w", newline="") as ef:
+        ew = csv.writer(ef)
+        ew.writerow(["Time", "Event", "Details"])
+        for ev in churn_events:
+            if ev["type"] in ("link_down", "link_up"):
+                details = f"{ev['src']}--{ev['dst']}"
+            else:
+                details = f"{ev['node']} {ev['prefix']}"
+            ew.writerow([ev["time"], ev["type"], details])
 
     # Wait for observation window
     window_end = dv_start + sim_time
@@ -232,6 +278,8 @@ def _run_grid(cfg, dv_config, out_dir, writer, f):
     for grid_size in cfg["grids"]:
         link_src, link_dst, churn_node = grid_churn_targets(grid_size)
         num_nodes, num_links = grid_stats(grid_size)
+        all_links_list = grid_links(grid_size)
+        all_nodes_list = grid_nodes(grid_size)
 
         def ndn_factory(gs=grid_size):
             return setup_grid(gs, delay_ms, bw_mbps, cores)
@@ -256,18 +304,25 @@ def _run_grid(cfg, dv_config, out_dir, writer, f):
                     sim_time=sim_time,
                     deadline=120,
                     out_dir=out_dir,
+                    cfg=cfg,
+                    all_links=all_links_list,
+                    all_nodes=all_nodes_list,
                 )
                 _write_rows(writer, f, rows)
 
 
 def _run_conf(cfg, dv_config, out_dir, writer, f, topo_name):
     """Run churn experiments on a conf-based topology (Sprint, etc.)."""
-    from lib.topology import conf_stats
+    from lib.topology import conf_stats, parse_minindn_conf
 
     info_entry = KNOWN_TOPOLOGIES[topo_name]
     conf_path = os.path.abspath(info_entry["conf_path"])
     link_src, link_dst = info_entry["churn_link"]
     churn_node = info_entry["churn_node"]
+
+    conf_nodes, conf_links = parse_minindn_conf(conf_path)
+    all_links_list = [(s, d) for s, d, _ in conf_links]
+    all_nodes_list = conf_nodes
 
     num_prefixes = cfg.get("num_prefixes", 5)
     sim_time = cfg["window_s"]
@@ -302,6 +357,9 @@ def _run_conf(cfg, dv_config, out_dir, writer, f, topo_name):
                 sim_time=sim_time,
                 deadline=300,
                 out_dir=out_dir,
+                cfg=cfg,
+                all_links=all_links_list,
+                all_nodes=all_nodes_list,
             )
             _write_rows(writer, f, rows)
 
@@ -353,6 +411,7 @@ def main():
 
     print(f"\nResults written to {out_csv}")
 
+    # Auto-generate plots and summary (auto-detects sibling sim dir)
     auto_plot(out_dir, emu_dir=out_dir)
 
 

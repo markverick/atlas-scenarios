@@ -27,12 +27,13 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from lib.config import load_config, dv_config_from
-from lib.topology import generate_ndnsim_topo, grid_stats
+from lib.topology import generate_ndnsim_topo, grid_stats, grid_links, grid_nodes
 from lib.result_adapter import parse_conv_trace
 from sim._helpers import resolve_ns3_dir, run_churn_scenario
 from lib.churn_common import (
     FIELDNAMES, CATEGORIES, KNOWN_TOPOLOGIES,
-    build_churn_events, parse_packet_trace_by_phase,
+    build_churn_events, build_random_churn_events,
+    parse_packet_trace_by_phase,
     build_result_rows, make_tag, auto_plot,
     default_out_dir, grid_churn_targets,
 )
@@ -43,7 +44,8 @@ def run_variant(ns3_dir, *, topo_rel, topology, topo_id_str,
                 trial, mode, num_prefixes, window_s,
                 dv_config, sim_time, phase2_start,
                 link_src, link_dst, churn_node,
-                cores, out_dir):
+                cores, out_dir, cfg=None,
+                all_links=None, all_nodes=None):
     """Run one variant and return a list of result dicts (one per phase)."""
     tag = make_tag(mode, topo_id_str, num_prefixes, trial)
     pfx_count = num_prefixes if mode != "baseline" else 0
@@ -60,9 +62,23 @@ def run_variant(ns3_dir, *, topo_rel, topology, topo_id_str,
     else:
         dvc.pop("one_step", None)
 
-    churn_events = build_churn_events(
-        pfx_count, phase2_start,
-        link_src=link_src, link_dst=link_dst, churn_node=churn_node)
+    churn_mode = (cfg or {}).get("churn_mode", "fixed")
+    if churn_mode == "random":
+        churn_events = build_random_churn_events(
+            pfx_count, phase2_start,
+            link_src=link_src, link_dst=link_dst, churn_node=churn_node,
+            window_end=sim_time,
+            seed=cfg.get("churn_seed", 42),
+            num_cycles=cfg.get("churn_num_cycles", 3),
+            interval=cfg.get("churn_interval", 5.0),
+            recovery_delay=cfg.get("churn_recovery_delay", 3.0),
+            all_links=all_links,
+            all_nodes=all_nodes,
+            prefix_churn_rate=cfg.get("churn_prefix_rate", 0.0))
+    else:
+        churn_events = build_churn_events(
+            pfx_count, phase2_start,
+            link_src=link_src, link_dst=link_dst, churn_node=churn_node)
 
     print(f"\n=== {mode}: {topo_id_str} ({num_nodes} nodes), "
           f"prefixes={pfx_count}, trial {trial} ===")
@@ -110,6 +126,8 @@ def _run_grid(ns3_dir, cfg, dv_config, out_dir, writer, f):
 
     for grid_size in cfg["grids"]:
         link_src, link_dst, churn_node = grid_churn_targets(grid_size)
+        all_links_list = grid_links(grid_size)
+        all_nodes_list = grid_nodes(grid_size)
 
         topo_dir = os.path.join(
             ns3_dir, "contrib", "ndndSIM", "examples", "topologies")
@@ -143,6 +161,9 @@ def _run_grid(ns3_dir, cfg, dv_config, out_dir, writer, f):
                     churn_node=churn_node,
                     cores=cores,
                     out_dir=out_dir,
+                    cfg=cfg,
+                    all_links=all_links_list,
+                    all_nodes=all_nodes_list,
                 )
                 _write_rows(writer, f, rows)
 
@@ -157,6 +178,10 @@ def _run_conf(ns3_dir, cfg, dv_config, out_dir, writer, f, topo_name):
     conf_path = os.path.abspath(info["conf_path"])
     link_src, link_dst = info["churn_link"]
     churn_node = info["churn_node"]
+
+    conf_nodes, conf_links = parse_minindn_conf(conf_path)
+    all_links_list = [(s, d) for s, d, _ in conf_links]
+    all_nodes_list = conf_nodes
 
     num_prefixes = cfg.get("num_prefixes", 5)
     sim_time = cfg["window_s"]
@@ -199,6 +224,9 @@ def _run_conf(ns3_dir, cfg, dv_config, out_dir, writer, f, topo_name):
                 churn_node=churn_node,
                 cores=cores,
                 out_dir=out_dir,
+                cfg=cfg,
+                all_links=all_links_list,
+                all_nodes=all_nodes_list,
             )
             _write_rows(writer, f, rows)
 
@@ -250,11 +278,8 @@ def main():
 
     print(f"\nResults written to {out_csv}")
 
-    # Auto-generate plots and summary
-    emu_dir = ""
-    if topo_name != "grid":
-        emu_dir = ""  # no cross-runner pairing
-    auto_plot(out_dir, sim_dir=out_dir, emu_dir=emu_dir)
+    # Auto-generate plots and summary (auto-detects sibling emu dir)
+    auto_plot(out_dir, sim_dir=out_dir)
 
 
 if __name__ == "__main__":

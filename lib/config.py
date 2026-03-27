@@ -39,6 +39,14 @@ _SCHEMA = {
     "num_prefixes":   (int,   0),         # synthetic prefixes per node (routing-only)
     "prefix_sync_delay": (int, 0),        # ms to delay PrefixSync SVS start (0 = immediate)
 
+    # Churn mode
+    "churn_mode":            (str,   "fixed"),   # "fixed" or "random"
+    "churn_seed":            (int,   42),        # RNG seed for random churn
+    "churn_num_cycles":      (int,   3),         # fail/recover cycles in random mode
+    "churn_interval":        (float, 5.0),       # mean inter-cycle gap (s), exponential
+    "churn_recovery_delay":  (float, 3.0),       # mean recovery time (s), exponential
+    "churn_prefix_rate":     (float, 0.0),       # independent prefix churn rate (events/s); 0 = coupled to link events
+
     # Runtime
     "cores":          (int,   0),        # 0 = all available
 }
