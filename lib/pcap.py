@@ -13,6 +13,37 @@ from dataclasses import dataclass
 # TLV byte pattern for the /ndn/test app prefix (GenericNameComponent encoding).
 _USER_NAME_BYTES = b"\x08\x03ndn\x08\x04test"
 
+# KeywordNameComponent byte patterns for DV routing sub-protocols.
+# KeywordNameComponent TLV-TYPE = 0x20.
+_KW_PFS = b"\x20\x03PFS"   # 32=PFS — PrefixSync SVS
+_KW_ADS = b"\x20\x03ADS"   # 32=ADS — Advertisement Sync
+_KW_ADV = b"\x20\x03ADV"   # 32=ADV — Advertisement Data
+_KW_DV  = b"\x20\x02DV"    # 32=DV  — general DV marker
+
+# Name-component byte pattern for /localhost/nlsr (Mgmt / readvertise).
+# GenericNameComponent 0x08, length 9, "localhost" + 0x08, length 4, "nlsr".
+_NAME_LOCALHOST_NLSR = b"\x08\x09localhost\x08\x04nlsr"
+
+
+def _classify_routing(tlv):
+    """Classify a non-user NDN packet into DvAdvert, PrefixSync, or Mgmt.
+
+    Matches the sim's NdndLinkTracer::Classify() categories:
+      - Mgmt:       /localhost/nlsr/... (readvertise / RIB registration)
+      - PrefixSync: has both 32=DV and 32=PFS keyword components
+      - DvAdvert:   has 32=DV keyword component (but not PFS)
+      - fallthrough: DvAdvert (any other non-user routing packet)
+    """
+    if _NAME_LOCALHOST_NLSR in tlv:
+        return "Mgmt"
+    has_dv = _KW_DV in tlv
+    has_pfs = _KW_PFS in tlv
+    if has_dv and has_pfs:
+        return "PrefixSync"
+    if has_dv:
+        return "DvAdvert"
+    return "DvAdvert"
+
 
 @dataclass
 class TrafficCounters:
@@ -20,6 +51,10 @@ class TrafficCounters:
 
     dv_packets: int = 0
     dv_bytes: int = 0
+    pfxsync_packets: int = 0
+    pfxsync_bytes: int = 0
+    mgmt_packets: int = 0
+    mgmt_bytes: int = 0
     user_interest_packets: int = 0
     user_interest_bytes: int = 0
     user_data_packets: int = 0
@@ -34,12 +69,20 @@ class TrafficCounters:
         return self.user_interest_bytes + self.user_data_bytes
 
     @property
+    def routing_packets(self):
+        return self.dv_packets + self.pfxsync_packets + self.mgmt_packets
+
+    @property
+    def routing_bytes(self):
+        return self.dv_bytes + self.pfxsync_bytes + self.mgmt_bytes
+
+    @property
     def total_packets(self):
-        return self.user_packets + self.dv_packets
+        return self.user_packets + self.routing_packets
 
     @property
     def total_bytes(self):
-        return self.user_bytes + self.dv_bytes
+        return self.user_bytes + self.routing_bytes
 
 
 def _unwrap_lp(payload):
@@ -146,8 +189,16 @@ def parse_pcap(pcap_path, start_ts=None, end_ts=None):
                     result.user_data_packets += 1
                     result.user_data_bytes += lp_len
             else:
-                result.dv_packets += 1
-                result.dv_bytes += lp_len
+                cat = _classify_routing(tlv)
+                if cat == "PrefixSync":
+                    result.pfxsync_packets += 1
+                    result.pfxsync_bytes += lp_len
+                elif cat == "Mgmt":
+                    result.mgmt_packets += 1
+                    result.mgmt_bytes += lp_len
+                else:
+                    result.dv_packets += 1
+                    result.dv_bytes += lp_len
 
     return result
 
@@ -162,6 +213,10 @@ def collect_traffic(pcap_paths, start_ts=None, end_ts=None):
         c = parse_pcap(path, start_ts, end_ts)
         total.dv_packets += c.dv_packets
         total.dv_bytes += c.dv_bytes
+        total.pfxsync_packets += c.pfxsync_packets
+        total.pfxsync_bytes += c.pfxsync_bytes
+        total.mgmt_packets += c.mgmt_packets
+        total.mgmt_bytes += c.mgmt_bytes
         total.user_interest_packets += c.user_interest_packets
         total.user_interest_bytes += c.user_interest_bytes
         total.user_data_packets += c.user_data_packets
@@ -226,5 +281,5 @@ def _parse_pcap_events(pcap_path):
             if _USER_NAME_BYTES in tlv:
                 cat = "UserInterest" if tlv[0] == 5 else "UserData"
             else:
-                cat = "DvAdvert"    # routing-only: all non-user is DV
+                cat = _classify_routing(tlv)
             yield (pkt_ts, cat, lp_len)

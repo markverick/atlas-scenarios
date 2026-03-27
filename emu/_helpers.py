@@ -14,7 +14,7 @@ from minindn.minindn import Minindn
 from minindn.apps.app_manager import AppManager
 from minindn.apps.ndnd_fw import NDNd_FW
 
-from lib.topology import build_grid_topo, grid_stats
+from lib.topology import build_grid_topo, grid_stats, build_conf_topo, conf_stats
 
 NETWORK = "/minindn"
 NDND_TRAFFIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ndnd-traffic")
@@ -28,6 +28,23 @@ def setup_grid(grid_size, delay_ms, bw_mbps, cores=0):
     Minindn.cleanUp()
     topo, _nodes = build_grid_topo(grid_size, delay=f"{delay_ms}ms", bw=bw_mbps)
     num_nodes, num_links = grid_stats(grid_size)
+    ndn = Minindn(topo=topo, controller=None)
+    ndn.start()
+    if cores > 0:
+        for host in ndn.net.hosts:
+            host.setCPUs(cores=cores)
+    AppManager(ndn, ndn.net.hosts, NDNd_FW)
+    return ndn, num_nodes, num_links
+
+
+def setup_conf_topo(conf_path, delay_ms, bw_mbps, cores=0):
+    """Set up MiniNDN from a Mini-NDN .conf topology file.
+
+    Returns (ndn, num_nodes, num_links).
+    """
+    Minindn.cleanUp()
+    topo, _nodes = build_conf_topo(conf_path, delay=f"{delay_ms}ms", bw=bw_mbps)
+    num_nodes, num_links = conf_stats(conf_path)
     ndn = Minindn(topo=topo, controller=None)
     ndn.start()
     if cores > 0:

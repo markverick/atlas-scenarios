@@ -1,0 +1,17 @@
+{
+    "_comment": "One-step vs two-step routing comparison — routing-only baseline + with prefixes",
+
+    "grids":          [2, 3, 4, 5, 6, 7, 8],
+    "delay_ms":       10,
+    "bandwidth_mbps": 10,
+
+    "trials":    3,
+    "window_s":  60.0,
+
+    "advertise_interval":   5000,
+    "router_dead_interval": 30000,
+
+    "num_prefixes":   10,
+
+    "cores": 0
+}

@@ -8,8 +8,9 @@ Emulation and simulation scenarios for NDN using [NDNd](https://github.com/named
 | **Simulation** | [ndndSIM](https://github.com/markverick/ndndSIM) (ns-3 + NDNd via CGo) | Convergence (RIB-based), total traffic, DV/user traffic split |
 
 Scenarios include scalability tests (NxN grids with app traffic), routing-only
-measurement (DV traffic burst with no app traffic), and multi-hop DV routing
-change tests.
+measurement (DV traffic burst with no app traffic), one-step vs two-step
+prefix routing comparisons, churn testing under link failures and prefix
+events (grid and Sprint topologies), and multi-hop DV routing change tests.
 
 Both produce CSV results in the same schema so they can be plotted side-by-side.
 
@@ -139,6 +140,58 @@ Topology: a — b — c — d. Tests 5 phases of DV routing changes:
 
 Scenario definition: `scenarios/multihop.json`. Reports 10 assertions (2 per phase).
 
+### One-Step vs Two-Step Routing Comparison
+
+```bash
+sudo ./run.sh emu onestep --config scenarios/onestep_twostep.json
+./run.sh sim onestep --config scenarios/onestep_twostep.json
+python3 plot_onestep.py
+```
+
+Compares two routing architectures for distributing prefix-to-router mappings:
+
+| Mode | Description |
+|------|-------------|
+| **baseline** | `one_step=true`, 0 prefixes — pure DV overhead |
+| **two_step** | DV carries router reachability; PrefixSync (SVS) distributes prefix→router mappings |
+| **one_step** | Prefixes embedded directly in DV adverts; no PrefixSync subsystem |
+
+Runs on NxN grids measuring DvAdvert bytes, PrefixSync bytes, and total routing bytes.
+
+Scenario definition: `scenarios/onestep_twostep.json` (grid sizes, prefix counts, DV intervals).
+
+### Churn Scenarios (Link Failure + Prefix Events)
+
+```bash
+# Grid topologies
+sudo python3 emu/churn.py --config scenarios/churn.json       # 3×3 grid
+sudo python3 emu/churn.py --config scenarios/churn_4x4.json   # 4×4 grid
+
+# Sprint PoP topology (52 nodes, 84 links)
+sudo python3 emu/churn.py --config scenarios/churn_sprint.json
+
+# Simulation equivalents
+python3 sim/churn.py --config scenarios/churn.json
+python3 sim/churn.py --config scenarios/churn_4x4.json
+python3 sim/churn.py --config scenarios/churn_sprint.json
+```
+
+Two-phase measurement: convergence (DV boot + prefix announcement) followed by
+churn (link failure/recovery + prefix withdraw/re-announce). Runs the same three
+modes as the one-step comparison (baseline, two_step, one_step) and compares
+routing traffic in each phase.
+
+The churn framework is modular — adding a new topology requires only:
+1. Add an entry to `KNOWN_TOPOLOGIES` in `lib/churn_common.py`
+2. Create a scenario JSON with `"topology": "<name>"`
+
+Scenario definitions:
+- `scenarios/churn.json` — 3×3 grid, 60 s window
+- `scenarios/churn_4x4.json` — 4×4 grid, 60 s window
+- `scenarios/churn_sprint.json` — Sprint PoP, 120 s window
+
+Output: `results/{sim,emu}_churn_{3x3,4x4,sprint}/churn.csv` + plots in `results/plots_{3x3,4x4,sprint}/`.
+
 ### Reproducible paper run (single JSON config)
 
 Use a checked-in scenario config so experiments are exactly repeatable:
@@ -155,13 +208,16 @@ sudo ./run.sh emu scalability --config scenarios/paper.json
 
 The JSON schema is implemented in `lib/config.py`:
 
-- `grids`: list of grid sizes
+- `grids`: list of grid sizes (grid topologies)
+- `topology`: topology type — `"grid"` (default) or a named topology (e.g. `"sprint"`)
 - `delay_ms`: per-link delay in ms
 - `bandwidth_mbps`: per-link bandwidth
 - `trials`: repetitions per grid size
 - `window_s`: common observation window for both emu and sim
+- `num_prefixes`: synthetic prefixes per node (for routing comparison scenarios)
 - `advertise_interval`: DV advertisement interval (ms, `0` = default)
 - `router_dead_interval`: DV dead interval (ms, `0` = default)
+- `prefix_sync_delay`: delay (ms) before starting PrefixSync SVS (`0` = immediate)
 - `cores`: CPU core limit (`0` = no limit)
 
 ### Comparison Plots
@@ -170,6 +226,8 @@ The JSON schema is implemented in `lib/config.py`:
 ./run.sh plot                  # Scalability plots
 ./run.sh plot-routing          # Routing aggregate plots
 python3 plot_routing_timeseries.py  # Per-packet time-series plots
+python3 plot_onestep.py        # One-step vs two-step comparison plots
+python3 plot_churn.py results/sim_churn_3x3/churn.csv  # Churn plots (any topology)
 ```
 
 Scalability output:
@@ -215,41 +273,51 @@ sudo ./run.sh both scalability --config scenarios/paper.json
 setup.sh                    # Build all deps from source
 run.sh                      # Unified experiment runner
 lib/                        # Shared Python modules
-├── topology.py             #   Grid topology builder (emu + sim)
+├── topology.py             #   Grid + conf topology builder (emu + sim)
 ├── result_adapter.py       #   Unified result adapter (TrialResult, CSV writer)
-└── config.py               #   JSON scenario config loader
+├── config.py               #   JSON scenario config loader
+├── pcap.py                 #   NDN-over-UDP pcap parser (per-packet + aggregate)
+└── churn_common.py         #   Shared churn constants, topology registry, parsers
 sim/                        # Simulation scenarios
 ├── atlas-scenario.cc       #   Parameterised ndndSIM C++ scenario
 ├── atlas-multihop-scenario.cc  # Multi-hop DV routing changes C++ scenario
 ├── atlas-routing-scenario.cc   # Routing-only scenario (no app traffic)
+├── atlas-churn-scenario.cc     # Churn scenario (link/prefix events)
 ├── _helpers.py             #   Shared ns-3 build/run utilities
 ├── demo.py                 #   3-node linear ndndSIM demo
 ├── scalability.py          #   NxN grid ndndSIM scalability test
 ├── multihop.py             #   Multi-hop DV routing test runner
-└── routing.py              #   Routing-only traffic measurement
+├── routing.py              #   Routing-only traffic measurement
+├── onestep_comparison.py   #   One-step vs two-step routing comparison
+├── churn.py                #   Unified churn driver (grid + conf topologies)
+└── churn_sprint.py         #   Sprint churn wrapper (backward compat)
 minindn_ndnd/               # Mini-NDN integration for NDNd
 ├── ndnd_fw.py              #   NDNd_FW — YaNFD forwarder Application
 ├── ndnd_dv.py              #   NDNd_DV — DV routing Application
 └── dv_util.py              #   setup() / converge() helpers
 emu/                        # Emulation scenarios
-├── _helpers.py             #   Shared emu helpers (grid setup, tcpdump, etc.)
+├── _helpers.py             #   Shared emu helpers (grid/conf setup, tcpdump, etc.)
 ├── demo.py                 #   3-node file transfer demo
 ├── scalability.py          #   NxN grid scalability test
 ├── multihop.py             #   Multi-hop DV routing test runner
-└── routing.py              #   Routing-only traffic measurement
-lib/                        # Shared Python modules
-├── topology.py             #   Grid topology builder (emu + sim)
-├── result_adapter.py       #   Unified result adapter (TrialResult, CSV writer)
-├── config.py               #   JSON scenario config loader
-└── pcap.py                 #   NDN-over-UDP pcap parser (per-packet + aggregate)
+├── routing.py              #   Routing-only traffic measurement
+├── onestep_comparison.py   #   One-step vs two-step routing comparison
+├── churn.py                #   Unified churn driver (grid + conf topologies)
+└── churn_sprint.py         #   Sprint churn wrapper (backward compat)
 plot.py                     # Scalability comparison plots
 plot_routing.py             # Routing aggregate plots (convergence, packets, bytes)
 plot_routing_timeseries.py  # Wireshark-style per-packet time-series plots
+plot_onestep.py             # One-step vs two-step comparison plots
+plot_churn.py               # Churn scenario plots (bars, CDF, time-series)
 scenarios/                  # Reproducible scenario configs
 ├── paper.json
 ├── quick.json
 ├── multihop.json           #   Multi-hop DV routing test definition
-└── routing.json            #   Routing-only scenario config
+├── routing.json            #   Routing-only scenario config
+├── onestep_twostep.json    #   One-step vs two-step comparison config
+├── churn.json              #   3×3 grid churn
+├── churn_4x4.json          #   4×4 grid churn
+└── churn_sprint.json       #   Sprint PoP churn
 deps/                       # Built dependencies (gitignored)
 results/                    # Output CSVs and plots (gitignored)
 ```
@@ -309,6 +377,8 @@ See the [ndndSIM README](https://github.com/markverick/ndndSIM) for the full API
 
 ## CSV Schema
 
+### Scalability CSV
+
 Both emu and sim produce identical CSV columns:
 
 ```csv
@@ -318,6 +388,19 @@ grid_size,num_nodes,num_links,trial,convergence_s,transfer_ok,avg_mem_kb,total_p
 The `dv_*` columns cover DV advertisements + prefix sync. The `user_*` columns
 cover application Interests and Data. All byte counts are at the NDNLPv2 wire
 level (excluding L2 headers) so emu and sim are directly comparable.
+
+### Churn / Routing Comparison CSV
+
+The churn and one-step comparison scenarios produce a classified-traffic schema:
+
+```csv
+topology,grid_size,num_nodes,num_links,trial,mode,num_prefixes,window_s,convergence_s,phase,dv_advert_pkts,dv_advert_bytes,pfxsync_pkts,pfxsync_bytes,mgmt_pkts,mgmt_bytes,total_routing_pkts,total_routing_bytes
+```
+
+- `topology`: `"grid"` or a named topology (e.g. `"sprint"`)
+- `mode`: `"baseline"`, `"two_step"`, or `"one_step"`
+- `phase`: `"convergence"` or `"churn"`
+- Traffic is split into DV advertisements, PrefixSync, and management categories
 
 ---
 

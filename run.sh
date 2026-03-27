@@ -49,17 +49,40 @@ ensure_ns3_ready() {
     fi
 }
 
-# Build emu/ndnd-traffic from the same ndnd source that sim uses.
-# This ensures identical Go library code on both sides.
-build_ndnd_traffic() {
-    local out="$REPO_DIR/emu/ndnd-traffic"
-    # Find Go 1.25 toolchain (downloaded by setup into GOPATH)
+# Locate the Go 1.25 toolchain (downloaded by setup into GOPATH).
+find_go_bin() {
     local go_bin
     go_bin="$(ls "$GOPATH_DIR"/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.*.linux-amd64/bin/go 2>/dev/null | sort -V | tail -1)"
     if [[ -z "$go_bin" || ! -x "$go_bin" ]]; then
         go_bin="$(command -v go)"   # fallback to system Go
     fi
-    echo "Building emu/ndnd-traffic from $NDND_SRC (go: $go_bin)"
+    echo "$go_bin"
+}
+
+# Build the ndnd daemon from the same Go source that ndndSIM uses.
+# Called automatically before every emu run so the binary can never be stale.
+build_ndnd() {
+    local go_bin
+    go_bin="$(find_go_bin)"
+    local out="$DEPS_DIR/bin/ndnd"
+    echo "[emu] Building ndnd daemon from $NDND_SRC (go: $go_bin)"
+    mkdir -p "$DEPS_DIR/bin"
+    (cd "$NDND_SRC" && GOPATH="$GOPATH_DIR" GOFLAGS=-mod=mod "$go_bin" build -o "$out" ./cmd/ndnd/)
+    # Mininet nodes inherit the host PATH but may also use /usr/local/bin;
+    # keep both copies in sync.
+    if [[ $EUID -eq 0 ]]; then
+        cp "$out" /usr/local/bin/ndnd
+    else
+        sudo cp "$out" /usr/local/bin/ndnd
+    fi
+}
+
+# Build emu/ndnd-traffic from the same ndnd source that sim uses.
+build_ndnd_traffic() {
+    local go_bin
+    go_bin="$(find_go_bin)"
+    local out="$REPO_DIR/emu/ndnd-traffic"
+    echo "[emu] Building ndnd-traffic from $NDND_SRC (go: $go_bin)"
     (cd "$NDND_SRC" && GOPATH="$GOPATH_DIR" GOFLAGS=-mod=mod "$go_bin" build -o "$out" ./cmd/traffic/)
 }
 
@@ -130,6 +153,7 @@ case "$1" in
         [[ $# -lt 1 ]] && { echo "Usage: ./run.sh emu <demo|scalability|multihop|routing> [opts]"; exit 1; }
         subcmd="$1"; shift
         cleanup_minindn
+        build_ndnd
         build_ndnd_traffic
         case "$subcmd" in
             demo)
@@ -210,6 +234,7 @@ case "$1" in
 
         echo "=== Running emulation ==="
         cleanup_minindn
+        build_ndnd
         build_ndnd_traffic
         python3 "$REPO_DIR/emu/${subcmd}.py" "$@"
         if [[ -d "$REPO_DIR/results" && -n "$SUDO_USER" ]]; then

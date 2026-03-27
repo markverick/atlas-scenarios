@@ -25,6 +25,9 @@ MULTIHOP_CC_FILENAME = f"{MULTIHOP_TARGET_NAME}.cc"
 ROUTING_TARGET_NAME = "ndndsim-atlas-routing-scenario"
 ROUTING_CC_FILENAME = f"{ROUTING_TARGET_NAME}.cc"
 
+CHURN_TARGET_NAME = "ndndsim-atlas-churn-scenario"
+CHURN_CC_FILENAME = f"{CHURN_TARGET_NAME}.cc"
+
 
 def resolve_ns3_dir(ns3_dir_arg=None):
     """Return absolute path to ns-3 root, or exit on failure."""
@@ -56,6 +59,8 @@ def _sync_target(ns3_dir, src_basename, target_name, cc_filename, cmake_comment)
     # Copy .cc if missing or outdated
     if not os.path.isfile(dst) or _file_differs(src, dst):
         shutil.copy2(src, dst)
+        # Ensure dest mtime is updated so cmake detects the change
+        os.utime(dst, None)
 
     # Register in CMakeLists.txt if needed
     cmake_path = os.path.join(dst_dir, "CMakeLists.txt")
@@ -342,6 +347,7 @@ def sync_routing_scenario(ns3_dir):
 def run_routing_scenario(ns3_dir, *, topo, sim_time=30.0, cores=0,
                          conv_trace=None, link_trace=None, packet_trace=None,
                          dv_config=None, network="/minindn",
+                         num_prefixes=0,
                          run_log=None):
     """Build ns-3 and run the routing-only scenario (no app traffic)."""
     sync_scenario(ns3_dir)
@@ -365,6 +371,8 @@ def run_routing_scenario(ns3_dir, *, topo, sim_time=30.0, cores=0,
         run_args.append(f"--packetTrace={packet_trace}")
     if dv_config:
         run_args.append(f"--dvConfig={json.dumps(dv_config, separators=(',', ':'))}")
+    if num_prefixes > 0:
+        run_args.append(f"--numPrefixes={num_prefixes}")
 
     _run_exe(_find_scenario_exe(ns3_dir, "ndndsim-atlas-routing-scenario"),
              run_args, run_log)
@@ -382,3 +390,55 @@ def run_routing_scenario(ns3_dir, *, topo, sim_time=30.0, cores=0,
                 f"link_trace '{link_trace}' has no data rows — "
                 "no packets were traced on any link"
             )
+
+
+def sync_churn_scenario(ns3_dir):
+    """Ensure atlas-churn-scenario.cc is installed and registered in ns-3."""
+    _sync_target(ns3_dir, "atlas-churn-scenario.cc",
+                 CHURN_TARGET_NAME, CHURN_CC_FILENAME,
+                 "Atlas two-phase churn scenario")
+
+
+def run_churn_scenario(ns3_dir, *, topo, sim_time=60.0, cores=0,
+                       conv_trace=None, link_trace=None, packet_trace=None,
+                       event_log=None, dv_config=None, network="/minindn",
+                       num_prefixes=0, churn_events=None,
+                       run_log=None):
+    """Build ns-3 and run the churn scenario.
+
+    Args:
+        churn_events: list of dicts, each with keys: time, type, and
+                      type-specific fields (src/dst for link events,
+                      node/prefix for prefix events).
+    """
+    sync_scenario(ns3_dir)
+    sync_routing_scenario(ns3_dir)
+    sync_churn_scenario(ns3_dir)
+    _build_ns3(ns3_dir, cores)
+
+    if not os.path.isabs(topo):
+        topo = os.path.join(ns3_dir, topo)
+    topo = os.path.abspath(topo)
+
+    run_args = [
+        f"--topo={topo}",
+        f"--simTime={sim_time}",
+        f"--network={network}",
+    ]
+    if conv_trace:
+        run_args.append(f"--convTrace={conv_trace}")
+    if link_trace:
+        run_args.append(f"--linkTrace={link_trace}")
+    if packet_trace:
+        run_args.append(f"--packetTrace={packet_trace}")
+    if event_log:
+        run_args.append(f"--eventLog={event_log}")
+    if dv_config:
+        run_args.append(f"--dvConfig={json.dumps(dv_config, separators=(',', ':'))}")
+    if num_prefixes > 0:
+        run_args.append(f"--numPrefixes={num_prefixes}")
+    if churn_events:
+        run_args.append(f"--churnEvents={json.dumps(churn_events, separators=(',', ':'))}")
+
+    _run_exe(_find_scenario_exe(ns3_dir, "ndndsim-atlas-churn-scenario"),
+             run_args, run_log)

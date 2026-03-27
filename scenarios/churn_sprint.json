@@ -1,0 +1,13 @@
+{
+    "_comment": "Churn scenario with Sprint PoP topology — same protocol as churn.json",
+    "topology": "sprint",
+    "delay_ms": 10,
+    "bandwidth_mbps": 10,
+    "trials": 1,
+    "window_s": 120.0,
+    "advertise_interval": 5000,
+    "router_dead_interval": 30000,
+    "prefix_sync_delay": 2000,
+    "num_prefixes": 5,
+    "cores": 0
+}

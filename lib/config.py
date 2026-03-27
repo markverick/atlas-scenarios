@@ -19,6 +19,7 @@ import os
 # Keys not in this table are silently ignored (forward-compat).
 _SCHEMA = {
     # Topology
+    "topology":       (str,   "grid"),   # "grid" or a KNOWN_TOPOLOGIES key
     "grids":          (list,  [2, 3, 4, 5]),
     "delay_ms":       (int,   10),
     "bandwidth_mbps": (int,   10),
@@ -32,6 +33,11 @@ _SCHEMA = {
     # DV protocol tuning
     "advertise_interval":    (int, 0),   # 0 = use Go default
     "router_dead_interval":  (int, 0),   # 0 = use Go default
+
+    # One-step vs two-step routing
+    "one_step":       (bool,  False),     # True = prefixes in DV adverts (no PrefixSync)
+    "num_prefixes":   (int,   0),         # synthetic prefixes per node (routing-only)
+    "prefix_sync_delay": (int, 0),        # ms to delay PrefixSync SVS start (0 = immediate)
 
     # Runtime
     "cores":          (int,   0),        # 0 = all available
@@ -71,6 +77,10 @@ def dv_config_from(cfg):
         dv["advertise_interval"] = cfg["advertise_interval"]
     if cfg.get("router_dead_interval"):
         dv["router_dead_interval"] = cfg["router_dead_interval"]
+    if cfg.get("one_step"):
+        dv["one_step"] = True
+    if cfg.get("prefix_sync_delay"):
+        dv["prefix_sync_delay"] = cfg["prefix_sync_delay"]
     return dv or None
 
 

@@ -1,0 +1,12 @@
+{
+    "_comment": "Medium-scale one-step vs two-step — grids 2-5, 10 prefixes, 1 trial",
+    "grids":          [2, 3, 4, 5],
+    "delay_ms":       10,
+    "bandwidth_mbps": 10,
+    "trials":    1,
+    "window_s":  30.0,
+    "advertise_interval":   5000,
+    "router_dead_interval": 30000,
+    "num_prefixes":   10,
+    "cores": 0
+}

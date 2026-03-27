@@ -119,10 +119,10 @@ def main():
                     convergence_s=raw["convergence_s"],
                     transfer_ok=raw["convergence_s"] >= 0,
                     avg_mem_kb=raw["avg_mem_kb"],
-                    total_packets=t.dv_packets,  # routing-only: all traffic is DV
-                    total_bytes=t.dv_bytes,
-                    dv_packets=t.dv_packets,
-                    dv_bytes=t.dv_bytes,
+                    total_packets=t.routing_packets,
+                    total_bytes=t.routing_bytes,
+                    dv_packets=t.dv_packets + t.pfxsync_packets,
+                    dv_bytes=t.dv_bytes + t.pfxsync_bytes,
                 )
                 writer.write(result)
                 info(f"  convergence={result.convergence_s}s  "

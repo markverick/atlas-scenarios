@@ -1,0 +1,12 @@
+{
+    "_comment": "Quick smoke test for one-step comparison",
+    "grids":          [2],
+    "delay_ms":       10,
+    "bandwidth_mbps": 10,
+    "trials":    1,
+    "window_s":  15.0,
+    "advertise_interval":   5000,
+    "router_dead_interval": 30000,
+    "num_prefixes":   3,
+    "cores": 0
+}
