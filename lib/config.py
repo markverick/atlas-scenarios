@@ -47,6 +47,12 @@ _SCHEMA = {
     "churn_recovery_delay":  (float, 3.0),       # mean recovery time (s), exponential
     "churn_prefix_rate":     (float, 0.0),       # independent prefix churn rate (events/s); 0 = coupled to link events
 
+    # Churn-after-convergence mode
+    "churn_after_convergence": (bool, False),    # True = churn starts right after DV convergence + margin
+    "convergence_margin_s":    (float, 10.0),    # seconds to wait after convergence before churn
+    "churn_duration_s":        (float, 0.0),     # churn phase length (s); 0 = window_s/2 (legacy)
+    "phase2_start_s":          (float, 0.0),     # fixed churn start time (s); 0 = window_s/2 (legacy)
+
     # Runtime
     "cores":          (int,   0),        # 0 = all available
 }

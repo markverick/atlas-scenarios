@@ -67,33 +67,25 @@ def load_event_log(rdir):
 
 
 def load_churn_csv(path):
-    """Load churn.csv rows as list of dicts with numeric conversion.
-
-    Backward-compatible: old CSVs without 'topology' or 'window_s'
-    columns get sensible defaults.
-    """
+    """Load churn.csv rows as list of dicts with numeric conversion."""
     rows = []
     if not path or not os.path.isfile(path):
         return rows
     with open(path) as f:
         for row in csv.DictReader(f):
+            row["topology"] = row["topology"]
             row["grid_size"] = int(row["grid_size"])
             row["num_nodes"] = int(row["num_nodes"])
             row["num_links"] = int(row["num_links"])
             row["num_prefixes"] = int(row["num_prefixes"])
+            row["window_s"] = float(row["window_s"])
+            row["phase2_start"] = float(row["phase2_start"])
             row["convergence_s"] = float(row["convergence_s"])
             for k in ("dv_advert_pkts", "dv_advert_bytes",
                        "pfxsync_pkts", "pfxsync_bytes",
                        "mgmt_pkts", "mgmt_bytes",
                        "total_routing_pkts", "total_routing_bytes"):
                 row[k] = int(row[k])
-            # Backward compat: derive topology/window_s for old CSVs
-            if "topology" not in row or not row["topology"]:
-                row["topology"] = "grid" if row["grid_size"] > 0 else "sprint"
-            if "window_s" in row and row["window_s"]:
-                row["window_s"] = float(row["window_s"])
-            else:
-                row["window_s"] = 60.0 if row["grid_size"] > 0 else 120.0
             rows.append(row)
     return rows
 
@@ -596,33 +588,28 @@ def write_summary(sim_rows, emu_rows, out_dir, sim_dir="", emu_dir=""):
 
         f.write("### Topology & Parameters\n\n")
         f.write("| Parameter | Value |\n|-----------|-------|\n")
-        if sim_rows or emu_rows:
-            ref = (sim_rows or emu_rows)[0]
-            topo = ref.get("topology", "grid" if ref["grid_size"] > 0 else "sprint")
-            is_grid = (topo == "grid")
-            if is_grid:
-                f.write(f"| Topology | {ref['grid_size']}×{ref['grid_size']} grid "
-                        f"({ref['num_nodes']} nodes, {ref['num_links']} links) |\n")
-            else:
-                from lib.churn_common import KNOWN_TOPOLOGIES
-                label = KNOWN_TOPOLOGIES.get(topo, {}).get("label", topo.title())
-                f.write(f"| Topology | {label} "
-                        f"({ref['num_nodes']} nodes, {ref['num_links']} links) |\n")
-            n_pfx = max(r["num_prefixes"] for r in (sim_rows or emu_rows))
-            f.write(f"| Prefixes per node | {n_pfx} |\n")
+        ref = (sim_rows or emu_rows)[0]
+        topo = ref["topology"]
+        is_grid = (topo == "grid")
+        if is_grid:
+            f.write(f"| Topology | {ref['grid_size']}×{ref['grid_size']} grid "
+                    f"({ref['num_nodes']} nodes, {ref['num_links']} links) |\n")
         else:
-            is_grid = True  # default fallback
-            topo = "grid"
-        window_s = ref["window_s"] if (sim_rows or emu_rows) else 60.0
-        half = window_s / 2.0
+            from lib.churn_common import KNOWN_TOPOLOGIES
+            label = KNOWN_TOPOLOGIES.get(topo, {}).get("label", topo.title())
+            f.write(f"| Topology | {label} "
+                    f"({ref['num_nodes']} nodes, {ref['num_links']} links) |\n")
+        n_pfx = max(r["num_prefixes"] for r in (sim_rows or emu_rows))
+        f.write(f"| Prefixes per node | {n_pfx} |\n")
+        window_s = ref["window_s"]
+        p2s = ref["phase2_start"]
+        churn_len = window_s - p2s
         f.write("| Link delay | 10 ms |\n"
                 "| Link bandwidth | 10 Mbps |\n"
                 "| DV advertise interval | 5,000 ms |\n"
                 "| Router dead interval | 30,000 ms |\n")
         f.write(f"| Observation window | {window_s:.0f} s "
-                f"({half:.0f} s convergence + {half:.0f} s churn) |\n\n")
-
-        half = window_s / 2.0
+                f"({p2s:.0f} s convergence + {churn_len:.0f} s churn) |\n\n")
         if is_grid:
             edge = "n0\\_0–n0\\_1"
             churn_node = "n0\\_0"
@@ -637,9 +624,9 @@ def write_summary(sim_rows, emu_rows, out_dir, sim_dir="", emu_dir=""):
             pfx = f"/data/{node}/pfx0"
 
         f.write("### Two Phases\n\n"
-                f"1. **Convergence phase** (0–{half:.0f} s): All routers boot, run DV until "
+                f"1. **Convergence phase** (0–{p2s:.0f} s): All routers boot, run DV until "
                 "converged, then announce synthetic prefixes. Measures initial routing overhead.\n"
-                f"2. **Churn phase** ({half:.0f}–{half*2:.0f} s): Dynamic events are injected "
+                f"2. **Churn phase** ({p2s:.0f}–{window_s:.0f} s): Dynamic events are injected "
                 f"on a single edge ({edge}).\n\n")
 
         # Read actual events from event-log CSVs
@@ -667,7 +654,7 @@ def write_summary(sim_rows, emu_rows, out_dir, sim_dir="", emu_dir=""):
             if not rows:
                 continue
             n_pfx = max(r["num_prefixes"] for r in rows)
-            topo_key = rows[0].get("topology", "grid" if rows[0]["grid_size"] > 0 else "sprint")
+            topo_key = rows[0]["topology"]
             if topo_key == "grid":
                 grid = rows[0]["grid_size"]
                 topo_label = f"{grid}×{grid} grid"
@@ -755,7 +742,7 @@ def main():
 
     # Detect phase boundary from data
     ref = (sim_rows or emu_rows)[0]
-    phase2_start = ref["window_s"] / 2.0
+    phase2_start = ref["phase2_start"]
 
     print("Generating churn plots...")
     plot_phase_bars(sim_rows, emu_rows, args.out)

@@ -401,8 +401,11 @@ def sync_churn_scenario(ns3_dir):
 
 def run_churn_scenario(ns3_dir, *, topo, sim_time=60.0, cores=0,
                        conv_trace=None, link_trace=None, packet_trace=None,
-                       event_log=None, dv_config=None, network="/minindn",
+                       event_log=None, churn_start_trace=None,
+                       dv_config=None, network="/minindn",
                        num_prefixes=0, churn_events=None,
+                       churn_after_convergence=False, churn_margin=10.0,
+                       churn_duration=0.0,
                        run_log=None):
     """Build ns-3 and run the churn scenario.
 
@@ -410,6 +413,14 @@ def run_churn_scenario(ns3_dir, *, topo, sim_time=60.0, cores=0,
         churn_events: list of dicts, each with keys: time, type, and
                       type-specific fields (src/dst for link events,
                       node/prefix for prefix events).
+        churn_after_convergence: if True, churn events are deferred until
+            DV convergence + churn_margin seconds.  Event times are
+            treated as relative offsets from the churn start.
+        churn_margin: seconds to wait after convergence before churn.
+        churn_duration: churn phase length in seconds.  When > 0 and
+            churn_after_convergence is True, the sim stops dynamically
+            at convergence + margin + duration instead of at sim_time.
+        churn_start_trace: output file path for the actual churn start time.
     """
     sync_scenario(ns3_dir)
     sync_routing_scenario(ns3_dir)
@@ -433,12 +444,19 @@ def run_churn_scenario(ns3_dir, *, topo, sim_time=60.0, cores=0,
         run_args.append(f"--packetTrace={packet_trace}")
     if event_log:
         run_args.append(f"--eventLog={event_log}")
+    if churn_start_trace:
+        run_args.append(f"--churnStartTrace={churn_start_trace}")
     if dv_config:
         run_args.append(f"--dvConfig={json.dumps(dv_config, separators=(',', ':'))}")
     if num_prefixes > 0:
         run_args.append(f"--numPrefixes={num_prefixes}")
     if churn_events:
         run_args.append(f"--churnEvents={json.dumps(churn_events, separators=(',', ':'))}")
+    if churn_after_convergence:
+        run_args.append("--churnAfterConvergence=true")
+        run_args.append(f"--churnMargin={churn_margin}")
+        if churn_duration > 0:
+            run_args.append(f"--churnDuration={churn_duration}")
 
     _run_exe(_find_scenario_exe(ns3_dir, "ndndsim-atlas-churn-scenario"),
              run_args, run_log)

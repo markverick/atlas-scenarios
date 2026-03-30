@@ -62,12 +62,22 @@ def run_variant(ns3_dir, *, topo_rel, topology, topo_id_str,
     else:
         dvc.pop("one_step", None)
 
+    churn_after_conv = (cfg or {}).get("churn_after_convergence", False)
+    churn_margin = (cfg or {}).get("convergence_margin_s", 10.0)
+    churn_dur_cfg = (cfg or {}).get("churn_duration_s", 0.0)
+    churn_duration = churn_dur_cfg if churn_dur_cfg > 0 else (sim_time / 2.0)
+
+    # Build churn events — relative offsets (from 0) when deferred,
+    # absolute times when using fixed phase boundary.
+    evt_start = 0.0 if churn_after_conv else phase2_start
+    evt_end = churn_duration if churn_after_conv else sim_time
+
     churn_mode = (cfg or {}).get("churn_mode", "fixed")
     if churn_mode == "random":
         churn_events = build_random_churn_events(
-            pfx_count, phase2_start,
+            pfx_count, evt_start,
             link_src=link_src, link_dst=link_dst, churn_node=churn_node,
-            window_end=sim_time,
+            window_end=evt_end,
             seed=cfg.get("churn_seed", 42),
             num_cycles=cfg.get("churn_num_cycles", 3),
             interval=cfg.get("churn_interval", 5.0),
@@ -77,28 +87,59 @@ def run_variant(ns3_dir, *, topo_rel, topology, topo_id_str,
             prefix_churn_rate=cfg.get("churn_prefix_rate", 0.0))
     else:
         churn_events = build_churn_events(
-            pfx_count, phase2_start,
+            pfx_count, evt_start,
             link_src=link_src, link_dst=link_dst, churn_node=churn_node)
 
+    churn_start_file = None
+    if churn_after_conv:
+        churn_start_file = os.path.abspath(
+            os.path.join(out_dir, f"churn-start-{tag}.txt"))
+
+    # When churn_after_convergence with churn_duration, the C++ scenario
+    # stops dynamically.  Pass a large backstop so convergence has time.
+    effective_sim_time = sim_time
+    if churn_after_conv and churn_duration > 0:
+        effective_sim_time = max(sim_time, 3600.0)
+
     print(f"\n=== {mode}: {topo_id_str} ({num_nodes} nodes), "
-          f"prefixes={pfx_count}, trial {trial} ===")
+          f"prefixes={pfx_count}, trial {trial}"
+          f"{' [churn-after-conv]' if churn_after_conv else ''} ===")
     run_churn_scenario(
         ns3_dir,
         topo=topo_rel,
-        sim_time=sim_time,
+        sim_time=effective_sim_time,
         cores=cores,
         conv_trace=conv_file,
         link_trace=link_csv,
         packet_trace=pkt_csv,
         event_log=evt_csv,
+        churn_start_trace=churn_start_file,
         dv_config=dvc or None,
         num_prefixes=pfx_count,
         churn_events=churn_events,
+        churn_after_convergence=churn_after_conv,
+        churn_margin=churn_margin,
+        churn_duration=churn_duration if churn_after_conv else 0.0,
         run_log=log_file,
     )
 
     conv = parse_conv_trace(conv_file)
-    phases = parse_packet_trace_by_phase(pkt_csv, phase2_start)
+
+    # Determine the actual phase boundary for traffic splitting
+    if churn_after_conv and churn_start_file:
+        actual_boundary = _read_churn_start(churn_start_file)
+        if actual_boundary is not None and actual_boundary > 0:
+            phase_boundary = actual_boundary
+            print(f"  Churn started at t={actual_boundary:.2f}s "
+                  f"(conv={conv:.2f}s + margin={churn_margin}s)")
+        else:
+            phase_boundary = phase2_start
+            print(f"  WARNING: churn start not recorded, "
+                  f"using fixed boundary {phase2_start}s")
+    else:
+        phase_boundary = phase2_start
+
+    phases = parse_packet_trace_by_phase(pkt_csv, phase_boundary)
 
     return build_result_rows(
         phases,
@@ -110,15 +151,31 @@ def run_variant(ns3_dir, *, topo_rel, topology, topo_id_str,
         mode=mode,
         num_prefixes=pfx_count,
         window_s=window_s,
+        phase2_start=phase_boundary,
         convergence_s=conv,
     )
+
+
+def _read_churn_start(path):
+    """Read the churn start time written by the C++ scenario."""
+    try:
+        with open(path) as f:
+            return float(f.read().strip())
+    except (OSError, ValueError):
+        return None
 
 
 def _run_grid(ns3_dir, cfg, dv_config, out_dir, writer, f):
     """Run churn experiments over one or more NxN grid topologies."""
     num_prefixes = cfg.get("num_prefixes", 10)
-    sim_time = cfg["window_s"]
-    phase2_start = sim_time / 2.0
+    churn_dur_cfg = cfg.get("churn_duration_s", 0.0)
+    p2_cfg = cfg.get("phase2_start_s", 0.0)
+    if p2_cfg > 0 and churn_dur_cfg > 0:
+        sim_time = p2_cfg + churn_dur_cfg
+        phase2_start = p2_cfg
+    else:
+        sim_time = cfg["window_s"]
+        phase2_start = sim_time / 2.0
     delay_ms = cfg["delay_ms"]
     bw_mbps = cfg["bandwidth_mbps"]
     cores = cfg["cores"]
@@ -184,8 +241,14 @@ def _run_conf(ns3_dir, cfg, dv_config, out_dir, writer, f, topo_name):
     all_nodes_list = conf_nodes
 
     num_prefixes = cfg.get("num_prefixes", 5)
-    sim_time = cfg["window_s"]
-    phase2_start = sim_time / 2.0
+    churn_dur_cfg = cfg.get("churn_duration_s", 0.0)
+    p2_cfg = cfg.get("phase2_start_s", 0.0)
+    if p2_cfg > 0 and churn_dur_cfg > 0:
+        sim_time = p2_cfg + churn_dur_cfg
+        phase2_start = p2_cfg
+    else:
+        sim_time = cfg["window_s"]
+        phase2_start = sim_time / 2.0
     delay_ms = cfg["delay_ms"]
     bw_mbps = cfg["bandwidth_mbps"]
     cores = cfg["cores"]

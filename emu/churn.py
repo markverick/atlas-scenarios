@@ -152,10 +152,15 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
     """Run one variant and return a list of result dicts."""
     tag = make_tag(mode, topo_id_str, num_prefixes, trial)
     pfx_count = num_prefixes if mode != "baseline" else 0
-    phase2_start_rel = sim_time / 2.0
+
+    churn_after_conv = (cfg or {}).get("churn_after_convergence", False)
+    churn_margin = (cfg or {}).get("convergence_margin_s", 10.0)
+    churn_dur_cfg = (cfg or {}).get("churn_duration_s", 0.0)
+    churn_duration = churn_dur_cfg if churn_dur_cfg > 0 else (sim_time / 2.0)
 
     info(f"\n=== {mode}: {topo_id_str} ({num_nodes} nodes), "
-         f"prefixes={pfx_count}, trial {trial} ===\n")
+         f"prefixes={pfx_count}, trial {trial}"
+         f"{' [churn-after-conv]' if churn_after_conv else ''} ===\n")
 
     dvc = dict(dv_config) if dv_config else {}
     if mode in ("one_step", "baseline"):
@@ -168,9 +173,10 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
 
     dv_start = dv_util.setup(ndn, network=NETWORK, dv_config=dvc or None)
 
+    conv_elapsed = 0.0
     try:
-        dv_util.converge(ndn.net.hosts, deadline=deadline,
-                         network=NETWORK, start=dv_start)
+        conv_elapsed = dv_util.converge(ndn.net.hosts, deadline=deadline,
+                                        network=NETWORK, start=dv_start)
     except Exception:
         pass
 
@@ -179,14 +185,35 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
     if pfx_count > 0:
         announced = announce_prefixes(ndn.net.hosts, pfx_count)
 
-    # Schedule churn events
-    phase2_start_epoch = dv_start + phase2_start_rel
-    churn_mode = (cfg or {}).get("churn_mode", "fixed")
-    if churn_mode == "random":
+    # Determine phase boundary and event timing
+    if churn_after_conv:
+        # Churn starts right after convergence + margin (relative to dv_start)
+        phase2_start_rel = conv_elapsed + churn_margin
+        info(f"  Churn phase starts at t={phase2_start_rel:.2f}s "
+             f"(conv={conv_elapsed:.2f}s + margin={churn_margin}s)\n")
+
+        # Events with relative offsets from 0
+        evt_start = 0.0
+        evt_end = churn_duration
+    else:
+        p2_cfg = (cfg or {}).get("phase2_start_s", 0.0)
+        churn_dur_cfg_val = (cfg or {}).get("churn_duration_s", 0.0)
+        if p2_cfg > 0 and churn_dur_cfg_val > 0:
+            phase2_start_rel = p2_cfg
+            evt_start = p2_cfg
+            evt_end = p2_cfg + churn_dur_cfg_val
+        else:
+            phase2_start_rel = sim_time / 2.0
+            evt_start = phase2_start_rel
+            evt_end = sim_time
+
+    # Build and schedule churn events
+    churn_mode_str = (cfg or {}).get("churn_mode", "fixed")
+    if churn_mode_str == "random":
         churn_events = build_random_churn_events(
-            pfx_count, phase2_start_rel,
+            pfx_count, evt_start,
             link_src=link_src, link_dst=link_dst, churn_node=churn_node,
-            window_end=sim_time,
+            window_end=evt_end,
             seed=cfg.get("churn_seed", 42),
             num_cycles=cfg.get("churn_num_cycles", 3),
             interval=cfg.get("churn_interval", 5.0),
@@ -196,16 +223,29 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
             prefix_churn_rate=cfg.get("churn_prefix_rate", 0.0))
     else:
         churn_events = build_churn_events(
-            pfx_count, phase2_start_rel,
+            pfx_count, evt_start,
             link_src=link_src, link_dst=link_dst, churn_node=churn_node)
-    timers = schedule_churn_events(ndn, ndn.net.hosts, churn_events, dv_start)
 
-    # Write event log CSV (for plot markers)
+    if churn_after_conv:
+        # Shift relative offsets to absolute times for the wall-clock scheduler
+        churn_events_abs = []
+        for ev in churn_events:
+            ev_abs = dict(ev)
+            ev_abs["time"] = ev["time"] + phase2_start_rel
+            churn_events_abs.append(ev_abs)
+        timers = schedule_churn_events(ndn, ndn.net.hosts,
+                                       churn_events_abs, dv_start)
+    else:
+        timers = schedule_churn_events(ndn, ndn.net.hosts,
+                                       churn_events, dv_start)
+
+    # Write event log CSV (for plot markers) — use absolute times
     evt_csv = os.path.join(out_dir, f"event-log-{tag}.csv")
     with open(evt_csv, "w", newline="") as ef:
         ew = csv.writer(ef)
         ew.writerow(["Time", "Event", "Details"])
-        for ev in churn_events:
+        logged_events = churn_events_abs if churn_after_conv else churn_events
+        for ev in logged_events:
             if ev["type"] in ("link_down", "link_up"):
                 details = f"{ev['src']}--{ev['dst']}"
             else:
@@ -213,7 +253,11 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
             ew.writerow([ev["time"], ev["type"], details])
 
     # Wait for observation window
-    window_end = dv_start + sim_time
+    if churn_after_conv:
+        # Wait until convergence + margin + churn_duration
+        window_end = dv_start + phase2_start_rel + churn_duration
+    else:
+        window_end = dv_start + sim_time
     now = time.time()
     if now < window_end:
         time.sleep(window_end - now)
@@ -234,7 +278,7 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
         for t_s, cat, b in pkt_events:
             w.writerow([f"{t_s:.6f}", cat, b])
 
-    # Split traffic by phase
+    # Split traffic by phase using actual boundary
     phases = parse_packet_events_by_phase(pkt_events, phase2_start_rel)
 
     # Convergence from DV logs
@@ -258,6 +302,7 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
         mode=mode,
         num_prefixes=pfx_count,
         window_s=window_s,
+        phase2_start=phase2_start_rel,
         convergence_s=conv_time,
     )
 
@@ -269,7 +314,12 @@ def _run_grid(cfg, dv_config, out_dir, writer, f):
     from lib.topology import grid_stats
 
     num_prefixes = cfg.get("num_prefixes", 10)
-    sim_time = cfg["window_s"]
+    churn_dur_cfg = cfg.get("churn_duration_s", 0.0)
+    p2_cfg = cfg.get("phase2_start_s", 0.0)
+    if p2_cfg > 0 and churn_dur_cfg > 0:
+        sim_time = p2_cfg + churn_dur_cfg
+    else:
+        sim_time = cfg["window_s"]
     delay_ms = cfg["delay_ms"]
     bw_mbps = cfg["bandwidth_mbps"]
     cores = cfg["cores"]
@@ -325,7 +375,12 @@ def _run_conf(cfg, dv_config, out_dir, writer, f, topo_name):
     all_nodes_list = conf_nodes
 
     num_prefixes = cfg.get("num_prefixes", 5)
-    sim_time = cfg["window_s"]
+    churn_dur_cfg = cfg.get("churn_duration_s", 0.0)
+    p2_cfg = cfg.get("phase2_start_s", 0.0)
+    if p2_cfg > 0 and churn_dur_cfg > 0:
+        sim_time = p2_cfg + churn_dur_cfg
+    else:
+        sim_time = cfg["window_s"]
     delay_ms = cfg["delay_ms"]
     bw_mbps = cfg["bandwidth_mbps"]
     cores = cfg["cores"]

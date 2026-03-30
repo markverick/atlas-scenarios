@@ -67,9 +67,10 @@ build_ndnd() {
     local out="$DEPS_DIR/bin/ndnd"
     echo "[emu] Building ndnd daemon from $NDND_SRC (go: $go_bin)"
     mkdir -p "$DEPS_DIR/bin"
-    (cd "$NDND_SRC" && GOPATH="$GOPATH_DIR" GOFLAGS=-mod=mod "$go_bin" build -o "$out" ./cmd/ndnd/)
-    # Mininet nodes inherit the host PATH but may also use /usr/local/bin;
-    # keep both copies in sync.
+    (cd "$NDND_SRC" && GOPATH="$GOPATH_DIR" GOFLAGS=-mod=mod "$go_bin" build -buildvcs=false -o "$out" ./cmd/ndnd/)
+    # Kill any leftover ndnd processes so the binary isn't "text file busy"
+    pkill -9 -x ndnd 2>/dev/null || true
+    sleep 0.3
     if [[ $EUID -eq 0 ]]; then
         cp "$out" /usr/local/bin/ndnd
     else
@@ -83,7 +84,7 @@ build_ndnd_traffic() {
     go_bin="$(find_go_bin)"
     local out="$REPO_DIR/emu/ndnd-traffic"
     echo "[emu] Building ndnd-traffic from $NDND_SRC (go: $go_bin)"
-    (cd "$NDND_SRC" && GOPATH="$GOPATH_DIR" GOFLAGS=-mod=mod "$go_bin" build -o "$out" ./cmd/traffic/)
+    (cd "$NDND_SRC" && GOPATH="$GOPATH_DIR" GOFLAGS=-mod=mod "$go_bin" build -buildvcs=false -o "$out" ./cmd/traffic/)
 }
 
 usage() {

@@ -16,7 +16,7 @@ import sys
 
 FIELDNAMES = [
     "topology", "grid_size", "num_nodes", "num_links", "trial", "mode",
-    "num_prefixes", "window_s", "convergence_s", "phase",
+    "num_prefixes", "window_s", "phase2_start", "convergence_s", "phase",
     "dv_advert_pkts", "dv_advert_bytes",
     "pfxsync_pkts", "pfxsync_bytes",
     "mgmt_pkts", "mgmt_bytes",
@@ -252,7 +252,8 @@ def parse_packet_events_by_phase(events, phase_boundary):
 # --- Result row builder ---
 
 def build_result_rows(phases, *, topology, grid_size, num_nodes, num_links,
-                      trial, mode, num_prefixes, window_s, convergence_s):
+                      trial, mode, num_prefixes, window_s, phase2_start,
+                      convergence_s):
     """Build CSV result dicts from parsed phase traffic."""
     rows = []
     for phase_name, traffic in phases.items():
@@ -267,6 +268,7 @@ def build_result_rows(phases, *, topology, grid_size, num_nodes, num_links,
             "mode": mode,
             "num_prefixes": num_prefixes,
             "window_s": window_s,
+            "phase2_start": phase2_start,
             "convergence_s": convergence_s,
             "phase": phase_name,
             "dv_advert_pkts": traffic["DvAdvert"]["pkts"],
