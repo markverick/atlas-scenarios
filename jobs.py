@@ -2,35 +2,32 @@
 """
 Job queue runner for atlas-scenarios experiments.
 
-Reads a YAML/JSON job file and executes each job sequentially,
-tracking status (pending/running/done/failed) so you can resume
-after a failure without re-running completed jobs.
+Each job queue runs inside a named screen session so it survives
+disconnects.  State is persisted in <jobfile>.state.json; a log of
+all output is written to <jobfile>.log.
 
-Usage:
-    python3 jobs.py run   jobs.yaml          # run all pending jobs
-    python3 jobs.py run   jobs.yaml --dry    # preview without executing
-    python3 jobs.py status jobs.yaml         # show job status
-    python3 jobs.py reset  jobs.yaml         # mark all jobs as pending
-    python3 jobs.py reset  jobs.yaml 3       # mark job #3 as pending
+Commands:
+    start   <jobfile>          Launch queue in a detached screen
+    attach  <jobfile>          Reattach to the screen
+    stop    <jobfile>          Kill the screen session
+    log     <jobfile> [-f]     Tail the output log
+    status  <jobfile>          Show job status (no screen needed)
+    run     <jobfile> [--dry]  Run directly (no screen; used by start)
+    reset   <jobfile> [ID]     Reset job(s) to pending
 
-Job file format (YAML):
-
-    jobs:
-      - name: sim churn 3x3
-        cmd:  ./run.sh sim churn.py --config scenarios/churn_3x3.json
-      - name: emu churn 3x3
-        cmd:  sudo ./run.sh emu churn.py --config scenarios/churn_3x3.json
-      - name: plot 3x3
-        cmd:  python3 plot_churn.py --sim results/sim_churn/churn.csv ...
-
-Or JSON (same structure with "jobs" array).
-
-State is persisted in <jobfile>.state.json alongside the job file.
+Examples:
+    sudo python3 jobs.py start  jobs_churn_grids.json
+    python3 jobs.py attach jobs_churn_grids.json   # no sudo needed
+    python3 jobs.py status jobs_churn_grids.json
+    python3 jobs.py log    jobs_churn_grids.json -f
+    python3 jobs.py stop   jobs_churn_grids.json   # no sudo needed
+    python3 jobs.py reset  jobs_churn_grids.json 3
 """
 
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -41,9 +38,25 @@ STATE_RUNNING  = "running"
 STATE_DONE     = "done"
 STATE_FAILED   = "failed"
 
+# --------------- paths ---------------
 
 def _state_path(job_path):
     return job_path + ".state.json"
+
+
+def _log_path(job_path):
+    return job_path + ".log"
+
+
+def _screen_name(job_path):
+    """Derive a screen session name from the job file stem."""
+    return os.path.splitext(os.path.basename(job_path))[0]
+
+
+def _screen_exists(name):
+    """Return True if a screen session with *name* is alive."""
+    r = subprocess.run(["screen", "-ls"], capture_output=True, text=True)
+    return f".{name}\t" in r.stdout
 
 
 def _load_jobs(path):
@@ -109,7 +122,7 @@ def cmd_status(job_path):
         elapsed = ""
         if s.get("elapsed_s"):
             elapsed = f"  ({s['elapsed_s']:.0f}s)"
-        mark = {"pending": " ", "running": "~", "done": "✓", "failed": "✗"}[st]
+        mark = {"pending": " ", "running": "~", "done": "+", "failed": "X"}[st]
         print(f"  [{mark}] #{j['id']:>2}  {st:<8}  {j['name']}{elapsed}")
 
     total = len(jobs)
@@ -145,6 +158,7 @@ def cmd_run(job_path, dry=False):
     total = len(jobs)
     done = 0
     failed = 0
+    is_root = os.geteuid() == 0
 
     for j in jobs:
         key = _job_key(j)
@@ -155,14 +169,20 @@ def cmd_run(job_path, dry=False):
             done += 1
             continue
 
+        cmd = j["cmd"]
+        # When already root, strip leading "sudo" -- it's redundant and
+        # it clobbers SUDO_USER/ATLAS_USER in the child process.
+        if is_root and cmd.lstrip().startswith("sudo "):
+            cmd = cmd.lstrip().removeprefix("sudo ").lstrip()
+
         now_str = datetime.now(timezone.utc).strftime("%H:%M:%S")
-        print(f"\n{'='*60}")
-        print(f"  [{now_str}] Job #{j['id']}/{total}: {j['name']}")
-        print(f"  cmd: {j['cmd']}")
-        print(f"{'='*60}")
+        print(f"\n{'='*60}", flush=True)
+        print(f"  [{now_str}] Job #{j['id']}/{total}: {j['name']}", flush=True)
+        print(f"  cmd: {cmd}", flush=True)
+        print(f"{'='*60}", flush=True)
 
         if dry:
-            print("  (dry run — skipped)")
+            print("  (dry run -- skipped)", flush=True)
             continue
 
         state[key] = {"status": STATE_RUNNING,
@@ -171,7 +191,8 @@ def cmd_run(job_path, dry=False):
 
         t0 = time.monotonic()
         try:
-            subprocess.run(j["cmd"], shell=True, check=True)
+            sys.stdout.flush()
+            subprocess.run(cmd, shell=True, check=True)
             elapsed = time.monotonic() - t0
             state[key] = {
                 "status": STATE_DONE,
@@ -179,7 +200,7 @@ def cmd_run(job_path, dry=False):
                 "finished": datetime.now(timezone.utc).isoformat(),
             }
             done += 1
-            print(f"\n  ✓ Job #{j['id']} done ({elapsed:.0f}s)")
+            print(f"\n  [+] Job #{j['id']} done ({elapsed:.0f}s)")
         except subprocess.CalledProcessError as e:
             elapsed = time.monotonic() - t0
             state[key] = {
@@ -189,7 +210,7 @@ def cmd_run(job_path, dry=False):
                 "finished": datetime.now(timezone.utc).isoformat(),
             }
             failed += 1
-            print(f"\n  ✗ Job #{j['id']} FAILED (exit {e.returncode}, {elapsed:.0f}s)")
+            print(f"\n  [X] Job #{j['id']} FAILED (exit {e.returncode}, {elapsed:.0f}s)")
             print(f"    Resume later:  python3 jobs.py run {job_path}")
             # Continue to next job instead of aborting entire queue
             continue
@@ -204,12 +225,137 @@ def cmd_run(job_path, dry=False):
     return 1 if failed else 0
 
 
+# --------------- screen commands ---------------
+
+def cmd_start(job_path, dry=False, fresh=False):
+    """Launch the queue in a detached screen session."""
+    if not shutil.which("screen"):
+        print("ERROR: screen is not installed.", file=sys.stderr)
+        sys.exit(1)
+
+    name = _screen_name(job_path)
+    if _screen_exists(name):
+        sudo_hint = "sudo " if os.geteuid() == 0 else ""
+        print(f"  Screen '{name}' already running.")
+        print(f"  Attach: {sudo_hint}python3 jobs.py attach {job_path}")
+        print(f"  Stop:   {sudo_hint}python3 jobs.py stop {job_path}")
+        sys.exit(1)
+
+    if fresh:
+        cmd_reset(job_path)
+
+    abs_job = os.path.abspath(job_path)
+    abs_self = os.path.abspath(__file__)
+    log = _log_path(abs_job)
+    cwd = os.path.dirname(abs_job) or "."
+
+    # -u: unbuffered stdout so tee output ordering matches execution
+    run_cmd = f"python3 -u {abs_self} run {abs_job}"
+    if dry:
+        run_cmd += " --dry"
+
+    # Set ATLAS_USER so run.sh can drop privileges and chown results
+    # back to the real user.  Unlike SUDO_USER, this survives nested
+    # sudo calls because it is a plain env var, not overwritten by sudo.
+    env_prefix = ""
+    real_user = os.environ.get("SUDO_USER") or os.environ.get("ATLAS_USER")
+    if real_user:
+        env_prefix = f"export ATLAS_USER={real_user}; "
+
+    inner = (
+        f"{env_prefix}"
+        f"cd {cwd} && "
+        f"{run_cmd} 2>&1 | tee -a {log}; rc=${{PIPESTATUS[0]}}; "
+        f"echo ''; "
+        f"echo \"--- Queue finished (exit $rc) at $(date) ---\" | tee -a {log}; "
+    )
+    # If started with sudo, fix ownership of log/state files
+    if real_user:
+        state = _state_path(abs_job)
+        inner += (
+            f"chown {real_user}:{real_user} {log} {state} 2>/dev/null; "
+        )
+    inner += (
+        f"echo 'Screen will close in 30s.  Press Enter to close now.'; "
+        f"read -t 30 || true"
+    )
+
+    subprocess.run(
+        ["screen", "-dmS", name, "bash", "-c", inner],
+        check=True,
+    )
+
+    is_root = os.geteuid() == 0
+    prefix = "sudo " if is_root else ""
+    print(f"  Started screen '{name}'")
+    print(f"  Log:    {log}")
+    print(f"  Attach: {prefix}python3 jobs.py attach {job_path}")
+    print(f"  Status: python3 jobs.py status {job_path}")
+    if is_root:
+        print(f"  (Screen owned by root -- attach/stop need sudo)")
+
+
+def cmd_attach(job_path):
+    """Reattach to the screen session."""
+    name = _screen_name(job_path)
+    if not _screen_exists(name):
+        print(f"  No screen '{name}' found.")
+        if os.geteuid() != 0:
+            print(f"  If started with sudo: sudo python3 jobs.py attach {job_path}")
+        else:
+            print(f"  Start: python3 jobs.py start {job_path}")
+        sys.exit(1)
+    os.execvp("screen", ["screen", "-rd", name])
+
+
+def cmd_stop(job_path):
+    """Kill the screen session."""
+    name = _screen_name(job_path)
+    if not _screen_exists(name):
+        print(f"  No screen '{name}' found.")
+        if os.geteuid() != 0:
+            print(f"  If started with sudo: sudo python3 jobs.py stop {job_path}")
+        return
+    subprocess.run(["screen", "-S", name, "-X", "quit"], check=True)
+    print(f"  Stopped screen '{name}'.")
+
+
+def cmd_log(job_path, follow=False):
+    """Tail the output log."""
+    log = _log_path(job_path)
+    if not os.path.exists(log):
+        print(f"  No log file: {log}")
+        sys.exit(1)
+    if follow:
+        os.execvp("tail", ["tail", "-f", log])
+    else:
+        os.execvp("tail", ["tail", "-40", log])
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Job queue runner for atlas-scenarios experiments")
     sub = parser.add_subparsers(dest="command")
 
-    p_run = sub.add_parser("run", help="Run all pending jobs")
+    p_start = sub.add_parser("start", help="Launch queue in a detached screen")
+    p_start.add_argument("jobfile", help="Path to job file (JSON or YAML)")
+    p_start.add_argument("--dry", action="store_true",
+                         help="Dry-run inside the screen (preview only)")
+    p_start.add_argument("--fresh", action="store_true",
+                         help="Reset all jobs to pending before starting")
+
+    p_attach = sub.add_parser("attach", help="Reattach to the running screen")
+    p_attach.add_argument("jobfile")
+
+    p_stop = sub.add_parser("stop", help="Kill the screen session")
+    p_stop.add_argument("jobfile")
+
+    p_log = sub.add_parser("log", help="Tail the output log")
+    p_log.add_argument("jobfile")
+    p_log.add_argument("-f", "--follow", action="store_true",
+                       help="Follow (like tail -f)")
+
+    p_run = sub.add_parser("run", help="Run directly (no screen)")
     p_run.add_argument("jobfile", help="Path to job file (JSON or YAML)")
     p_run.add_argument("--dry", action="store_true",
                        help="Print commands without executing")
@@ -227,7 +373,15 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    if args.command == "run":
+    if args.command == "start":
+        cmd_start(args.jobfile, dry=args.dry, fresh=args.fresh)
+    elif args.command == "attach":
+        cmd_attach(args.jobfile)
+    elif args.command == "stop":
+        cmd_stop(args.jobfile)
+    elif args.command == "log":
+        cmd_log(args.jobfile, follow=args.follow)
+    elif args.command == "run":
         sys.exit(cmd_run(args.jobfile, dry=args.dry))
     elif args.command == "status":
         cmd_status(args.jobfile)

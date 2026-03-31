@@ -15,6 +15,19 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPS_DIR="$REPO_DIR/deps"
 NS3_DIR="$DEPS_DIR/ns-3"
 
+# Resolve the non-root user who should own result files.
+# Prefer ATLAS_USER (set by jobs.py), fall back to SUDO_USER.
+ATLAS_USER="${ATLAS_USER:-$SUDO_USER}"
+
+# When running as root, ensure results/ is owned by the real user
+# BEFORE dispatching any command.  This prevents stale root-owned
+# files from blocking subsequent sim runs.
+fix_results_owner() {
+    if [[ $EUID -eq 0 && -n "$ATLAS_USER" && -d "$REPO_DIR/results" ]]; then
+        chown -R "$ATLAS_USER:$ATLAS_USER" "$REPO_DIR/results" 2>/dev/null || true
+    fi
+}
+
 # Put local binaries + Go in PATH
 if [[ -x /usr/local/go/bin/go ]]; then
     export PATH="/usr/local/go/bin:$PATH"
@@ -33,20 +46,16 @@ ensure_ns3_ready() {
     fi
 
     # Reconfigure each run so newly-added Go files are picked up by cmake globs.
-    # This is fast and avoids stale build confusion.
-    echo "[sim] Configuring ns-3"
-    if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
-        (cd "$NS3_DIR" && sudo -u "$SUDO_USER" env "PATH=$PATH" ./ns3 configure -d release)
-    else
-        (cd "$NS3_DIR" && ./ns3 configure -d release)
+    local ns3_cmd=(./ns3)
+    if [[ $EUID -eq 0 && -n "$ATLAS_USER" ]]; then
+        ns3_cmd=(sudo -u "$ATLAS_USER" env "PATH=$PATH" ./ns3)
     fi
 
+    echo "[sim] Configuring ns-3"
+    (cd "$NS3_DIR" && "${ns3_cmd[@]}" configure -d release)
+
     echo "[sim] Building ns-3"
-    if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
-        (cd "$NS3_DIR" && sudo -u "$SUDO_USER" env "PATH=$PATH" ./ns3 build)
-    else
-        (cd "$NS3_DIR" && ./ns3 build)
-    fi
+    (cd "$NS3_DIR" && "${ns3_cmd[@]}" build)
 }
 
 # Locate the Go 1.25 toolchain (downloaded by setup into GOPATH).
@@ -151,65 +160,34 @@ case "$1" in
         ;;
     emu)
         shift
-        [[ $# -lt 1 ]] && { echo "Usage: ./run.sh emu <demo|scalability|multihop|routing> [opts]"; exit 1; }
+        [[ $# -lt 1 ]] && { echo "Usage: ./run.sh emu <subcmd> [opts]"; exit 1; }
         subcmd="$1"; shift
+        [[ "$subcmd" != *.py ]] && subcmd="${subcmd}.py"
         cleanup_minindn
         build_ndnd
         build_ndnd_traffic
-        case "$subcmd" in
-            demo)
-                python3 "$REPO_DIR/emu/demo.py" "$@"
-                ;;
-            scalability)
-                python3 "$REPO_DIR/emu/scalability.py" "$@"
-                ;;
-            multihop)
-                python3 "$REPO_DIR/emu/multihop.py" "$@"
-                ;;
-            routing)
-                python3 "$REPO_DIR/emu/routing.py" "$@"
-                ;;
-            *)
-                python3 "$REPO_DIR/emu/$subcmd" "$@"
-                ;;
-        esac
-        rc=$?
-        # Fix ownership of results created by sudo
-        if [[ -d "$REPO_DIR/results" && -n "$SUDO_USER" ]]; then
-            chown -R "$SUDO_USER:$SUDO_USER" "$REPO_DIR/results"
-        fi
+
+        rc=0
+        python3 "$REPO_DIR/emu/$subcmd" "$@" || rc=$?
+
+        fix_results_owner
         exit $rc
         ;;
     sim)
         shift
-        [[ $# -lt 1 ]] && { echo "Usage: ./run.sh sim <demo|scalability|multihop|routing> [opts]"; exit 1; }
+        [[ $# -lt 1 ]] && { echo "Usage: ./run.sh sim <subcmd> [opts]"; exit 1; }
         subcmd="$1"; shift
+        [[ "$subcmd" != *.py ]] && subcmd="${subcmd}.py"
 
+        fix_results_owner
         ensure_ns3_ready
 
-        # ns-3 refuses to build as root; drop to the invoking user if under sudo
         run_cmd=(python3)
-        if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
-            run_cmd=(sudo -u "$SUDO_USER" env "PATH=$PATH" "PYTHONPATH=$PYTHONPATH" python3)
+        if [[ $EUID -eq 0 && -n "$ATLAS_USER" ]]; then
+            run_cmd=(sudo -u "$ATLAS_USER" env "PATH=$PATH" "PYTHONPATH=$PYTHONPATH" python3)
         fi
 
-        case "$subcmd" in
-            demo)
-                exec "${run_cmd[@]}" "$REPO_DIR/sim/demo.py" --ns3-dir "$NS3_DIR" "$@"
-                ;;
-            scalability)
-                exec "${run_cmd[@]}" "$REPO_DIR/sim/scalability.py" --ns3-dir "$NS3_DIR" "$@"
-                ;;
-            multihop)
-                exec "${run_cmd[@]}" "$REPO_DIR/sim/multihop.py" --ns3-dir "$NS3_DIR" "$@"
-                ;;
-            routing)
-                exec "${run_cmd[@]}" "$REPO_DIR/sim/routing.py" --ns3-dir "$NS3_DIR" "$@"
-                ;;
-            *)
-                exec "${run_cmd[@]}" "$REPO_DIR/sim/$subcmd" --ns3-dir "$NS3_DIR" "$@"
-                ;;
-        esac
+        exec "${run_cmd[@]}" "$REPO_DIR/sim/$subcmd" --ns3-dir "$NS3_DIR" "$@"
         ;;
     plot)
         shift
@@ -229,22 +207,24 @@ case "$1" in
 
         # ns-3 build user (drop privs for sim)
         sim_cmd=(python3)
-        if [[ -n "$SUDO_USER" ]]; then
-            sim_cmd=(sudo -u "$SUDO_USER" env "PATH=$PATH" "PYTHONPATH=$PYTHONPATH" python3)
+        if [[ -n "$ATLAS_USER" ]]; then
+            sim_cmd=(sudo -u "$ATLAS_USER" env "PATH=$PATH" "PYTHONPATH=$PYTHONPATH" python3)
         fi
+
+        [[ "$subcmd" != *.py ]] && subcmd="${subcmd}.py"
 
         echo "=== Running emulation ==="
         cleanup_minindn
         build_ndnd
         build_ndnd_traffic
-        python3 "$REPO_DIR/emu/${subcmd}.py" "$@"
-        if [[ -d "$REPO_DIR/results" && -n "$SUDO_USER" ]]; then
-            chown -R "$SUDO_USER:$SUDO_USER" "$REPO_DIR/results"
-        fi
+        rc=0
+        python3 "$REPO_DIR/emu/$subcmd" "$@" || rc=$?
+        fix_results_owner
+        [[ $rc -ne 0 ]] && exit $rc
 
         echo "=== Running simulation ==="
         ensure_ns3_ready
-        "${sim_cmd[@]}" "$REPO_DIR/sim/${subcmd}.py" --ns3-dir "$NS3_DIR" "$@"
+        "${sim_cmd[@]}" "$REPO_DIR/sim/$subcmd" --ns3-dir "$NS3_DIR" "$@"
 
         echo "=== Plotting ==="
         python3 "$REPO_DIR/plot.py"

@@ -1,5 +1,5 @@
 {
-    "_comment": "Churn experiments: 3x3, 4x4, 5x5 — sim + emu + plot for each",
+    "_comment": "Churn experiments: 3x3, 4x4, 5x5 -- sim + emu for each. Run with: sudo python3 jobs.py start --fresh jobs_churn_grids.json",
     "jobs": [
         {
             "id": 1,
@@ -9,7 +9,7 @@
         {
             "id": 2,
             "name": "emu churn 3x3",
-            "cmd": "sudo ./run.sh emu churn.py --config scenarios/churn_random_3x3.json"
+            "cmd": "./run.sh emu churn.py --config scenarios/churn_random_3x3.json"
         },
         {
             "id": 3,
@@ -19,7 +19,7 @@
         {
             "id": 4,
             "name": "emu churn 4x4",
-            "cmd": "sudo ./run.sh emu churn.py --config scenarios/churn_random_4x4.json"
+            "cmd": "./run.sh emu churn.py --config scenarios/churn_random_4x4.json"
         },
         {
             "id": 5,
@@ -29,7 +29,7 @@
         {
             "id": 6,
             "name": "emu churn 5x5",
-            "cmd": "sudo ./run.sh emu churn.py --config scenarios/churn_random_5x5.json"
+            "cmd": "./run.sh emu churn.py --config scenarios/churn_random_5x5.json"
         }
     ]
 }

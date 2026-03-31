@@ -2,3 +2,5 @@ results/
 deps/
 __pycache__/
 emu/ndnd-traffic
+*.state.json
+*.log
