@@ -1,15 +1,23 @@
 {
-    "_comment": "Prefix scalability on Sprint PoP -- sim + emu. Run with: sudo python3 jobs.py start --fresh jobs_prefix_scale_sprint.json",
+    "_comment": "Prefix scalability on Sprint PoP. Run with: sudo python3 jobs.py start --fresh jobs_prefix_scale_sprint.json",
     "jobs": [
         {
-            "id": 1,
-            "name": "sim prefix-scale sprint",
-            "cmd": "./run.sh sim churn.py --config scenarios/churn_prefix_scale_sprint_sim.json --out results/sim_churn_prefix_scale_sprint"
+            "name": "sim baseline",
+            "cmd": "./run.sh sim churn.py --config scenarios/churn_prefix_scale_sprint_sim.json --out results/sim_churn_prefix_scale_sprint --mode baseline --prefixes 0"
         },
         {
-            "id": 2,
-            "name": "emu prefix-scale sprint",
-            "cmd": "./run.sh emu churn.py --config scenarios/churn_prefix_scale_sprint.json --out results/emu_churn_prefix_scale_sprint"
+            "name": "sim {mode} p{prefixes}",
+            "cmd": "./run.sh sim churn.py --config scenarios/churn_prefix_scale_sprint_sim.json --out results/sim_churn_prefix_scale_sprint --mode {mode} --prefixes {prefixes} --append",
+            "matrix": {"mode": ["two_step", "one_step"], "prefixes": [1, 5, 10, 20, 50]}
+        },
+        {
+            "name": "emu baseline",
+            "cmd": "./run.sh emu churn.py --config scenarios/churn_prefix_scale_sprint.json --out results/emu_churn_prefix_scale_sprint --mode baseline --prefixes 0 --append"
+        },
+        {
+            "name": "emu {mode} p{prefixes}",
+            "cmd": "./run.sh emu churn.py --config scenarios/churn_prefix_scale_sprint.json --out results/emu_churn_prefix_scale_sprint --mode {mode} --prefixes {prefixes} --append",
+            "matrix": {"mode": ["two_step", "one_step"], "prefixes": [1, 5, 10, 20, 50]}
         }
     ]
 }

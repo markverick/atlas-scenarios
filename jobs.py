@@ -59,8 +59,48 @@ def _screen_exists(name):
     return f".{name}\t" in r.stdout
 
 
+import itertools
+
+
+def _expand_matrix(job_template):
+    """Expand a job with a ``matrix`` dict into concrete jobs.
+
+    Example matrix::
+
+        {"mode": ["two_step", "one_step"], "prefixes": [1, 5, 10]}
+
+    Produces the Cartesian product (2 × 3 = 6 jobs).  ``{key}``
+    placeholders in *name* and *cmd* are replaced with each value.
+    """
+    matrix = job_template.get("matrix")
+    if not matrix:
+        return [job_template]
+
+    keys = sorted(matrix.keys())
+    combos = list(itertools.product(*(matrix[k] for k in keys)))
+
+    expanded = []
+    for combo in combos:
+        subs = dict(zip(keys, combo))
+        j = {}
+        for field, val in job_template.items():
+            if field == "matrix":
+                continue
+            if isinstance(val, str):
+                j[field] = val.format(**subs)
+            else:
+                j[field] = val
+        expanded.append(j)
+    return expanded
+
+
 def _load_jobs(path):
-    """Load job definitions from JSON or YAML."""
+    """Load job definitions from JSON or YAML.
+
+    Jobs with a ``matrix`` key are expanded into one job per combination
+    (Cartesian product).  ``{key}`` placeholders in *name* and *cmd* are
+    substituted with each value.
+    """
     with open(path) as f:
         text = f.read()
 
@@ -81,9 +121,11 @@ def _load_jobs(path):
         print("ERROR: job file must have a top-level 'jobs' array.", file=sys.stderr)
         sys.exit(1)
 
-    jobs = data["jobs"]
+    jobs = []
+    for raw in data["jobs"]:
+        jobs.extend(_expand_matrix(raw))
     for i, j in enumerate(jobs):
-        j.setdefault("id", i + 1)
+        j["id"] = i + 1
         if "cmd" not in j:
             print(f"ERROR: job #{j['id']} missing 'cmd' field.", file=sys.stderr)
             sys.exit(1)

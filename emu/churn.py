@@ -479,10 +479,20 @@ def main():
                         help="JSON scenario config file")
     parser.add_argument("--out", default=None,
                         help="Output directory (auto-derived from config)")
+    parser.add_argument("--mode", default=None,
+                        help="Run only this mode (baseline/two_step/one_step)")
+    parser.add_argument("--prefixes", type=int, default=None,
+                        help="Run only this prefix count")
+    parser.add_argument("--append", action="store_true",
+                        help="Append to CSV instead of overwriting")
     args = parser.parse_args()
     sys.argv = [sys.argv[0]]
 
     cfg = load_config(args.config)
+    if args.mode is not None:
+        cfg["modes"] = [args.mode]
+    if args.prefixes is not None:
+        cfg["prefix_counts"] = [args.prefixes]
     dv_config = dv_config_from(cfg)
 
     topo_name = cfg.get("topology", "grid")
@@ -493,9 +503,11 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
 
     out_csv = os.path.join(out_dir, "churn.csv")
-    with open(out_csv, "w", newline="") as f:
+    csv_mode = "a" if args.append and os.path.exists(out_csv) else "w"
+    with open(out_csv, csv_mode, newline="") as f:
         writer = csv.DictWriter(f, fieldnames=FIELDNAMES)
-        writer.writeheader()
+        if csv_mode == "w":
+            writer.writeheader()
 
         if topo_name == "grid":
             _run_grid(cfg, dv_config, out_dir, writer, f)
