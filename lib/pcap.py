@@ -15,10 +15,10 @@ _USER_NAME_BYTES = b"\x08\x03ndn\x08\x04test"
 
 # KeywordNameComponent byte patterns for DV routing sub-protocols.
 # KeywordNameComponent TLV-TYPE = 0x20.
-_KW_PFS = b"\x20\x03PFS"   # 32=PFS — PrefixSync SVS
-_KW_ADS = b"\x20\x03ADS"   # 32=ADS — Advertisement Sync
-_KW_ADV = b"\x20\x03ADV"   # 32=ADV — Advertisement Data
-_KW_DV  = b"\x20\x02DV"    # 32=DV  — general DV marker
+_KW_PFS = b"\x20\x03PFS"   # 32=PFS -- PrefixSync SVS
+_KW_ADS = b"\x20\x03ADS"   # 32=ADS -- Advertisement Sync
+_KW_ADV = b"\x20\x03ADV"   # 32=ADV -- Advertisement Data
+_KW_DV  = b"\x20\x02DV"    # 32=DV  -- general DV marker
 
 # Name-component byte pattern for /localhost/nlsr (Mgmt / readvertise).
 # GenericNameComponent 0x08, length 9, "localhost" + 0x08, length 4, "nlsr".

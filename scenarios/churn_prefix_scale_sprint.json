@@ -1,0 +1,19 @@
+{
+    "_comment": "Prefix scalability on Sprint PoP — no link failures, independent per-prefix churn",
+    "topology": "sprint",
+    "delay_ms": 10,
+    "bandwidth_mbps": 10,
+    "trials": 1,
+    "window_s": 300.0,
+    "advertise_interval": 5000,
+    "router_dead_interval": 30000,
+    "prefix_sync_delay": 2000,
+    "cores": 0,
+    "churn_mode":              "prefix_scaling",
+    "churn_seed":              42,
+    "churn_recovery_delay":    3.0,
+    "per_prefix_rate":         0.1,
+    "prefix_counts":           [1, 5, 10, 20, 50],
+    "phase2_start_s":          10.0,
+    "churn_duration_s":        120.0
+}

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Churn scenario — two-phase measurement of routing traffic under dynamic events.
+Churn scenario -- two-phase measurement of routing traffic under dynamic events.
 
-Phase 1 (convergence): DV boot → converge → announce prefixes → stabilize.
+Phase 1 (convergence): DV boot -> converge -> announce prefixes -> stabilize.
 Phase 2 (churn):       Link fail/recover + prefix withdraw/re-announce.
 
 Supports any topology registered in lib/churn_common.KNOWN_TOPOLOGIES, as well
@@ -10,9 +10,9 @@ as arbitrary NxN grid topologies.  The topology type is selected by the JSON
 config key "topology" (default: "grid").
 
 For each topology (or grid size), runs three variants:
-  1. baseline  — no prefixes (pure DV overhead under churn)
-  2. two_step  — DV + PrefixSync under churn
-  3. one_step  — prefixes in DV adverts under churn
+  1. baseline  -- no prefixes (pure DV overhead under churn)
+  2. two_step  -- DV + PrefixSync under churn
+  3. one_step  -- prefixes in DV adverts under churn
 
 Usage:
   python3 sim/churn.py --config scenarios/churn.json
@@ -33,6 +33,7 @@ from sim._helpers import resolve_ns3_dir, run_churn_scenario
 from lib.churn_common import (
     FIELDNAMES, CATEGORIES, KNOWN_TOPOLOGIES,
     build_churn_events, build_random_churn_events,
+    build_prefix_scaling_events,
     parse_packet_trace_by_phase,
     build_result_rows, make_tag, auto_plot,
     default_out_dir, grid_churn_targets,
@@ -67,13 +68,22 @@ def run_variant(ns3_dir, *, topo_rel, topology, topo_id_str,
     churn_dur_cfg = (cfg or {}).get("churn_duration_s", 0.0)
     churn_duration = churn_dur_cfg if churn_dur_cfg > 0 else (sim_time / 2.0)
 
-    # Build churn events — relative offsets (from 0) when deferred,
+    # Build churn events -- relative offsets (from 0) when deferred,
     # absolute times when using fixed phase boundary.
     evt_start = 0.0 if churn_after_conv else phase2_start
     evt_end = churn_duration if churn_after_conv else sim_time
 
     churn_mode = (cfg or {}).get("churn_mode", "fixed")
-    if churn_mode == "random":
+    if churn_mode == "prefix_scaling":
+        churn_events = build_prefix_scaling_events(
+            pfx_count, evt_start,
+            per_prefix_rate=cfg.get("per_prefix_rate", 0.1),
+            churn_node=churn_node,
+            window_end=evt_end,
+            seed=cfg.get("churn_seed", 42),
+            recovery_delay=cfg.get("churn_recovery_delay", 3.0),
+            all_nodes=all_nodes)
+    elif churn_mode == "random":
         churn_events = build_random_churn_events(
             pfx_count, evt_start,
             link_src=link_src, link_dst=link_dst, churn_node=churn_node,
@@ -192,7 +202,8 @@ def _run_grid(ns3_dir, cfg, dv_config, out_dir, writer, f):
         topo_path = os.path.join(
             topo_dir, f"topo-grid-{grid_size}x{grid_size}-atlas.txt")
         generate_ndnsim_topo(grid_size, bw=f"{bw_mbps}Mbps",
-                             delay_ms=delay_ms, path=topo_path)
+                             delay_ms=delay_ms, path=topo_path,
+                             queue_size=cfg.get("queue_size", 100))
         topo_rel = os.path.relpath(topo_path, ns3_dir)
         num_nodes, num_links = grid_stats(grid_size)
 
@@ -262,36 +273,52 @@ def _run_conf(ns3_dir, cfg, dv_config, out_dir, writer, f, topo_name):
     os.makedirs(topo_dir, exist_ok=True)
     topo_path = os.path.join(topo_dir, f"topo-{topo_name}-atlas.txt")
     generate_ndnsim_topo_from_conf(
-        conf_path, bw=f"{bw_mbps}Mbps", delay_ms=delay_ms, path=topo_path)
+        conf_path, bw=f"{bw_mbps}Mbps", delay_ms=delay_ms, path=topo_path,
+        queue_size=cfg.get("queue_size", 100))
     topo_rel = os.path.relpath(topo_path, ns3_dir)
 
+    prefix_counts = cfg.get("prefix_counts", [])
+    if not prefix_counts:
+        prefix_counts = [num_prefixes]
+    sweeping = len(prefix_counts) > 1
+
+    modes = cfg.get("modes", []) or ["baseline", "two_step", "one_step"]
+
     for trial in range(1, trials + 1):
-        for mode in ("baseline", "two_step", "one_step"):
-            rows = run_variant(
-                ns3_dir,
-                topo_rel=topo_rel,
-                topology=topo_name,
-                topo_id_str=topo_name,
-                grid_size=0,
-                num_nodes=num_nodes,
-                num_links=num_links,
-                trial=trial,
-                mode=mode,
-                num_prefixes=num_prefixes,
-                window_s=sim_time,
-                dv_config=dv_config,
-                sim_time=sim_time,
-                phase2_start=phase2_start,
-                link_src=link_src,
-                link_dst=link_dst,
-                churn_node=churn_node,
-                cores=cores,
-                out_dir=out_dir,
-                cfg=cfg,
-                all_links=all_links_list,
-                all_nodes=all_nodes_list,
-            )
-            _write_rows(writer, f, rows)
+        baseline_done = False
+        for pfx_count in prefix_counts:
+            for mode in modes:
+                # When sweeping prefix counts, baseline (0 prefixes)
+                # is identical for every count -- run it only once.
+                if sweeping and mode == "baseline" and baseline_done:
+                    continue
+                rows = run_variant(
+                    ns3_dir,
+                    topo_rel=topo_rel,
+                    topology=topo_name,
+                    topo_id_str=topo_name,
+                    grid_size=0,
+                    num_nodes=num_nodes,
+                    num_links=num_links,
+                    trial=trial,
+                    mode=mode,
+                    num_prefixes=pfx_count,
+                    window_s=sim_time,
+                    dv_config=dv_config,
+                    sim_time=sim_time,
+                    phase2_start=phase2_start,
+                    link_src=link_src,
+                    link_dst=link_dst,
+                    churn_node=churn_node,
+                    cores=cores,
+                    out_dir=out_dir,
+                    cfg=cfg,
+                    all_links=all_links_list,
+                    all_nodes=all_nodes_list,
+                )
+                _write_rows(writer, f, rows)
+                if mode == "baseline":
+                    baseline_done = True
 
 
 def _write_rows(writer, f, rows):
@@ -305,7 +332,7 @@ def _write_rows(writer, f, rows):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Churn scenario — two-phase routing traffic measurement")
+        description="Churn scenario -- two-phase routing traffic measurement")
     parser.add_argument("--config", required=True,
                         help="JSON scenario config file")
     parser.add_argument("--out", default=None,

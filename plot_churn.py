@@ -98,6 +98,8 @@ def load_packet_trace(path):
     with open(path) as f:
         reader = csv.DictReader(f)
         for row in reader:
+            if not row.get("Bytes"):
+                continue
             events.append((float(row["Time"]), row["Category"], int(row["Bytes"])))
     return events
 

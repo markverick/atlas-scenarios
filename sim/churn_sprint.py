@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Sprint churn scenario — backward-compatibility wrapper.
+Sprint churn scenario -- backward-compatibility wrapper.
 
 The unified sim/churn.py now handles all topologies (grid, sprint, etc.)
 based on the "topology" key in the JSON config.

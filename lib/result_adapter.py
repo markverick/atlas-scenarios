@@ -1,5 +1,5 @@
 """
-Result adapter — unified result format for both emulation and simulation.
+Result adapter -- unified result format for both emulation and simulation.
 
 Both emu and sim scenarios produce raw outputs in different forms:
   - Emulation: direct Python measurements (convergence time, diff check, RSS)
@@ -74,7 +74,7 @@ class ResultWriter:
         self.close()
 
 
-# ── Sim adapter ─────────────────────────────────────────────────────
+# --- Sim adapter ------------------------------------------------------------
 
 def parse_sim_convergence(rate_trace_path, producer_start=0.5):
     """Extract DV convergence time from an ndndSIM rate-trace CSV.
@@ -184,11 +184,11 @@ def parse_dv_update_span_logs(log_paths, prefix="/ndn/test"):
 def parse_router_reachable_logs(log_paths, num_nodes):
     """Compute routing convergence from DV 'Router is now reachable' events.
 
-    Convergence = (timestamp of event completing all FIBs) − (first event).
+    Convergence = (timestamp of event completing all FIBs) - (first event).
     Each log file corresponds to one node.  Convergence is achieved when
-    every node has learned routes to all other (num_nodes − 1) routers.
+    every node has learned routes to all other (num_nodes - 1) routers.
 
-    Returns convergence in seconds (float, 4 d.p.) or −1 on failure.
+    Returns convergence in seconds (float, 4 d.p.) or -1 on failure.
     """
     if not log_paths or num_nodes < 2:
         return -1

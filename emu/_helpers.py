@@ -73,7 +73,20 @@ def start_tcpdump(hosts, prefix="ndnd_cap"):
 def stop_tcpdump(hosts, cap_tag, prefix="ndnd_cap"):
     """Stop tcpdump on all hosts."""
     for host in hosts:
-        host.cmd(f"pkill -f 'tcpdump.*{prefix}_{cap_tag}_' 2>/dev/null; true")
+        try:
+            host.cmd(f"pkill -f 'tcpdump.*{prefix}_{cap_tag}_' 2>/dev/null; true")
+        except (AssertionError, OSError):
+            # Shell may be in a bad state from prior timer-thread failures;
+            # wait for it to drain and retry once.
+            time.sleep(0.5)
+            try:
+                host.waitOutput(verbose=False)
+            except Exception:
+                pass
+            try:
+                host.cmd(f"pkill -f 'tcpdump.*{prefix}_{cap_tag}_' 2>/dev/null; true")
+            except (AssertionError, OSError):
+                pass
     time.sleep(0.5)
 
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ndndSIM DV scalability scenario — NxN grid topologies.
+ndndSIM DV scalability scenario -- NxN grid topologies.
 
 Generates topology files, runs the parameterized atlas scenario for
 each grid size, and writes results through the result adapter.

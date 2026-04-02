@@ -44,7 +44,7 @@ def sync_scenario(ns3_dir):
 
     Copies the C++ source from the repo into the ndndSIM examples directory
     and appends a CMakeLists.txt entry if not already present.
-    Idempotent and fast — safe to call on every run.
+    Idempotent and fast -- safe to call on every run.
     """
     _sync_target(ns3_dir, "atlas-scenario.cc", TARGET_NAME, CC_FILENAME,
                  "Atlas general-purpose scenario")
@@ -110,8 +110,8 @@ def run_scenario(ns3_dir, *, topo, rate_trace, sim_time=60.0,
         topo:       Topology file path (relative to ns3_dir or absolute).
         rate_trace: Output rate-trace CSV path (absolute).
         sim_time:   Simulation duration in seconds.
-        consumer:   Consumer node name (None → first node in topology).
-        producer:   Producer node name (None → last node in topology).
+        consumer:   Consumer node name (None -> first node in topology).
+        producer:   Producer node name (None -> last node in topology).
         prefix:     NDN name prefix.
         frequency:  Consumer Interest frequency in Hz.
         cores:      Parallel build cores (0 = all available).
@@ -149,7 +149,7 @@ def run_scenario(ns3_dir, *, topo, rate_trace, sim_time=60.0,
     _run_exe(_find_scenario_exe(ns3_dir, "ndndsim-atlas-scenario"),
              run_args, run_log)
 
-    # ── Validate outputs — a silent empty file is a hidden failure ────────────
+    # --- Validate outputs -- a silent empty file is a hidden failure ---------
     errors = []
 
     # rate_trace must have at least one data row (not just the header)
@@ -158,7 +158,7 @@ def run_scenario(ns3_dir, *, topo, rate_trace, sim_time=60.0,
             lines = [l for l in f if l.strip()]
         if len(lines) <= 1:
             errors.append(
-                f"rate_trace '{rate_trace}' has no data rows (only header or empty) — "
+                f"rate_trace '{rate_trace}' has no data rows (only header or empty) -- "
                 "simulation likely produced no traffic at all"
             )
     else:
@@ -171,7 +171,7 @@ def run_scenario(ns3_dir, *, topo, rate_trace, sim_time=60.0,
                 val = float(open(conv_trace).read().strip())
                 if val < 0:
                     errors.append(
-                        f"conv_trace '{conv_trace}' reports convergence=-1 — "
+                        f"conv_trace '{conv_trace}' reports convergence=-1 -- "
                         "DV routing never converged during the simulation"
                     )
             except (ValueError, OSError) as exc:
@@ -186,7 +186,7 @@ def run_scenario(ns3_dir, *, topo, rate_trace, sim_time=60.0,
                 lines = [l for l in f if l.strip()]
             if len(lines) <= 1:
                 errors.append(
-                    f"link_trace '{link_trace}' has no data rows — "
+                    f"link_trace '{link_trace}' has no data rows -- "
                     "no packets were traced on any link"
                 )
         else:
@@ -195,7 +195,7 @@ def run_scenario(ns3_dir, *, topo, rate_trace, sim_time=60.0,
     if errors:
         raise RuntimeError(
             "Simulation completed but produced invalid output:\n"
-            + "\n".join(f"  • {e}" for e in errors)
+            + "\n".join(f"  - {e}" for e in errors)
         )
 
 
@@ -237,7 +237,7 @@ def _build_ns3(ns3_dir, cores=0):
         if stale:
             rel = [os.path.relpath(f, ns3_dir) for f in stale]
             raise RuntimeError(
-                "Go source files are newer than the built shared library — "
+                "Go source files are newer than the built shared library -- "
                 "cmake dependency tracking missed them. "
                 "Re-run cmake configure (./ns3 configure) then build again.\n"
                 "Stale sources:\n" + "\n".join(f"  {r}" for r in rel)
@@ -387,7 +387,7 @@ def run_routing_scenario(ns3_dir, *, topo, sim_time=30.0, cores=0,
             lines = [l for l in f if l.strip()]
         if len(lines) <= 1:
             raise RuntimeError(
-                f"link_trace '{link_trace}' has no data rows — "
+                f"link_trace '{link_trace}' has no data rows -- "
                 "no packets were traced on any link"
             )
 

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-One-step vs two-step routing comparison — ndndSIM routing-only scenarios.
+One-step vs two-step routing comparison -- ndndSIM routing-only scenarios.
 
 For each grid size, runs three variants:
-  1. baseline  — no prefixes announced (pure DV overhead)
-  2. two_step  — N prefixes per node, standard DV + PrefixSync
-  3. one_step  — N prefixes per node, prefixes in DV adverts (no PrefixSync)
+  1. baseline  -- no prefixes announced (pure DV overhead)
+  2. two_step  -- N prefixes per node, standard DV + PrefixSync
+  3. one_step  -- N prefixes per node, prefixes in DV adverts (no PrefixSync)
 
 Writes a per-category traffic breakdown CSV for plotting.
 
@@ -65,7 +65,7 @@ def run_variant(ns3_dir, *, topo_rel, grid_size, trial, mode, num_prefixes,
     dvc = dict(dv_config) if dv_config else {}
     if mode in ("one_step", "baseline"):
         # Baseline uses one_step=true with 0 prefixes so PrefixSync SVS
-        # is disabled — giving a pure-DV floor with no sync overhead.
+        # is disabled -- giving a pure-DV floor with no sync overhead.
         dvc["one_step"] = True
     else:
         dvc.pop("one_step", None)

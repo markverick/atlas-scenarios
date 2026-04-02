@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ndndSIM routing-only scenario — measure DV routing traffic burst.
+ndndSIM routing-only scenario -- measure DV routing traffic burst.
 
 Runs DV routing on NxN grid topologies with NO application traffic.
 Measures routing packet counts, traffic volume, and convergence time.

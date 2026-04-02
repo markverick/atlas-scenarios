@@ -41,6 +41,7 @@ from minindn.helpers import dv_util
 from lib.churn_common import (
     FIELDNAMES, KNOWN_TOPOLOGIES,
     build_churn_events, build_random_churn_events,
+    build_prefix_scaling_events,
     parse_packet_events_by_phase, build_result_rows,
     make_tag, auto_plot, default_out_dir, grid_churn_targets,
 )
@@ -120,7 +121,15 @@ def schedule_churn_events(ndn, hosts, churn_events, dv_start):
             def do_withdraw(h=host, p=pfx, n=node_name):
                 info(f"  CHURN: prefix WITHDRAW {n} {p}\n")
                 with lock:
-                    withdraw_prefix(h, p)
+                    try:
+                        withdraw_prefix(h, p)
+                    except (AssertionError, OSError):
+                        info(f"  CHURN: WARNING: withdraw retry {n} {p}\n")
+                        time.sleep(0.2)
+                        try:
+                            withdraw_prefix(h, p)
+                        except (AssertionError, OSError):
+                            info(f"  CHURN: WARNING: withdraw skipped {n} {p}\n")
             t = threading.Timer(delay, do_withdraw)
 
         elif etype == "prefix_announce":
@@ -129,7 +138,15 @@ def schedule_churn_events(ndn, hosts, churn_events, dv_start):
             def do_announce(h=host, p=pfx, n=node_name):
                 info(f"  CHURN: prefix ANNOUNCE {n} {p}\n")
                 with lock:
-                    h.cmd(f'ndnd put --expose "{p}" < /dev/null &')
+                    try:
+                        h.cmd(f'ndnd put --expose "{p}" < /dev/null &')
+                    except (AssertionError, OSError):
+                        info(f"  CHURN: WARNING: announce retry {n} {p}\n")
+                        time.sleep(0.2)
+                        try:
+                            h.cmd(f'ndnd put --expose "{p}" < /dev/null &')
+                        except (AssertionError, OSError):
+                            info(f"  CHURN: WARNING: announce skipped {n} {p}\n")
             t = threading.Timer(delay, do_announce)
 
         else:
@@ -209,7 +226,16 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
 
     # Build and schedule churn events
     churn_mode_str = (cfg or {}).get("churn_mode", "fixed")
-    if churn_mode_str == "random":
+    if churn_mode_str == "prefix_scaling":
+        churn_events = build_prefix_scaling_events(
+            pfx_count, evt_start,
+            per_prefix_rate=cfg.get("per_prefix_rate", 0.1),
+            churn_node=churn_node,
+            window_end=evt_end,
+            seed=cfg.get("churn_seed", 42),
+            recovery_delay=cfg.get("churn_recovery_delay", 3.0),
+            all_nodes=all_nodes)
+    elif churn_mode_str == "random":
         churn_events = build_random_churn_events(
             pfx_count, evt_start,
             link_src=link_src, link_dst=link_dst, churn_node=churn_node,
@@ -389,34 +415,49 @@ def _run_conf(cfg, dv_config, out_dir, writer, f, topo_name):
     num_nodes, num_links = conf_stats(conf_path)
     info(f"{topo_name} topology: {num_nodes} nodes, {num_links} links\n")
 
+    prefix_counts = cfg.get("prefix_counts", [])
+    if not prefix_counts:
+        prefix_counts = [num_prefixes]
+    sweeping = len(prefix_counts) > 1
+
+    modes = cfg.get("modes", []) or ["baseline", "two_step", "one_step"]
+
     def ndn_factory():
         return setup_conf_topo(conf_path, delay_ms, bw_mbps, cores)
 
     for trial in range(1, trials + 1):
-        for mode in ("baseline", "two_step", "one_step"):
-            rows = _run_one_variant(
-                ndn_factory=ndn_factory,
-                topology=topo_name,
-                topo_id_str=topo_name,
-                grid_size=0,
-                num_nodes=num_nodes,
-                num_links=num_links,
-                link_src=link_src,
-                link_dst=link_dst,
-                churn_node=churn_node,
-                trial=trial,
-                mode=mode,
-                num_prefixes=num_prefixes,
-                window_s=sim_time,
-                dv_config=dv_config,
-                sim_time=sim_time,
-                deadline=300,
-                out_dir=out_dir,
-                cfg=cfg,
-                all_links=all_links_list,
-                all_nodes=all_nodes_list,
-            )
-            _write_rows(writer, f, rows)
+        baseline_done = False
+        for pfx_count in prefix_counts:
+            for mode in modes:
+                # When sweeping prefix counts, baseline (0 prefixes)
+                # is identical for every count — run it only once.
+                if sweeping and mode == "baseline" and baseline_done:
+                    continue
+                rows = _run_one_variant(
+                    ndn_factory=ndn_factory,
+                    topology=topo_name,
+                    topo_id_str=topo_name,
+                    grid_size=0,
+                    num_nodes=num_nodes,
+                    num_links=num_links,
+                    link_src=link_src,
+                    link_dst=link_dst,
+                    churn_node=churn_node,
+                    trial=trial,
+                    mode=mode,
+                    num_prefixes=pfx_count,
+                    window_s=sim_time,
+                    dv_config=dv_config,
+                    sim_time=sim_time,
+                    deadline=300,
+                    out_dir=out_dir,
+                    cfg=cfg,
+                    all_links=all_links_list,
+                    all_nodes=all_nodes_list,
+                )
+                _write_rows(writer, f, rows)
+                if mode == "baseline":
+                    baseline_done = True
 
 
 def _write_rows(writer, f, rows):

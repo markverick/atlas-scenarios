@@ -365,17 +365,18 @@ main(int argc, char* argv[])
                     [churnEvents, churnBase]() {
                         ScheduleChurnEvents(churnEvents, churnBase);
                     });
+            }
 
-                // Dynamic stop: run for churnDuration after churn starts
-                if (churnDuration > 0)
-                {
-                    double stopDelay = churnMargin + churnDuration;
-                    std::cout << now << "s: scheduling sim stop at t="
-                              << (now + stopDelay) << "s (conv + "
-                              << churnMargin << "s margin + "
-                              << churnDuration << "s churn)" << std::endl;
-                    Simulator::Stop(Seconds(stopDelay));
-                }
+            // Dynamic stop: always schedule when churn_after_convergence
+            // so even baseline (empty events) terminates promptly.
+            if (churnAfterConvergence && churnDuration > 0)
+            {
+                double stopDelay = churnMargin + churnDuration;
+                std::cout << now << "s: scheduling sim stop at t="
+                          << (now + stopDelay) << "s (conv + "
+                          << churnMargin << "s margin + "
+                          << churnDuration << "s churn)" << std::endl;
+                Simulator::Stop(Seconds(stopDelay));
             }
         });
     }

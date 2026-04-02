@@ -1,0 +1,15 @@
+{
+    "_comment": "Prefix scalability on Sprint PoP -- sim + emu. Run with: sudo python3 jobs.py start --fresh jobs_prefix_scale_sprint.json",
+    "jobs": [
+        {
+            "id": 1,
+            "name": "sim prefix-scale sprint",
+            "cmd": "./run.sh sim churn.py --config scenarios/churn_prefix_scale_sprint_sim.json --out results/sim_churn_prefix_scale_sprint"
+        },
+        {
+            "id": 2,
+            "name": "emu prefix-scale sprint",
+            "cmd": "./run.sh emu churn.py --config scenarios/churn_prefix_scale_sprint.json --out results/emu_churn_prefix_scale_sprint"
+        }
+    ]
+}

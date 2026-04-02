@@ -67,10 +67,10 @@ def default_out_dir(cfg, runner="sim"):
     """Derive a default output directory from the config.
 
     Examples:
-      grid [3]     → results/sim_churn_3x3
-      grid [4]     → results/sim_churn_4x4
-      grid [3,4]   → results/sim_churn
-      sprint       → results/sim_churn_sprint
+      grid [3]     -> results/sim_churn_3x3
+      grid [4]     -> results/sim_churn_4x4
+      grid [3,4]   -> results/sim_churn
+      sprint       -> results/sim_churn_sprint
     """
     topo = cfg.get("topology", "grid")
     if topo != "grid":
@@ -143,9 +143,9 @@ def build_random_churn_events(num_prefixes, phase2_start, *,
     Parameters
     ----------
     all_links : list[(str, str)] | None
-        Full list of links to sample from.  ``None`` → single link.
+        Full list of links to sample from.  ``None`` -> single link.
     all_nodes : list[str] | None
-        Full list of node names to sample from.  ``None`` → *churn_node*.
+        Full list of node names to sample from.  ``None`` -> *churn_node*.
     prefix_churn_rate : float
         Mean prefix-churn events per second (independent stream).
         0 means prefix events are coupled to link failures (legacy behaviour).
@@ -208,6 +208,66 @@ def build_random_churn_events(num_prefixes, phase2_start, *,
             events.append({"time": round(t_announce, 3), "type": "prefix_announce",
                            "node": node, "prefix": pfx})
             t = t_withdraw
+
+    events.sort(key=lambda e: e["time"])
+    return events
+
+
+def build_prefix_scaling_events(num_prefixes, phase2_start, *,
+                                per_prefix_rate, churn_node,
+                                window_end, seed=42,
+                                recovery_delay=3.0,
+                                all_nodes=None):
+    """Build independent per-prefix Poisson churn streams (no link events).
+
+    Each prefix gets its own independent Poisson stream of withdraw/announce
+    pairs at *per_prefix_rate* events/s.  More prefixes -> proportionally more
+    total churn events in the network.
+
+    Parameters
+    ----------
+    per_prefix_rate : float
+        Mean withdraw events per second **per prefix**.
+    all_nodes : list[str] | None
+        Node pool for distributing prefixes.  Each prefix is assigned to a
+        random node at creation time and stays there throughout.
+    """
+    if num_prefixes <= 0 or per_prefix_rate <= 0:
+        return []
+
+    rng = random.Random(seed)
+    nodes_pool = all_nodes if all_nodes else ([churn_node] if churn_node else [])
+    if not nodes_pool:
+        return []
+
+    events = []
+
+    # Assign each prefix to a random node (stable across events)
+    prefix_assignments = []
+    for i in range(num_prefixes):
+        node = rng.choice(nodes_pool)
+        pfx = f"/data/{node}/pfx{i}"
+        prefix_assignments.append((node, pfx))
+
+    # Generate independent Poisson stream per prefix
+    for node, pfx in prefix_assignments:
+        t = phase2_start
+        while True:
+            gap = rng.expovariate(per_prefix_rate)
+            t_withdraw = t + gap
+            if t_withdraw >= window_end - 2.0:
+                break
+            pause = max(rng.expovariate(1.0 / recovery_delay), 1.0)
+            t_announce = min(t_withdraw + pause, window_end - 0.1)
+            events.append({"time": round(t_withdraw, 3),
+                           "type": "prefix_withdraw",
+                           "node": node, "prefix": pfx})
+            events.append({"time": round(t_announce, 3),
+                           "type": "prefix_announce",
+                           "node": node, "prefix": pfx})
+            # Advance past announce to prevent overlapping cycles on the
+            # same prefix (avoids double-withdraw without intervening announce).
+            t = t_announce
 
     events.sort(key=lambda e: e["time"])
     return events
@@ -304,9 +364,9 @@ def auto_plot(out_dir, *, sim_dir="", emu_dir=""):
     ``results/emu_churn_random`` and vice-versa.
 
     Derives plot output directory from out_dir:
-      results/sim_churn_3x3    → results/plots_3x3
-      results/sim_churn_sprint → results/plots_sprint
-      results/sim_churn        → results/plots
+      results/sim_churn_3x3    -> results/plots_3x3
+      results/sim_churn_sprint -> results/plots_sprint
+      results/sim_churn        -> results/plots
     """
     import subprocess
     script = os.path.join(_REPO_DIR, "plot_churn.py")

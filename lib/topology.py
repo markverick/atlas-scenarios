@@ -62,6 +62,17 @@ def linear_stats(n):
     return n, n - 1
 
 
+def _write_topo(lines, path=None):
+    """Join lines into topology content and optionally write to disk."""
+    content = "\n".join(lines) + "\n"
+    if path:
+        import os
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write(content)
+    return content
+
+
 def generate_ndnsim_linear_topo(names, bw="10Mbps", delay_ms=10, path=None):
     """Write an ndnSIM topology file for a linear chain of named nodes.
 
@@ -82,16 +93,10 @@ def generate_ndnsim_linear_topo(names, bw="10Mbps", delay_ms=10, path=None):
     for i in range(len(names) - 1):
         lines.append(f"{names[i]}  {names[i+1]}  {bw}  1  {delay_ms}ms  100")
 
-    content = "\n".join(lines) + "\n"
-    if path:
-        import os
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w") as f:
-            f.write(content)
-    return content
+    return _write_topo(lines, path)
 
 
-def generate_ndnsim_topo(n, bw="10Mbps", delay_ms=10, path=None):
+def generate_ndnsim_topo(n, bw="10Mbps", delay_ms=10, path=None, queue_size=100):
     """Write an ndnSIM topology file for an NxN grid.
 
     Returns the file content as a string. If path is given, also writes to disk.
@@ -111,15 +116,11 @@ def generate_ndnsim_topo(n, bw="10Mbps", delay_ms=10, path=None):
     for r in range(n):
         for c in range(n):
             if c + 1 < n:
-                lines.append(f"n{r}_{c}  n{r}_{c+1}  {bw}  1  {delay_ms}ms  100")
+                lines.append(f"n{r}_{c}  n{r}_{c+1}  {bw}  1  {delay_ms}ms  {queue_size}")
             if r + 1 < n:
-                lines.append(f"n{r}_{c}  n{r+1}_{c}  {bw}  1  {delay_ms}ms  100")
+                lines.append(f"n{r}_{c}  n{r+1}_{c}  {bw}  1  {delay_ms}ms  {queue_size}")
 
-    content = "\n".join(lines) + "\n"
-    if path:
-        with open(path, "w") as f:
-            f.write(content)
-    return content
+    return _write_topo(lines, path)
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +173,7 @@ def conf_stats(conf_path):
 
 
 def generate_ndnsim_topo_from_conf(conf_path, bw="10Mbps", delay_ms=None,
-                                   path=None):
+                                   path=None, queue_size=100):
     """Convert a Mini-NDN .conf topology to ndnSIM topology file format.
 
     If delay_ms is None, uses the delay from the .conf file (or 10ms default).
@@ -193,14 +194,9 @@ def generate_ndnsim_topo_from_conf(conf_path, bw="10Mbps", delay_ms=None,
     lines.append("# srcNode  dstNode  bandwidth  metric  delay  queue")
     for src, dst, params in links:
         delay = f"{delay_ms}ms" if delay_ms is not None else params.get("delay", "10ms")
-        lines.append(f"{src}  {dst}  {bw}  1  {delay}  100")
+        lines.append(f"{src}  {dst}  {bw}  1  {delay}  {queue_size}")
 
-    content = "\n".join(lines) + "\n"
-    if path:
-        _os.makedirs(_os.path.dirname(path), exist_ok=True)
-        with open(path, "w") as f:
-            f.write(content)
-    return content
+    return _write_topo(lines, path)
 
 
 def build_conf_topo(conf_path, delay="10ms", bw=10):

@@ -8,7 +8,7 @@ Usage:
     ./run.sh sim scalability --config scenarios/paper.json
     sudo ./run.sh emu scalability --config scenarios/paper.json
 
-Config file format — see scenarios/ for examples.
+Config file format -- see scenarios/ for examples.
 """
 
 import json
@@ -46,6 +46,9 @@ _SCHEMA = {
     "churn_interval":        (float, 5.0),       # mean inter-cycle gap (s), exponential
     "churn_recovery_delay":  (float, 3.0),       # mean recovery time (s), exponential
     "churn_prefix_rate":     (float, 0.0),       # independent prefix churn rate (events/s); 0 = coupled to link events
+    "per_prefix_rate":       (float, 0.0),       # per-prefix churn rate (events/s/prefix) for prefix_scaling mode
+    "prefix_counts":         (list,  []),         # list of num_prefixes to sweep (prefix_scaling mode); empty = use num_prefixes
+    "modes":                 (list,  []),         # routing modes to run; empty = ["baseline","two_step","one_step"]
 
     # Churn-after-convergence mode
     "churn_after_convergence": (bool, False),    # True = churn starts right after DV convergence + margin
@@ -150,7 +153,3 @@ def apply_config_overrides(args):
     if args.dead_interval:
         dv["router_dead_interval"] = args.dead_interval
     return args.delay, args.bw, dv or None
-    parser.add_argument(
-        "--config", metavar="FILE",
-        help="JSON scenario config file (overrides other CLI flags)",
-    )

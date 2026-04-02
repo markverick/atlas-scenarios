@@ -181,6 +181,21 @@ churn (link failure/recovery + prefix withdraw/re-announce). Runs the same three
 modes as the one-step comparison (baseline, two_step, one_step) and compares
 routing traffic in each phase.
 
+The `churn_after_convergence` option defers churn events until DV routing has
+converged (detected via `RouterReachableEvent`), eliminating the need to
+hard-code a convergence delay.
+
+**Prefix-scaling mode:** When `per_prefix_rate` > 0 in the scenario config,
+each prefix gets its own independent Poisson churn stream (withdraw/re-announce
+pairs). Combined with `prefix_counts` (a list of prefix counts to sweep), this
+measures how routing overhead scales with the number of active prefixes.
+
+```bash
+# Prefix-scaling sweep (Sprint topology)
+python3 sim/churn.py --config scenarios/churn_prefix_scale_sprint.json
+python3 plot_prefix_scale.py results/sim_churn_sprint/churn.csv
+```
+
 The churn framework is modular — adding a new topology requires only:
 1. Add an entry to `KNOWN_TOPOLOGIES` in `lib/churn_common.py`
 2. Create a scenario JSON with `"topology": "<name>"`
@@ -189,6 +204,8 @@ Scenario definitions:
 - `scenarios/churn.json` — 3×3 grid, 60 s window
 - `scenarios/churn_4x4.json` — 4×4 grid, 60 s window
 - `scenarios/churn_sprint.json` — Sprint PoP, 120 s window
+- `scenarios/churn_random_*.json` — Random link/prefix churn variants (3×3, 4×4, 5×5, Sprint, conv-start modes)
+- `scenarios/churn_prefix_scale_sprint.json` — Prefix-scaling sweep on Sprint topology
 
 Output: `results/{sim,emu}_churn_{3x3,4x4,sprint}/churn.csv` + plots in `results/plots_{3x3,4x4,sprint}/`.
 
@@ -218,6 +235,9 @@ The JSON schema is implemented in `lib/config.py`:
 - `advertise_interval`: DV advertisement interval (ms, `0` = default)
 - `router_dead_interval`: DV dead interval (ms, `0` = default)
 - `prefix_sync_delay`: delay (ms) before starting PrefixSync SVS (`0` = immediate)
+- `per_prefix_rate`: per-prefix churn rate (events/s/prefix) for prefix-scaling mode
+- `prefix_counts`: list of num_prefixes to sweep; empty = use `num_prefixes`
+- `modes`: routing modes to run; empty = `["baseline", "two_step", "one_step"]`
 - `cores`: CPU core limit (`0` = no limit)
 
 ### Comparison Plots
@@ -309,6 +329,7 @@ plot_routing.py             # Routing aggregate plots (convergence, packets, byt
 plot_routing_timeseries.py  # Wireshark-style per-packet time-series plots
 plot_onestep.py             # One-step vs two-step comparison plots
 plot_churn.py               # Churn scenario plots (bars, CDF, time-series)
+plot_prefix_scale.py        # Prefix-scaling overhead plots
 scenarios/                  # Reproducible scenario configs
 ├── paper.json
 ├── quick.json
@@ -317,7 +338,9 @@ scenarios/                  # Reproducible scenario configs
 ├── onestep_twostep.json    #   One-step vs two-step comparison config
 ├── churn.json              #   3×3 grid churn
 ├── churn_4x4.json          #   4×4 grid churn
-└── churn_sprint.json       #   Sprint PoP churn
+├── churn_sprint.json       #   Sprint PoP churn
+├── churn_random_*.json     #   Random churn variants (3×3–5×5, Sprint, conv-start)
+└── churn_prefix_scale_sprint.json  # Prefix-scaling sweep on Sprint
 deps/                       # Built dependencies (gitignored)
 results/                    # Output CSVs and plots (gitignored)
 ```
