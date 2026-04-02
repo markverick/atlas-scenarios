@@ -102,12 +102,13 @@ Usage: ./run.sh <command> [args...]
 
 Commands:
   setup                      Install all dependencies from source
-  emu demo                   Run 3-node file transfer demo (needs sudo)
-  emu scalability [opts]     Run NxN grid scalability test (needs sudo)
-  emu routing [opts]         Run routing-only traffic measurement (needs sudo)
-  sim demo [opts]            Run 3-node ndndSIM demo
-  sim scalability [opts]     Run NxN grid ndndSIM scalability test
-  sim routing [opts]         Run routing-only ndndSIM traffic measurement
+  build                      Build all binaries (ns-3, ndnd, ndnd-traffic)
+  emu [--no-build] demo      Run 3-node file transfer demo (needs sudo)
+  emu [--no-build] scalability [opts]  Run NxN grid scalability test (needs sudo)
+  emu [--no-build] routing [opts]      Run routing-only traffic measurement (needs sudo)
+  sim [--no-build] demo [opts]         Run 3-node ndndSIM demo
+  sim [--no-build] scalability [opts]  Run NxN grid ndndSIM scalability test
+  sim [--no-build] routing [opts]      Run routing-only ndndSIM traffic measurement
   plot [opts]                Generate comparison plots from CSV results
   plot-routing [opts]        Generate routing-only traffic plots
 
@@ -158,14 +159,28 @@ case "$1" in
     setup)
         exec "$REPO_DIR/setup.sh"
         ;;
+    build)
+        shift
+        echo "[build] Building all binaries"
+        ensure_ns3_ready
+        build_ndnd
+        build_ndnd_traffic
+        fix_results_owner
+        echo "[build] Done"
+        exit 0
+        ;;
     emu)
         shift
-        [[ $# -lt 1 ]] && { echo "Usage: ./run.sh emu <subcmd> [opts]"; exit 1; }
+        no_build=false
+        [[ "$1" == "--no-build" ]] && { no_build=true; shift; }
+        [[ $# -lt 1 ]] && { echo "Usage: ./run.sh emu [--no-build] <subcmd> [opts]"; exit 1; }
         subcmd="$1"; shift
         [[ "$subcmd" != *.py ]] && subcmd="${subcmd}.py"
         cleanup_minindn
-        build_ndnd
-        build_ndnd_traffic
+        if ! $no_build; then
+            build_ndnd
+            build_ndnd_traffic
+        fi
 
         rc=0
         python3 "$REPO_DIR/emu/$subcmd" "$@" || rc=$?
@@ -175,12 +190,16 @@ case "$1" in
         ;;
     sim)
         shift
-        [[ $# -lt 1 ]] && { echo "Usage: ./run.sh sim <subcmd> [opts]"; exit 1; }
+        no_build=false
+        [[ "$1" == "--no-build" ]] && { no_build=true; shift; }
+        [[ $# -lt 1 ]] && { echo "Usage: ./run.sh sim [--no-build] <subcmd> [opts]"; exit 1; }
         subcmd="$1"; shift
         [[ "$subcmd" != *.py ]] && subcmd="${subcmd}.py"
 
         fix_results_owner
-        ensure_ns3_ready
+        if ! $no_build; then
+            ensure_ns3_ready
+        fi
 
         run_cmd=(python3)
         if [[ $EUID -eq 0 && -n "$ATLAS_USER" ]]; then

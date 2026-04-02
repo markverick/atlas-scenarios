@@ -3,33 +3,38 @@
     "jobs": [
         {
             "id": 1,
-            "name": "sim churn 3x3",
-            "cmd": "./run.sh sim churn.py --config scenarios/churn_random_3x3.json"
+            "name": "build",
+            "cmd": "./run.sh build"
         },
         {
             "id": 2,
-            "name": "emu churn 3x3",
-            "cmd": "./run.sh emu churn.py --config scenarios/churn_random_3x3.json"
+            "name": "sim churn 3x3",
+            "cmd": "./run.sh sim --no-build churn.py --config scenarios/churn_random_3x3.json"
         },
         {
             "id": 3,
-            "name": "sim churn 4x4",
-            "cmd": "./run.sh sim churn.py --config scenarios/churn_random_4x4.json"
+            "name": "emu churn 3x3",
+            "cmd": "./run.sh emu --no-build churn.py --config scenarios/churn_random_3x3.json"
         },
         {
             "id": 4,
-            "name": "emu churn 4x4",
-            "cmd": "./run.sh emu churn.py --config scenarios/churn_random_4x4.json"
+            "name": "sim churn 4x4",
+            "cmd": "./run.sh sim --no-build churn.py --config scenarios/churn_random_4x4.json"
         },
         {
             "id": 5,
-            "name": "sim churn 5x5",
-            "cmd": "./run.sh sim churn.py --config scenarios/churn_random_5x5.json"
+            "name": "emu churn 4x4",
+            "cmd": "./run.sh emu --no-build churn.py --config scenarios/churn_random_4x4.json"
         },
         {
             "id": 6,
+            "name": "sim churn 5x5",
+            "cmd": "./run.sh sim --no-build churn.py --config scenarios/churn_random_5x5.json"
+        },
+        {
+            "id": 7,
             "name": "emu churn 5x5",
-            "cmd": "./run.sh emu churn.py --config scenarios/churn_random_5x5.json"
+            "cmd": "./run.sh emu --no-build churn.py --config scenarios/churn_random_5x5.json"
         }
     ]
 }
