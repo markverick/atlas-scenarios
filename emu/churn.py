@@ -36,6 +36,7 @@ from lib.result_adapter import parse_router_reachable_logs
 from emu._helpers import (
     NETWORK,
     setup_grid, setup_conf_topo, start_tcpdump, stop_tcpdump,
+    blackhole_link, restore_link,
 )
 from minindn.helpers import dv_util
 from lib.churn_common import (
@@ -104,7 +105,7 @@ def schedule_churn_events(ndn, hosts, churn_events, dv_start):
             def do_link_down(s=src, d=dst):
                 info(f"  CHURN: link DOWN {s}--{d}\n")
                 with lock:
-                    ndn.net.configLinkStatus(s, d, "down")
+                    blackhole_link(ndn.net, s, d)
             t = threading.Timer(delay, do_link_down)
 
         elif etype == "link_up":
@@ -112,7 +113,7 @@ def schedule_churn_events(ndn, hosts, churn_events, dv_start):
             def do_link_up(s=src, d=dst):
                 info(f"  CHURN: link UP {s}--{d}\n")
                 with lock:
-                    ndn.net.configLinkStatus(s, d, "up")
+                    restore_link(ndn.net, s, d)
             t = threading.Timer(delay, do_link_up)
 
         elif etype == "prefix_withdraw":

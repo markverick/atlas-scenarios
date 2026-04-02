@@ -100,3 +100,32 @@ def collect_memory(hosts, process_name="ndnd"):
             if val.isdigit():
                 samples.append(int(val))
     return sum(samples) // max(len(samples), 1)
+
+
+# ---- L2 black-hole helpers (tc netem) ----
+# These mirror the sim's RateErrorModel approach: packets are silently
+# dropped at the queueing discipline level, but the interface stays UP
+# so UDP sockets (and therefore NDNd faces) remain alive.
+
+def _link_intfs(net, src_name, dst_name):
+    """Return (srcIntf, dstIntf) for the link between two host names."""
+    src = net.nameToNode[src_name]
+    dst = net.nameToNode[dst_name]
+    connections = src.connectionsTo(dst)
+    if not connections:
+        raise RuntimeError(f"No link between {src_name} and {dst_name}")
+    return connections[0]          # (srcIntf, dstIntf)
+
+
+def blackhole_link(net, src_name, dst_name):
+    """Drop 100% of packets on src<->dst link (interface stays UP)."""
+    src_intf, dst_intf = _link_intfs(net, src_name, dst_name)
+    for intf in (src_intf, dst_intf):
+        intf.cmd(f"tc qdisc replace dev {intf.name} root netem loss 100%")
+
+
+def restore_link(net, src_name, dst_name):
+    """Remove the black-hole qdisc, restoring normal forwarding."""
+    src_intf, dst_intf = _link_intfs(net, src_name, dst_name)
+    for intf in (src_intf, dst_intf):
+        intf.cmd(f"tc qdisc del dev {intf.name} root 2>/dev/null; true")
