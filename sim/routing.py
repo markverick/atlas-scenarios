@@ -7,7 +7,7 @@ Measures routing packet counts, traffic volume, and convergence time.
 
 Usage:
   python3 sim/routing.py
-  python3 sim/routing.py --config scenarios/routing.json
+    python3 sim/routing.py --grids 2 3 4 --out results/sim_routing
 """
 
 import argparse

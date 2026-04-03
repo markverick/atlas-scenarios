@@ -3,8 +3,8 @@
 Scalability test for NDNd DV routing on NxN grid topologies.
 
 Measures DV convergence time, file-transfer success, and memory usage
-across increasing grid sizes. Results are written to a CSV file that
-can be plotted with plot.py.
+across increasing grid sizes. Results are written to a CSV file for
+downstream analysis.
 
 Usage (inside container):
     python3 emu/scalability.py

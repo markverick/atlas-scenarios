@@ -6,7 +6,7 @@ Both emu and sim scenarios produce raw outputs in different forms:
   - Simulation: ndndSIM rate-trace CSVs
 
 This adapter translates both into a common TrialResult that gets written
-to the shared CSV format consumed by plot.py.
+to the shared CSV format consumed by downstream analysis tooling.
 """
 
 import csv

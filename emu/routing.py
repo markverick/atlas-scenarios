@@ -4,7 +4,7 @@ Routing-only emulation — measure DV routing traffic burst (no app traffic).
 
 Usage (inside container, needs sudo):
     python3 emu/routing.py
-    python3 emu/routing.py --config scenarios/routing.json
+    python3 emu/routing.py --grids 2 3 4 --out results/emu_routing
 """
 
 import argparse

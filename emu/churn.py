@@ -15,13 +15,12 @@ For each topology (or grid size), runs three variants:
   3. one_step  — prefixes in DV adverts under churn
 
 Usage (needs sudo):
-  sudo python3 emu/churn.py --config scenarios/churn.json
-  sudo python3 emu/churn.py --config scenarios/churn_4x4.json
-  sudo python3 emu/churn.py --config scenarios/churn_sprint.json
+    sudo python3 emu/churn.py --config experiments/prefix_scale/scenarios/sprint_twostep_emu_0to50.json
 """
 
 import argparse
 import csv
+import json
 import os
 import sys
 import time
@@ -49,18 +48,69 @@ from lib.churn_common import (
 from lib.topology import grid_links, grid_nodes
 
 
+def _zero_counts(*names):
+    return {name: 0 for name in names}
+
+
+def _init_variant_stats(tag, *, topology, mode, num_prefixes, trial):
+    return {
+        "tag": tag,
+        "topology": topology,
+        "mode": mode,
+        "num_prefixes": num_prefixes,
+        "trial": trial,
+        "planned": _zero_counts(
+            "link_down",
+            "link_up",
+            "prefix_withdraw",
+            "prefix_announce",
+        ),
+        "executed": _zero_counts(
+            "link_down",
+            "link_up",
+            "prefix_withdraw",
+            "prefix_announce",
+        ),
+        "retried": _zero_counts(
+            "prefix_withdraw",
+            "prefix_announce",
+            "bulk_cleanup",
+        ),
+        "skipped": _zero_counts(
+            "prefix_withdraw",
+            "prefix_announce",
+            "bulk_cleanup",
+        ),
+        "timing_s": {},
+    }
+
+
+def _bump(stats, bucket, name, delta=1):
+    stats[bucket][name] = stats[bucket].get(name, 0) + delta
+
+
+def _write_variant_stats(out_dir, tag, stats):
+    path = os.path.join(out_dir, f"churn-stats-{tag}.json")
+    with open(path, "w") as f:
+        json.dump(stats, f, indent=2, sort_keys=True)
+    return path
+
+
 # ---- Host-level prefix management (topology-agnostic) ----
 
 def announce_prefixes(hosts, num_prefixes):
     """Announce synthetic prefixes on each host via ``ndnd put --expose``."""
-    announced = []
+    announced_hosts = []
     for host in hosts:
+        host_started = False
         for j in range(num_prefixes):
             pfx = f"/data/{host.name}/pfx{j}"
             host.cmd(f'ndnd put --expose "{pfx}" < /dev/null &')
-            announced.append((host, pfx))
+            host_started = True
+        if host_started:
+            announced_hosts.append(host)
     time.sleep(0.5)
-    return announced
+    return announced_hosts
 
 
 def withdraw_prefix(host, pfx):
@@ -68,16 +118,33 @@ def withdraw_prefix(host, pfx):
     host.cmd(f"pkill -f 'ndnd put --expose.*{pfx}' 2>/dev/null; true")
 
 
-def withdraw_all(announced):
-    """Kill all background ``ndnd put --expose`` processes."""
-    for host, pfx in announced:
-        withdraw_prefix(host, pfx)
+def withdraw_all(announced_hosts, stats=None):
+    """Kill all background ``ndnd put --expose`` processes per host.
+
+    Per-prefix teardown scales poorly on Sprint prefix sweeps because each
+    ``host.cmd()`` round-trip blocks on the Mininet shell. One bulk kill per
+    host keeps shutdown bounded even when thousands of publishers were started.
+    """
+    for host in announced_hosts:
+        try:
+            host.cmd("pkill -f 'ndnd put --expose' 2>/dev/null; true")
+        except (AssertionError, OSError):
+            if stats is not None:
+                _bump(stats, "retried", "bulk_cleanup")
+            info(f"  CHURN: WARNING: bulk cleanup retry {host.name}\n")
+            time.sleep(0.2)
+            try:
+                host.cmd("pkill -f 'ndnd put --expose' 2>/dev/null; true")
+            except (AssertionError, OSError):
+                if stats is not None:
+                    _bump(stats, "skipped", "bulk_cleanup")
+                info(f"  CHURN: WARNING: bulk cleanup skipped {host.name}\n")
     time.sleep(0.3)
 
 
 # ---- Churn event scheduler ----
 
-def schedule_churn_events(ndn, hosts, churn_events, dv_start):
+def schedule_churn_events(ndn, hosts, churn_events, dv_start, stats=None):
     """Schedule churn events as timed threads (wall-clock based).
 
     Parameters
@@ -105,6 +172,8 @@ def schedule_churn_events(ndn, hosts, churn_events, dv_start):
             def do_link_down(s=src, d=dst):
                 info(f"  CHURN: link DOWN {s}--{d}\n")
                 with lock:
+                    if stats is not None:
+                        _bump(stats, "executed", "link_down")
                     blackhole_link(ndn.net, s, d)
             t = threading.Timer(delay, do_link_down)
 
@@ -113,6 +182,8 @@ def schedule_churn_events(ndn, hosts, churn_events, dv_start):
             def do_link_up(s=src, d=dst):
                 info(f"  CHURN: link UP {s}--{d}\n")
                 with lock:
+                    if stats is not None:
+                        _bump(stats, "executed", "link_up")
                     restore_link(ndn.net, s, d)
             t = threading.Timer(delay, do_link_up)
 
@@ -122,14 +193,20 @@ def schedule_churn_events(ndn, hosts, churn_events, dv_start):
             def do_withdraw(h=host, p=pfx, n=node_name):
                 info(f"  CHURN: prefix WITHDRAW {n} {p}\n")
                 with lock:
+                    if stats is not None:
+                        _bump(stats, "executed", "prefix_withdraw")
                     try:
                         withdraw_prefix(h, p)
                     except (AssertionError, OSError):
+                        if stats is not None:
+                            _bump(stats, "retried", "prefix_withdraw")
                         info(f"  CHURN: WARNING: withdraw retry {n} {p}\n")
                         time.sleep(0.2)
                         try:
                             withdraw_prefix(h, p)
                         except (AssertionError, OSError):
+                            if stats is not None:
+                                _bump(stats, "skipped", "prefix_withdraw")
                             info(f"  CHURN: WARNING: withdraw skipped {n} {p}\n")
             t = threading.Timer(delay, do_withdraw)
 
@@ -139,14 +216,20 @@ def schedule_churn_events(ndn, hosts, churn_events, dv_start):
             def do_announce(h=host, p=pfx, n=node_name):
                 info(f"  CHURN: prefix ANNOUNCE {n} {p}\n")
                 with lock:
+                    if stats is not None:
+                        _bump(stats, "executed", "prefix_announce")
                     try:
                         h.cmd(f'ndnd put --expose "{p}" < /dev/null &')
                     except (AssertionError, OSError):
+                        if stats is not None:
+                            _bump(stats, "retried", "prefix_announce")
                         info(f"  CHURN: WARNING: announce retry {n} {p}\n")
                         time.sleep(0.2)
                         try:
                             h.cmd(f'ndnd put --expose "{p}" < /dev/null &')
                         except (AssertionError, OSError):
+                            if stats is not None:
+                                _bump(stats, "skipped", "prefix_announce")
                             info(f"  CHURN: WARNING: announce skipped {n} {p}\n")
             t = threading.Timer(delay, do_announce)
 
@@ -170,6 +253,14 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
     """Run one variant and return a list of result dicts."""
     tag = make_tag(mode, topo_id_str, num_prefixes, trial)
     pfx_count = num_prefixes if mode != "baseline" else 0
+    run_t0 = time.monotonic()
+    stats = _init_variant_stats(
+        tag,
+        topology=topology,
+        mode=mode,
+        num_prefixes=pfx_count,
+        trial=trial,
+    )
 
     churn_after_conv = (cfg or {}).get("churn_after_convergence", False)
     churn_margin = (cfg or {}).get("convergence_margin_s", 10.0)
@@ -186,22 +277,29 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
     else:
         dvc.pop("one_step", None)
 
+    t0 = time.monotonic()
     ndn, num_nodes, num_links = ndn_factory()
     cap_tag, cap_paths = start_tcpdump(ndn.net.hosts, prefix="ndnd_churn")
-
     dv_start = dv_util.setup(ndn, network=NETWORK, dv_config=dvc or None)
+    stats["timing_s"]["setup"] = round(time.monotonic() - t0, 3)
 
     conv_elapsed = 0.0
+    t0 = time.monotonic()
     try:
         conv_elapsed = dv_util.converge(ndn.net.hosts, deadline=deadline,
                                         network=NETWORK, start=dv_start)
     except Exception:
         pass
+    stats["timing_s"]["converge_wait"] = round(time.monotonic() - t0, 3)
 
     # Announce synthetic prefixes
     announced = []
     if pfx_count > 0:
+        t0 = time.monotonic()
         announced = announce_prefixes(ndn.net.hosts, pfx_count)
+        stats["timing_s"]["initial_prefix_announce"] = round(time.monotonic() - t0, 3)
+    else:
+        stats["timing_s"]["initial_prefix_announce"] = 0.0
 
     # Determine phase boundary and event timing
     if churn_after_conv:
@@ -253,6 +351,11 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
             pfx_count, evt_start,
             link_src=link_src, link_dst=link_dst, churn_node=churn_node)
 
+    for ev in churn_events:
+        etype = ev["type"]
+        if etype in stats["planned"]:
+            _bump(stats, "planned", etype)
+
     if churn_after_conv:
         # Shift relative offsets to absolute times for the wall-clock scheduler
         churn_events_abs = []
@@ -261,10 +364,10 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
             ev_abs["time"] = ev["time"] + phase2_start_rel
             churn_events_abs.append(ev_abs)
         timers = schedule_churn_events(ndn, ndn.net.hosts,
-                                       churn_events_abs, dv_start)
+                                       churn_events_abs, dv_start, stats)
     else:
         timers = schedule_churn_events(ndn, ndn.net.hosts,
-                                       churn_events, dv_start)
+                                       churn_events, dv_start, stats)
 
     # Write event log CSV (for plot markers) — use absolute times
     evt_csv = os.path.join(out_dir, f"event-log-{tag}.csv")
@@ -286,8 +389,10 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
     else:
         window_end = dv_start + sim_time
     now = time.time()
+    t0 = time.monotonic()
     if now < window_end:
         time.sleep(window_end - now)
+    stats["timing_s"]["observation_wait"] = round(time.monotonic() - t0, 3)
 
     for t in timers:
         t.cancel()
@@ -295,15 +400,19 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
     stop_tcpdump(ndn.net.hosts, cap_tag, prefix="ndnd_churn")
 
     # Parse per-packet events
+    t0 = time.monotonic()
     pkt_events = parse_pcap_packets(cap_paths.values(), time_origin=dv_start)
+    stats["timing_s"]["pcap_parse"] = round(time.monotonic() - t0, 3)
 
     # Save per-packet CSV
     pkt_csv = os.path.join(out_dir, f"packet-trace-{tag}.csv")
+    t0 = time.monotonic()
     with open(pkt_csv, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["Time", "Category", "Bytes"])
         for t_s, cat, b in pkt_events:
             w.writerow([f"{t_s:.6f}", cat, b])
+    stats["timing_s"]["packet_csv_write"] = round(time.monotonic() - t0, 3)
 
     # Split traffic by phase using actual boundary
     phases = parse_packet_events_by_phase(pkt_events, phase2_start_rel)
@@ -313,13 +422,11 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
         os.path.join(h.params['params']['homeDir'], 'log', 'dv.log')
         for h in ndn.net.hosts
     ]
+    t0 = time.monotonic()
     conv_time = parse_router_reachable_logs(dv_log_paths, num_nodes=num_nodes)
+    stats["timing_s"]["convergence_log_parse"] = round(time.monotonic() - t0, 3)
 
-    if announced:
-        withdraw_all(announced)
-    ndn.stop()
-
-    return build_result_rows(
+    rows = build_result_rows(
         phases,
         topology=topology,
         grid_size=grid_size,
@@ -332,6 +439,31 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
         phase2_start=phase2_start_rel,
         convergence_s=conv_time,
     )
+
+    t0 = time.monotonic()
+    try:
+        if announced:
+            withdraw_all(announced, stats)
+    finally:
+        try:
+            ndn.stop()
+        except (AssertionError, OSError):
+            info("  CHURN: WARNING: ndn.stop() incomplete; continuing with saved results\n")
+    stats["timing_s"]["cleanup"] = round(time.monotonic() - t0, 3)
+    stats["timing_s"]["total"] = round(time.monotonic() - run_t0, 3)
+
+    stats_path = _write_variant_stats(out_dir, tag, stats)
+    info(
+        "  CHURN: stats "
+        f"planned(a={stats['planned']['prefix_announce']},w={stats['planned']['prefix_withdraw']}) "
+        f"retried(a={stats['retried']['prefix_announce']},w={stats['retried']['prefix_withdraw']},c={stats['retried']['bulk_cleanup']}) "
+        f"skipped(a={stats['skipped']['prefix_announce']},w={stats['skipped']['prefix_withdraw']},c={stats['skipped']['bulk_cleanup']}) "
+        f"timing(total={stats['timing_s']['total']:.1f}s, obs={stats['timing_s']['observation_wait']:.1f}s, "
+        f"parse={stats['timing_s']['pcap_parse']:.1f}s, cleanup={stats['timing_s']['cleanup']:.1f}s)\n"
+    )
+    info(f"  CHURN: wrote stats {stats_path}\n")
+
+    return rows
 
 
 # ---- Topology dispatchers ----
@@ -508,6 +640,7 @@ def main():
         writer = csv.DictWriter(f, fieldnames=FIELDNAMES)
         if csv_mode == "w":
             writer.writeheader()
+            f.flush()
 
         if topo_name == "grid":
             _run_grid(cfg, dv_config, out_dir, writer, f)
@@ -521,7 +654,8 @@ def main():
     print(f"\nResults written to {out_csv}")
 
     # Auto-generate plots and summary (auto-detects sibling sim dir)
-    auto_plot(out_dir, emu_dir=out_dir)
+    plot_kind = "prefix_scale" if cfg.get("churn_mode") == "prefix_scaling" else "churn"
+    auto_plot(out_dir, emu_dir=out_dir, plot_kind=plot_kind)
 
 
 if __name__ == "__main__":

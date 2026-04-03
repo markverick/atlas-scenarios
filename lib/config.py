@@ -5,10 +5,10 @@ Loads experiment parameters from a JSON config file so that paper
 scenarios are fully reproducible with a single version-controlled file.
 
 Usage:
-    ./run.sh sim scalability --config scenarios/paper.json
-    sudo ./run.sh emu scalability --config scenarios/paper.json
+    ./run.sh sim churn.py --config experiments/prefix_scale/scenarios/sprint_twostep_sim_0to50.json
+    sudo ./run.sh emu churn.py --config experiments/prefix_scale/scenarios/sprint_twostep_emu_0to50.json
 
-Config file format -- see scenarios/ for examples.
+Config file format -- see experiments/*/scenarios/ for examples.
 """
 
 import json

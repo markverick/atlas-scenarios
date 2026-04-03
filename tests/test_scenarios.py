@@ -1,24 +1,23 @@
-"""Validate all scenario JSON files load without errors."""
-import glob
 import os
+
 import pytest
 
+from jobs.conventions import discover_catalog, queue_stem, selector_from_path
+from jobs.spec import build_run_context, load_job_spec, load_jobs
 from lib.config import load_config
 
 
-SCENARIO_DIR = os.path.join(os.path.dirname(__file__), "..", "scenarios")
-
-SCENARIO_FILES = sorted(glob.glob(os.path.join(SCENARIO_DIR, "*.json")))
-
-
-# Some scenarios (e.g. multihop.json) use a non-standard inline topology;
-# load_config expects topology to be a string.  Filter those out.
-_STANDARD_SCENARIOS = [p for p in SCENARIO_FILES
-                       if os.path.basename(p) not in ("multihop.json",)]
+REPO_DIR = os.path.join(os.path.dirname(__file__), "..")
+PREFIX_SCALE_SCENARIO_DIR = os.path.join(REPO_DIR, "experiments", "prefix_scale", "scenarios")
+SCENARIO_FILES = sorted(
+    os.path.join(PREFIX_SCALE_SCENARIO_DIR, name)
+    for name in os.listdir(PREFIX_SCALE_SCENARIO_DIR)
+    if name.endswith(".json")
+)
 
 
-@pytest.mark.parametrize("path", _STANDARD_SCENARIOS,
-                         ids=[os.path.basename(p) for p in _STANDARD_SCENARIOS])
+@pytest.mark.parametrize("path", SCENARIO_FILES,
+                         ids=[os.path.relpath(p, REPO_DIR) for p in SCENARIO_FILES])
 def test_scenario_loads(path):
     cfg = load_config(path)
     assert isinstance(cfg, dict)
@@ -27,18 +26,21 @@ def test_scenario_loads(path):
     assert cfg["window_s"] > 0
 
 
-JOB_DIR = os.path.join(os.path.dirname(__file__), "..")
-JOB_FILES = sorted(f for f in glob.glob(os.path.join(JOB_DIR, "jobs*.json"))
-                   if not f.endswith(".state.json"))
+QUEUE_FILES = sorted(
+    queue["path"]
+    for experiment in discover_catalog(REPO_DIR)
+    for queue in experiment["queues"]
+)
 
 
-@pytest.mark.parametrize("path", JOB_FILES,
-                         ids=[os.path.basename(p) for p in JOB_FILES])
-def test_job_file_loads(path):
-    import sys
-    sys.path.insert(0, JOB_DIR)
-    import jobs as jobs_mod
-    jobs = jobs_mod._load_jobs(path)
+@pytest.mark.parametrize("path", QUEUE_FILES,
+                         ids=[os.path.relpath(p, REPO_DIR) for p in QUEUE_FILES])
+def test_queue_file_loads(path):
+    spec = load_job_spec(path)
+    state = {}
+    selector = spec.get("selector") or selector_from_path(path, root=REPO_DIR)
+    context = build_run_context(path, spec, state, selector=selector, stem=queue_stem(path))
+    jobs = load_jobs(path, context)
     assert len(jobs) > 0
     for j in jobs:
         assert "cmd" in j

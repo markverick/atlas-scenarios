@@ -6,7 +6,7 @@ The unified emu/churn.py now handles all topologies (grid, sprint, etc.)
 based on the "topology" key in the JSON config.
 
 This wrapper is equivalent to:
-  sudo python3 emu/churn.py --config scenarios/churn_sprint.json
+  sudo python3 emu/churn.py --config experiments/prefix_scale/scenarios/sprint_twostep_emu_0to50.json
 """
 
 import sys

@@ -7,8 +7,6 @@
 #   sudo ./run.sh emu scalability [opts]     NxN grid scalability test
 #   ./run.sh sim demo [opts]                 3-node ndndSIM demo
 #   ./run.sh sim scalability [opts]          NxN grid ndndSIM scalability test
-#   ./run.sh plot [opts]                     Generate comparison plots
-
 set -eo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,15 +14,19 @@ DEPS_DIR="$REPO_DIR/deps"
 NS3_DIR="$DEPS_DIR/ns-3"
 
 # Resolve the non-root user who should own result files.
-# Prefer ATLAS_USER (set by jobs.py), fall back to SUDO_USER.
+# Prefer ATLAS_USER (set by ./jobs.sh), fall back to SUDO_USER.
 ATLAS_USER="${ATLAS_USER:-$SUDO_USER}"
 
-# When running as root, ensure results/ is owned by the real user
-# BEFORE dispatching any command.  This prevents stale root-owned
+# When running as root, ensure experiment result trees are owned by the
+# real user before dispatching commands. This prevents stale root-owned
 # files from blocking subsequent sim runs.
 fix_results_owner() {
-    if [[ $EUID -eq 0 && -n "$ATLAS_USER" && -d "$REPO_DIR/results" ]]; then
-        chown -R "$ATLAS_USER:$ATLAS_USER" "$REPO_DIR/results" 2>/dev/null || true
+    if [[ $EUID -eq 0 && -n "$ATLAS_USER" ]]; then
+        local result_dir
+        for result_dir in "$REPO_DIR/results" "$REPO_DIR/experiments"/*/results; do
+            [[ -d "$result_dir" ]] || continue
+            chown -R "$ATLAS_USER:$ATLAS_USER" "$result_dir" 2>/dev/null || true
+        done
     fi
 }
 
@@ -109,9 +111,6 @@ Commands:
   sim [--no-build] demo [opts]         Run 3-node ndndSIM demo
   sim [--no-build] scalability [opts]  Run NxN grid ndndSIM scalability test
   sim [--no-build] routing [opts]      Run routing-only ndndSIM traffic measurement
-  plot [opts]                Generate comparison plots from CSV results
-  plot-routing [opts]        Generate routing-only traffic plots
-
 Emulation options (emu scalability):
   --grids 2 3 4 5            Grid sizes to test
   --trials 1                 Repetitions per grid size
@@ -133,18 +132,12 @@ Simulation options (sim demo):
   --cores N                  Parallel build cores (0 = all)
   --out results/sim          Output directory
 
-Plot options (plot):
-  --emu results/emu/scalability.csv
-  --sim results/sim/scalability.csv
-  --out results/plots
-
 Examples:
   ./setup.sh
   sudo ./run.sh emu demo
   sudo ./run.sh emu scalability --grids 2 3 4 --trials 1
   ./run.sh sim demo
   ./run.sh sim scalability --grids 2 3 4
-  ./run.sh plot
 EOF
     exit 1
 }
@@ -208,14 +201,6 @@ case "$1" in
 
         exec "${run_cmd[@]}" "$REPO_DIR/sim/$subcmd" --ns3-dir "$NS3_DIR" "$@"
         ;;
-    plot)
-        shift
-        exec python3 "$REPO_DIR/plot.py" "$@"
-        ;;
-    plot-routing)
-        shift
-        exec python3 "$REPO_DIR/plot_routing.py" "$@"
-        ;;
     both)
         shift
         [[ $# -lt 1 ]] && { echo "Usage: sudo ./run.sh both <demo|scalability> [opts]"; exit 1; }
@@ -245,8 +230,6 @@ case "$1" in
         ensure_ns3_ready
         "${sim_cmd[@]}" "$REPO_DIR/sim/$subcmd" --ns3-dir "$NS3_DIR" "$@"
 
-        echo "=== Plotting ==="
-        python3 "$REPO_DIR/plot.py"
         ;;
     *)
         usage

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Build a static HTML gallery from results/plots*/ for GitHub Pages.
+"""Build a static HTML gallery from experiment result plot directories for GitHub Pages.
 
-Scans results/plots*/ for .png images and .md summaries, then writes
+Scans nested ``experiments/*/results/**/plots`` directories and legacy
+``results/**/plots`` directories for .png images and .md summaries, then writes
 a self-contained _site/ directory with an index and per-experiment pages.
 
 Run locally:  python3 .github/scripts/build_pages.py
@@ -12,7 +13,8 @@ import html
 import os
 import shutil
 
-RESULTS_DIR = "results"
+LEGACY_RESULTS_DIR = "results"
+EXPERIMENTS_DIR = "experiments"
 OUT_DIR = "_site"
 
 STYLE = """
@@ -30,12 +32,18 @@ pre { background: #f6f8fa; padding: 1em; border-radius: 6px; overflow-x: auto; }
 
 
 def find_plot_dirs():
-    """Return sorted list of results/plots* directories that contain PNGs."""
-    dirs = []
-    for d in sorted(glob.glob(os.path.join(RESULTS_DIR, "plots*"))):
-        if os.path.isdir(d) and glob.glob(os.path.join(d, "*.png")):
-            dirs.append(d)
-    return dirs
+    """Return sorted list of result plot directories that contain PNGs."""
+    dirs = set()
+    patterns = [
+        os.path.join(EXPERIMENTS_DIR, "*", "results", "**", "plots"),
+        os.path.join(LEGACY_RESULTS_DIR, "plots*"),
+        os.path.join(LEGACY_RESULTS_DIR, "**", "plots"),
+    ]
+    for pattern in patterns:
+        for d in sorted(glob.glob(pattern, recursive=True)):
+            if os.path.isdir(d) and glob.glob(os.path.join(d, "*.png")):
+                dirs.add(os.path.normpath(d))
+    return sorted(dirs)
 
 
 def read_summary(plot_dir):
@@ -151,7 +159,7 @@ def main():
 
     plot_dirs = find_plot_dirs()
     if not plot_dirs:
-        print("No plot directories found in results/. Building empty index.")
+        print("No plot directories found in experiment results. Building empty index.")
         build_index([])
         return
 

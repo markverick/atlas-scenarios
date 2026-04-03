@@ -105,8 +105,8 @@ Output: `results/emu/scalability.csv`, `results/sim/scalability.csv`
 ### Routing-Only Traffic Measurement
 
 ```bash
-sudo ./run.sh emu routing --config scenarios/routing.json
-./run.sh sim routing --config scenarios/routing.json
+sudo ./run.sh emu routing
+./run.sh sim routing
 ```
 
 Pure DV routing measurement with **no application traffic**. Measures routing
@@ -119,116 +119,38 @@ Both sim and emu record per-packet event data:
 Convergence is measured identically on both sides: span from the first
 `RouterReachable` event to the event completing all FIBs.
 
-Scenario definition: `scenarios/routing.json`.
-
-### Multi-hop DV Routing Test (4-node linear)
+### Prefix-Scale Experiment
 
 ```bash
-sudo ./run.sh emu multihop       # emulation (Mini-NDN)
-./run.sh sim multihop            # simulation (ndndSIM)
+# Prefix-scaling queue (Sprint topology, timestamped outputs)
+sudo ./jobs.sh start --fresh prefix_scale/sprint_twostep_0to50
+./jobs.sh status prefix_scale/sprint_twostep_0to50
 ```
 
-Topology: a — b — c — d. Tests 5 phases of DV routing changes:
+Each queue run writes to a unique timestamped output root under:
 
-| Phase | Action | Assertions |
-|-------|--------|------------|
-| initial_convergence | Announce `/app/data` on d | Prefix reachable from a, traffic flows a→d |
-| link_failure | Drop all packets on b↔c | Producer's DV router unreachable, traffic blocked |
-| link_recovery | Restore b↔c link | Prefix reachable again, traffic flows |
-| prefix_withdrawal | Withdraw `/app/data` from DV on d | Prefix gone from a's RIB, traffic blocked |
-| prefix_reannounce | Re-announce `/app/data` on d | Prefix back, traffic flows |
-
-Scenario definition: `scenarios/multihop.json`. Reports 10 assertions (2 per phase).
-
-### One-Step vs Two-Step Routing Comparison
-
-```bash
-sudo ./run.sh emu onestep --config scenarios/onestep_twostep.json
-./run.sh sim onestep --config scenarios/onestep_twostep.json
-python3 plot_onestep.py
-```
-
-Compares two routing architectures for distributing prefix-to-router mappings:
-
-| Mode | Description |
-|------|-------------|
-| **baseline** | `one_step=true`, 0 prefixes — pure DV overhead |
-| **two_step** | DV carries router reachability; PrefixSync (SVS) distributes prefix→router mappings |
-| **one_step** | Prefixes embedded directly in DV adverts; no PrefixSync subsystem |
-
-Runs on NxN grids measuring DvAdvert bytes, PrefixSync bytes, and total routing bytes.
-
-Scenario definition: `scenarios/onestep_twostep.json` (grid sizes, prefix counts, DV intervals).
-
-### Churn Scenarios (Link Failure + Prefix Events)
-
-```bash
-# Grid topologies
-sudo python3 emu/churn.py --config scenarios/churn.json       # 3×3 grid
-sudo python3 emu/churn.py --config scenarios/churn_4x4.json   # 4×4 grid
-
-# Sprint PoP topology (52 nodes, 84 links)
-sudo python3 emu/churn.py --config scenarios/churn_sprint.json
-
-# Simulation equivalents
-python3 sim/churn.py --config scenarios/churn.json
-python3 sim/churn.py --config scenarios/churn_4x4.json
-python3 sim/churn.py --config scenarios/churn_sprint.json
-```
-
-Two-phase measurement: convergence (DV boot + prefix announcement) followed by
-churn (link failure/recovery + prefix withdraw/re-announce). Runs the same three
-modes as the one-step comparison (baseline, two_step, one_step) and compares
-routing traffic in each phase.
-
-The `churn_after_convergence` option defers churn events until DV routing has
-converged (detected via `RouterReachableEvent`), eliminating the need to
-hard-code a convergence delay.
-
-**Prefix-scaling mode:** When `per_prefix_rate` > 0 in the scenario config,
-each prefix gets its own independent Poisson churn stream (withdraw/re-announce
-pairs). Combined with `prefix_counts` (a list of prefix counts to sweep), this
-measures how routing overhead scales with the number of active prefixes.
-
-```bash
-# Prefix-scaling sweep (Sprint topology)
-python3 sim/churn.py --config scenarios/churn_prefix_scale_sprint.json
-python3 plot_prefix_scale.py results/sim_churn_sprint/churn.csv
-```
+- `experiments/prefix_scale/results/sprint_twostep_0to50/<timestamp>/sim`
+- `experiments/prefix_scale/results/sprint_twostep_0to50/<timestamp>/emu`
+- `experiments/prefix_scale/results/sprint_twostep_0to50/<timestamp>/compare`
 
 PrefixSync snapshots are disabled by default in two-step mode. This avoids the
 bootstrap snapshot cliff around the historical threshold near 50 prefixes and
 makes prefix-scaling results follow the incremental-fetch path by default.
-To opt back into snapshot behavior explicitly, use
-`scenarios/churn_prefix_scale_sprint_sim_snapshots.json` or set
-`"disable_prefix_snap": false` in a scenario config.
+To opt back into snapshot behavior explicitly, set
+`"disable_prefix_snap": false` in an experiment scenario config.
 
 The churn framework is modular — adding a new topology requires only:
 1. Add an entry to `KNOWN_TOPOLOGIES` in `lib/churn_common.py`
 2. Create a scenario JSON with `"topology": "<name>"`
 
 Scenario definitions:
-- `scenarios/churn.json` — 3×3 grid, 60 s window
-- `scenarios/churn_4x4.json` — 4×4 grid, 60 s window
-- `scenarios/churn_sprint.json` — Sprint PoP, 120 s window
-- `scenarios/churn_random_*.json` — Random link/prefix churn variants (3×3, 4×4, 5×5, Sprint, conv-start modes)
-- `scenarios/churn_prefix_scale_sprint.json` — Prefix-scaling sweep on Sprint topology
+- `experiments/prefix_scale/scenarios/*.json` — Prefix-scaling experiment scenarios
 
-Output: `results/{sim,emu}_churn_{3x3,4x4,sprint}/churn.csv` + plots in `results/plots_{3x3,4x4,sprint}/`.
+Output: `experiments/prefix_scale/results/sprint_twostep_0to50/<timestamp>/{sim,emu,compare}`.
 
-### Reproducible paper run (single JSON config)
-
-Use a checked-in scenario config so experiments are exactly repeatable:
-
-```bash
-# Run both emu + sim + plot in one shot
-sudo ./run.sh both scalability --config scenarios/paper.json
-
-# Or run each separately
-sudo ./run.sh emu scalability --config scenarios/paper.json
-./run.sh sim scalability --config scenarios/paper.json
-./run.sh plot
-```
+For modular experiment queues, use `./jobs.sh list` to discover experiment folders, scenarios, and queue selectors instead of remembering queue file paths.
+Running `./jobs.sh` with no arguments opens a numbered interactive menu.
+For `start`, `run`, `attach`, `stop`, and `log`, `./jobs.sh` will prompt for sudo automatically when needed.
 
 The JSON schema is implemented in `lib/config.py`:
 
@@ -249,32 +171,11 @@ The JSON schema is implemented in `lib/config.py`:
 - `modes`: routing modes to run; empty = `["baseline", "two_step", "one_step"]`
 - `cores`: CPU core limit (`0` = no limit)
 
-### Comparison Plots
+### Prefix-Scale Plots
 
 ```bash
-./run.sh plot                  # Scalability plots
-./run.sh plot-routing          # Routing aggregate plots
-python3 plot_routing_timeseries.py  # Per-packet time-series plots
-python3 plot_onestep.py        # One-step vs two-step comparison plots
-python3 plot_churn.py results/sim_churn_3x3/churn.csv  # Churn plots (any topology)
+python3 experiments/prefix_scale/plot.py --data experiments/prefix_scale/results/.../emu --data2 experiments/prefix_scale/results/.../sim --out experiments/prefix_scale/results/.../compare
 ```
-
-Scalability output:
-- `results/plots/convergence.png`
-- `results/plots/memory.png`
-- `results/plots/total_traffic.png`
-- `results/plots/dv_overhead.png`
-
-Routing output:
-- `results/plots/routing_convergence.png`
-- `results/plots/routing_packets.png`
-- `results/plots/routing_bytes.png`
-
-Routing time-series (Wireshark-style per-packet):
-- `results/plots/routing_timeseries_scatter_NxN.png`
-- `results/plots/routing_timeseries_cumulative_NxN.png`
-- `results/plots/routing_timeseries_rate_NxN.png`
-- `results/plots/routing_timeseries_byterate_NxN.png`
 
 ### All Options
 
@@ -287,11 +188,8 @@ sudo ./run.sh emu scalability --grids 2 3 4 5 6 --trials 3 --delay 10ms --bw 10 
 # Simulation
 ./run.sh sim scalability --grids 2 3 4 5 6 --delay 10 --window 60
 
-# Combined
-sudo ./run.sh both scalability --config scenarios/paper.json
-
-# Plots
-./run.sh plot --emu results/emu/scalability.csv --sim results/sim/scalability.csv --out results/plots
+# Queue-driven prefix-scale pipeline
+sudo ./jobs.sh start --fresh prefix_scale/sprint_twostep_0to50
 ```
 
 ---
@@ -333,25 +231,10 @@ emu/                        # Emulation scenarios
 ├── onestep_comparison.py   #   One-step vs two-step routing comparison
 ├── churn.py                #   Unified churn driver (grid + conf topologies)
 └── churn_sprint.py         #   Sprint churn wrapper (backward compat)
-plot.py                     # Scalability comparison plots
-plot_routing.py             # Routing aggregate plots (convergence, packets, bytes)
-plot_routing_timeseries.py  # Wireshark-style per-packet time-series plots
-plot_onestep.py             # One-step vs two-step comparison plots
-plot_churn.py               # Churn scenario plots (bars, CDF, time-series)
-plot_prefix_scale.py        # Prefix-scaling overhead plots
-scenarios/                  # Reproducible scenario configs
-├── paper.json
-├── quick.json
-├── multihop.json           #   Multi-hop DV routing test definition
-├── routing.json            #   Routing-only scenario config
-├── onestep_twostep.json    #   One-step vs two-step comparison config
-├── churn.json              #   3×3 grid churn
-├── churn_4x4.json          #   4×4 grid churn
-├── churn_sprint.json       #   Sprint PoP churn
-├── churn_random_*.json     #   Random churn variants (3×3–5×5, Sprint, conv-start)
-└── churn_prefix_scale_sprint.json  # Prefix-scaling sweep on Sprint
+experiments/prefix_scale/plot.py  # Prefix-scaling overhead plots
+experiments/                # Experiment-specific scenarios, queues, and plots
 deps/                       # Built dependencies (gitignored)
-results/                    # Output CSVs and plots (gitignored)
+experiments/prefix_scale/results/  # Experiment outputs (gitignored)
 ```
 
 ---

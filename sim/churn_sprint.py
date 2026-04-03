@@ -6,7 +6,7 @@ The unified sim/churn.py now handles all topologies (grid, sprint, etc.)
 based on the "topology" key in the JSON config.
 
 This wrapper is equivalent to:
-  python3 sim/churn.py --config scenarios/churn_sprint.json
+  python3 sim/churn.py --config experiments/prefix_scale/scenarios/sprint_twostep_sim_0to50.json
 """
 
 import sys

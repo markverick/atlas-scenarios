@@ -1,0 +1,28 @@
+{
+  "_comment": "Sprint two-step single-prefix test queue for sim+emu, snapshots disabled. Run with: sudo ./jobs.sh start --fresh prefix_scale/sprint_twostep_1prefix_test",
+  "selector": "prefix_scale/sprint_twostep_1prefix_test",
+  "name": "sprint_twostep_1prefix_test",
+  "experiment": "prefix_scale",
+  "topology": "sprint",
+  "mode": "two_step",
+  "description": "Sprint two-step single-prefix test run for sim and emu",
+  "run_root_template": "experiments/prefix_scale/results/sprint_twostep_1prefix_test/{timestamp}",
+  "jobs": [
+    {
+      "name": "build",
+      "cmd": "./run.sh build"
+    },
+    {
+      "name": "sim two_step p1",
+      "cmd": "./run.sh sim --no-build churn.py --config experiments/prefix_scale/scenarios/sprint_twostep_sim_1prefix_test.json --out {run_root}/sim --mode two_step --prefixes 1 --append"
+    },
+    {
+      "name": "emu two_step p1",
+      "cmd": "./run.sh emu --no-build churn.py --config experiments/prefix_scale/scenarios/sprint_twostep_emu_1prefix_test.json --out {run_root}/emu --mode two_step --prefixes 1 --append"
+    },
+    {
+      "name": "plot sim-vs-emu p1 test",
+      "cmd": "python3 experiments/prefix_scale/plot.py --data {run_root}/emu --data2 {run_root}/sim --out {run_root}/compare"
+    }
+  ]
+}

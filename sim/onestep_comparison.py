@@ -10,7 +10,7 @@ For each grid size, runs three variants:
 Writes a per-category traffic breakdown CSV for plotting.
 
 Usage:
-  python3 sim/onestep_comparison.py --config scenarios/onestep_twostep.json
+    python3 sim/onestep_comparison.py --config <custom-config.json>
 """
 
 import argparse

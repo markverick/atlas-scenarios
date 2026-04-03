@@ -3,8 +3,8 @@ Shared constants and helpers for churn scenario drivers (sim and emu).
 
 All topology-specific knowledge (churn targets, conf file paths) lives here
 so that adding a new topology requires only:
-  1. An entry in KNOWN_TOPOLOGIES below
-  2. A JSON config file in scenarios/
+    1. An entry in KNOWN_TOPOLOGIES below
+    2. A JSON config file in the relevant experiments/<name>/scenarios/
 """
 
 import csv
@@ -355,23 +355,18 @@ def make_tag(mode, topo_id_str, num_prefixes, trial):
 
 # --- Auto-plot helper ---
 
-def auto_plot(out_dir, *, sim_dir="", emu_dir=""):
-    """Run plot_churn.py after a churn run.
+def auto_plot(out_dir, *, sim_dir="", emu_dir="", plot_kind="churn"):
+    """Run the appropriate plotting script after a churn run.
 
     Auto-detects the sibling runner directory so that plots always
     include both sim and emu data when available.  For example, if
     out_dir is ``results/sim_churn_random``, we look for
     ``results/emu_churn_random`` and vice-versa.
 
-    Derives plot output directory from out_dir:
-      results/sim_churn_3x3    -> results/plots_3x3
-      results/sim_churn_sprint -> results/plots_sprint
-      results/sim_churn        -> results/plots
+    Plots are written into ``<out_dir>/plots`` so each results directory keeps
+    its own figures and summaries alongside the raw CSV and traces.
     """
     import subprocess
-    script = os.path.join(_REPO_DIR, "plot_churn.py")
-    if not os.path.isfile(script):
-        return
     base = os.path.basename(os.path.normpath(out_dir))
     parent = os.path.dirname(out_dir) or "results"
 
@@ -385,13 +380,18 @@ def auto_plot(out_dir, *, sim_dir="", emu_dir=""):
         if os.path.isdir(candidate):
             emu_dir = candidate
 
-    suffix = base
-    for prefix in ("sim_churn", "emu_churn"):
-        if suffix.startswith(prefix):
-            suffix = suffix[len(prefix):].lstrip("_")
-            break
-    plot_out = os.path.join(parent, f"plots_{suffix}" if suffix else "plots")
-    subprocess.run([sys.executable, script,
-                    "--sim", sim_dir or "",
-                    "--emu", emu_dir or "",
-                    "--out", plot_out])
+    plot_out = os.path.join(out_dir, "plots")
+
+    if plot_kind == "prefix_scale":
+        script = os.path.join(_REPO_DIR, "experiments", "prefix_scale", "plot.py")
+        if not os.path.isfile(script):
+            return
+        primary_dir = sim_dir or emu_dir or out_dir
+        cmd = [sys.executable, script, "--data", primary_dir, "--out", plot_out]
+        secondary_dir = emu_dir if primary_dir == sim_dir else sim_dir
+        if secondary_dir:
+            cmd.extend(["--data2", secondary_dir])
+        subprocess.run(cmd)
+        return
+
+    return

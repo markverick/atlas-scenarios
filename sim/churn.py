@@ -15,9 +15,7 @@ For each topology (or grid size), runs three variants:
   3. one_step  -- prefixes in DV adverts under churn
 
 Usage:
-  python3 sim/churn.py --config scenarios/churn.json
-  python3 sim/churn.py --config scenarios/churn_4x4.json
-  python3 sim/churn.py --config scenarios/churn_sprint.json
+    python3 sim/churn.py --config experiments/prefix_scale/scenarios/sprint_twostep_sim_0to50.json
 """
 
 import argparse
@@ -381,7 +379,8 @@ def main():
     print(f"\nResults written to {out_csv}")
 
     # Auto-generate plots and summary (auto-detects sibling emu dir)
-    auto_plot(out_dir, sim_dir=out_dir)
+    plot_kind = "prefix_scale" if cfg.get("churn_mode") == "prefix_scaling" else "churn"
+    auto_plot(out_dir, sim_dir=out_dir, plot_kind=plot_kind)
 
 
 if __name__ == "__main__":

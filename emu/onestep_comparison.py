@@ -10,7 +10,7 @@ For each grid size, runs three variants:
 Writes a per-category traffic breakdown CSV matching the sim format.
 
 Usage (needs sudo):
-  sudo python3 emu/onestep_comparison.py --config scenarios/onestep_twostep.json
+    sudo python3 emu/onestep_comparison.py --config <custom-config.json>
 """
 
 import argparse

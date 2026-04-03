@@ -7,12 +7,12 @@ Topology:  a -- b -- c -- d  (linear, 4-node)
 Tests that NDNd DV correctly handles link failure/recovery and
 prefix withdrawal/re-announcement in ndnSIM simulation.
 
-Reads scenario definition from scenarios/multihop.json, generates
-topology, runs the C++ multihop scenario, and reports results.
+Reads a user-provided scenario definition, generates topology, runs the C++
+multihop scenario, and reports results.
 
 Usage:
-    ./run.sh sim multihop
-    python3 sim/multihop.py --ns3-dir deps/ns-3
+    ./run.sh sim multihop --scenario <scenario.json>
+    python3 sim/multihop.py --scenario <scenario.json> --ns3-dir deps/ns-3
 """
 
 import argparse
@@ -24,14 +24,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from lib.topology import generate_ndnsim_linear_topo
 from sim._helpers import resolve_ns3_dir, run_multihop_scenario
 
-DEFAULT_SCENARIO = os.path.join(
-    os.path.dirname(__file__), "..", "scenarios", "multihop.json"
-)
-
-
 def main():
     parser = argparse.ArgumentParser(description="ndndSIM multi-hop DV routing test")
-    parser.add_argument("--scenario", default=DEFAULT_SCENARIO,
+    parser.add_argument("--scenario", required=True,
                         help="Path to scenario JSON file")
     parser.add_argument("--ns3-dir", default=None)
     parser.add_argument("--out", default="results/sim")

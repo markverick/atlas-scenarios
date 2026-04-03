@@ -16,11 +16,10 @@ Prefix announce/withdraw uses `ndnd put --expose` which calls the
 /localhost/nlsr/rib/register and /unregister management Interests —
 the same mechanism real applications use.  DV itself keeps running.
 
-Reads scenario definition from scenarios/multihop.json.
+Reads a user-provided scenario definition.
 
 Usage:
-    sudo ./run.sh emu multihop
-    sudo ./run.sh emu multihop --scenario scenarios/multihop.json
+    sudo ./run.sh emu multihop --scenario <scenario.json>
 """
 
 import argparse
@@ -40,9 +39,6 @@ from minindn.helpers import dv_util
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-DEFAULT_SCENARIO = os.path.join(
-    os.path.dirname(__file__), "..", "scenarios", "multihop.json"
-)
 TEST_FILE = "/tmp/multihop-test.bin"
 
 
@@ -316,8 +312,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Multi-hop DV routing changes test")
     parser.add_argument(
-        "--scenario", default=DEFAULT_SCENARIO,
-        help="Path to scenario JSON file (default: scenarios/multihop.json)",
+        "--scenario", required=True,
+        help="Path to scenario JSON file",
     )
     args = parser.parse_args()
 
