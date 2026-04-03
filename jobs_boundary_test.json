@@ -1,0 +1,14 @@
+{
+    "_comment": "Boundary test: p49/p51. Run with: sudo python3 jobs.py start jobs_boundary_test.json",
+    "jobs": [
+        {
+            "name": "build",
+            "cmd": "./run.sh build"
+        },
+        {
+            "name": "boundary two_step p{prefixes}",
+            "cmd": "./run.sh sim --no-build churn.py --config scenarios/churn_boundary_test_sprint_sim.json --out results/sim_churn_boundary_sprint --mode two_step --prefixes {prefixes} --append",
+            "matrix": {"prefixes": [49, 51]}
+        }
+    ]
+}

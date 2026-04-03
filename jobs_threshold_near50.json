@@ -1,0 +1,14 @@
+{
+  "_comment": "Near-threshold PrefixSnapThreshold sweep for sim two_step. Run with: python3 jobs.py start jobs_threshold_near50.json",
+  "jobs": [
+    {
+      "name": "build",
+      "cmd": "./run.sh build"
+    },
+    {
+      "name": "two_step p{prefixes}",
+      "cmd": "./run.sh sim --no-build churn.py --config scenarios/churn_prefix_scale_sprint_sim.json --out results/sim_churn_threshold_near50 --mode two_step --prefixes {prefixes} --append",
+      "matrix": {"prefixes": [40, 45, 50, 55, 60]}
+    }
+  ]
+}

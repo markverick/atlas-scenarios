@@ -38,6 +38,8 @@ _SCHEMA = {
     "one_step":       (bool,  False),     # True = prefixes in DV adverts (no PrefixSync)
     "num_prefixes":   (int,   0),         # synthetic prefixes per node (routing-only)
     "prefix_sync_delay": (int, 0),        # ms to delay PrefixSync SVS start (0 = immediate)
+    "prefix_snap_threshold": (int, 0),    # 0 = use Go default; positive overrides PrefixSync snapshot threshold
+    "disable_prefix_snap": (bool, True),  # True = disable PrefixSync snapshots entirely (default)
 
     # Churn mode
     "churn_mode":            (str,   "fixed"),   # "fixed" or "random"
@@ -98,6 +100,10 @@ def dv_config_from(cfg):
         dv["one_step"] = True
     if cfg.get("prefix_sync_delay"):
         dv["prefix_sync_delay"] = cfg["prefix_sync_delay"]
+    if cfg.get("prefix_snap_threshold"):
+        dv["prefix_snap_threshold"] = cfg["prefix_snap_threshold"]
+    if cfg.get("disable_prefix_snap"):
+        dv["disable_prefix_snap"] = True
     return dv or None
 
 

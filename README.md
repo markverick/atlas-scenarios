@@ -196,6 +196,13 @@ python3 sim/churn.py --config scenarios/churn_prefix_scale_sprint.json
 python3 plot_prefix_scale.py results/sim_churn_sprint/churn.csv
 ```
 
+PrefixSync snapshots are disabled by default in two-step mode. This avoids the
+bootstrap snapshot cliff around the historical threshold near 50 prefixes and
+makes prefix-scaling results follow the incremental-fetch path by default.
+To opt back into snapshot behavior explicitly, use
+`scenarios/churn_prefix_scale_sprint_sim_snapshots.json` or set
+`"disable_prefix_snap": false` in a scenario config.
+
 The churn framework is modular — adding a new topology requires only:
 1. Add an entry to `KNOWN_TOPOLOGIES` in `lib/churn_common.py`
 2. Create a scenario JSON with `"topology": "<name>"`
@@ -235,6 +242,8 @@ The JSON schema is implemented in `lib/config.py`:
 - `advertise_interval`: DV advertisement interval (ms, `0` = default)
 - `router_dead_interval`: DV dead interval (ms, `0` = default)
 - `prefix_sync_delay`: delay (ms) before starting PrefixSync SVS (`0` = immediate)
+- `disable_prefix_snap`: disable PrefixSync snapshots (`true` by default)
+- `prefix_snap_threshold`: snapshot threshold override when snapshots are enabled (`0` = Go default)
 - `per_prefix_rate`: per-prefix churn rate (events/s/prefix) for prefix-scaling mode
 - `prefix_counts`: list of num_prefixes to sweep; empty = use `num_prefixes`
 - `modes`: routing modes to run; empty = `["baseline", "two_step", "one_step"]`

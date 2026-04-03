@@ -1,0 +1,19 @@
+{
+    "_comment": "Queue-drop investigation: (1) granular p25-p45 to find threshold, (2) large queue p20+p50 to verify hypothesis. Run with: sudo python3 jobs.py start jobs_queue_investigation.json",
+    "jobs": [
+        {
+            "name": "build",
+            "cmd": "./run.sh build"
+        },
+        {
+            "name": "granular two_step p{prefixes}",
+            "cmd": "./run.sh sim --no-build churn.py --config scenarios/churn_prefix_granular_sprint_sim.json --out results/sim_churn_prefix_granular_sprint --mode two_step --prefixes {prefixes} --append",
+            "matrix": {"prefixes": [25, 30, 35, 40, 45]}
+        },
+        {
+            "name": "bigqueue two_step p{prefixes}",
+            "cmd": "./run.sh sim --no-build churn.py --config scenarios/churn_queue_test_sprint_sim.json --out results/sim_churn_queue_test_sprint --mode two_step --prefixes {prefixes} --append",
+            "matrix": {"prefixes": [20, 50]}
+        }
+    ]
+}

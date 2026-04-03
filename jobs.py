@@ -25,9 +25,12 @@ Examples:
 """
 
 import argparse
+import atexit
 import json
 import os
 import shutil
+import signal
+import socket
 import subprocess
 import sys
 import time
@@ -37,6 +40,8 @@ STATE_PENDING  = "pending"
 STATE_RUNNING  = "running"
 STATE_DONE     = "done"
 STATE_FAILED   = "failed"
+
+RUNNER_HOST = socket.gethostname()
 
 # --------------- paths ---------------
 
@@ -152,9 +157,86 @@ def _job_key(job):
     return str(job["id"])
 
 
+def _clear_runtime_fields(entry):
+    for field in (
+        "elapsed_s",
+        "error",
+        "started",
+        "finished",
+        "runner_pid",
+        "runner_host",
+        "runner_mode",
+        "interrupted",
+    ):
+        entry.pop(field, None)
+
+
+def _pid_is_alive(pid):
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _cleanup_stale_running(job_path, jobs, state, *, keep_pid=None):
+    stale = []
+
+    for job in jobs:
+        key = _job_key(job)
+        entry = state.get(key)
+        if not entry or entry.get("status") != STATE_RUNNING:
+            continue
+
+        pid = entry.get("runner_pid")
+        host = entry.get("runner_host")
+        if host == RUNNER_HOST and pid == keep_pid:
+            continue
+        if host == RUNNER_HOST and _pid_is_alive(pid):
+            continue
+
+        entry["status"] = STATE_FAILED
+        entry["error"] = "runner disappeared before completion"
+        entry["interrupted"] = True
+        entry["finished"] = datetime.now(timezone.utc).isoformat()
+        entry.pop("runner_pid", None)
+        entry.pop("runner_host", None)
+        entry.pop("runner_mode", None)
+        stale.append(job)
+
+    if stale:
+        _save_state(job_path, state)
+
+    return stale
+
+
+def _report_stale_running(job_path, stale_jobs):
+    if not stale_jobs:
+        return
+    print("ERROR: stale running job state detected and cleaned up:", file=sys.stderr)
+    for job in stale_jobs:
+        print(f"  - job #{job['id']}: {job['name']}", file=sys.stderr)
+    print(
+        f"Queue execution was interrupted earlier. Review with 'python3 jobs.py status {job_path}' "
+        f"and reset intentionally before rerunning.",
+        file=sys.stderr,
+    )
+
+
 def cmd_status(job_path):
     jobs = _load_jobs(job_path)
     state = _load_state(job_path)
+    stale = _cleanup_stale_running(job_path, jobs, state)
+    if stale:
+        print("WARNING: cleaned up stale running state:")
+        for job in stale:
+            print(f"  - job #{job['id']}: {job['name']}")
+        print("  Review failure details, then reset explicitly before rerunning.\n")
+        state = _load_state(job_path)
 
     counts = {STATE_PENDING: 0, STATE_RUNNING: 0, STATE_DONE: 0, STATE_FAILED: 0}
     for j in jobs:
@@ -179,8 +261,7 @@ def cmd_reset(job_path, job_id=None):
         key = str(job_id)
         if key in state:
             state[key]["status"] = STATE_PENDING
-            state[key].pop("elapsed_s", None)
-            state[key].pop("error", None)
+            _clear_runtime_fields(state[key])
             print(f"  Reset job #{job_id} to pending.")
         else:
             state[key] = {"status": STATE_PENDING}
@@ -188,8 +269,7 @@ def cmd_reset(job_path, job_id=None):
     else:
         for key in state:
             state[key]["status"] = STATE_PENDING
-            state[key].pop("elapsed_s", None)
-            state[key].pop("error", None)
+            _clear_runtime_fields(state[key])
         print(f"  Reset all {len(state)} jobs to pending.")
     _save_state(job_path, state)
 
@@ -197,10 +277,56 @@ def cmd_reset(job_path, job_id=None):
 def cmd_run(job_path, dry=False):
     jobs = _load_jobs(job_path)
     state = _load_state(job_path)
+    stale = _cleanup_stale_running(job_path, jobs, state, keep_pid=os.getpid())
+    if stale:
+        _report_stale_running(job_path, stale)
+        return 1
+    state = _load_state(job_path)
     total = len(jobs)
     done = 0
     failed = 0
     is_root = os.geteuid() == 0
+    current_job = {"key": None}
+
+    for job in jobs:
+        entry = state.get(_job_key(job), {})
+        if entry.get("status") != STATE_RUNNING:
+            continue
+        pid = entry.get("runner_pid")
+        if entry.get("runner_host") == RUNNER_HOST and _pid_is_alive(pid) and pid != os.getpid():
+            print(
+                f"ERROR: job queue already running via PID {pid}. "
+                f"Use 'python3 jobs.py status {job_path}' or reset it explicitly.",
+                file=sys.stderr,
+            )
+            return 1
+
+    def mark_interrupted(signum=None):
+        key = current_job["key"]
+        if key is None:
+            return
+        latest = _load_state(job_path)
+        entry = latest.get(key, {})
+        if entry.get("status") != STATE_RUNNING:
+            return
+        entry["status"] = STATE_FAILED
+        entry["error"] = "interrupted" if signum is None else f"interrupted by signal {signum}"
+        entry["interrupted"] = True
+        entry["finished"] = datetime.now(timezone.utc).isoformat()
+        entry.pop("runner_pid", None)
+        entry.pop("runner_host", None)
+        entry.pop("runner_mode", None)
+        latest[key] = entry
+        _save_state(job_path, latest)
+        current_job["key"] = None
+
+    def handle_signal(signum, _frame):
+        mark_interrupted(signum)
+        raise SystemExit(128 + signum)
+
+    atexit.register(mark_interrupted)
+    signal.signal(signal.SIGINT, handle_signal)
+    signal.signal(signal.SIGTERM, handle_signal)
 
     for j in jobs:
         key = _job_key(j)
@@ -227,9 +353,15 @@ def cmd_run(job_path, dry=False):
             print("  (dry run -- skipped)", flush=True)
             continue
 
-        state[key] = {"status": STATE_RUNNING,
-                      "started": datetime.now(timezone.utc).isoformat()}
+        state[key] = {
+            "status": STATE_RUNNING,
+            "started": datetime.now(timezone.utc).isoformat(),
+            "runner_pid": os.getpid(),
+            "runner_host": RUNNER_HOST,
+            "runner_mode": "direct",
+        }
         _save_state(job_path, state)
+        current_job["key"] = key
 
         t0 = time.monotonic()
         try:
@@ -257,6 +389,7 @@ def cmd_run(job_path, dry=False):
             # Continue to next job instead of aborting entire queue
             continue
         finally:
+            current_job["key"] = None
             _save_state(job_path, state)
 
     print(f"\n{'='*60}")
