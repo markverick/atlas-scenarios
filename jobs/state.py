@@ -1,10 +1,25 @@
 import hashlib
 import json
 import os
+import pwd
 import socket
 import subprocess
 import sys
 from datetime import datetime, timezone
+
+
+def _fix_owner(path):
+    """Chown *path* to the real (non-root) user when running under sudo."""
+    if os.geteuid() != 0:
+        return
+    real_user = os.environ.get("SUDO_USER") or os.environ.get("ATLAS_USER")
+    if not real_user:
+        return
+    try:
+        pw = pwd.getpwnam(real_user)
+        os.chown(path, pw.pw_uid, pw.pw_gid)
+    except (KeyError, OSError):
+        pass
 
 STATE_PENDING = "pending"
 STATE_RUNNING = "running"
@@ -20,6 +35,7 @@ def jobs_meta_dir(job_path):
     digest = hashlib.sha1(abs_job.encode("utf-8")).hexdigest()[:8]
     meta_dir = os.path.join(os.path.dirname(abs_job), ".jobs", f"{stem}-{digest}")
     os.makedirs(meta_dir, exist_ok=True)
+    _fix_owner(meta_dir)
     return meta_dir
 
 
@@ -56,6 +72,7 @@ def save_state(job_path, state):
     with open(path, "w") as handle:
         json.dump(state, handle, indent=2)
         handle.write("\n")
+    _fix_owner(path)
 
 
 def state_job_keys(state):

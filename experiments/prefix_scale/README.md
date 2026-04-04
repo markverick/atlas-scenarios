@@ -37,6 +37,8 @@ Useful CLI shortcuts:
 ./jobs.sh                        # numbered interactive menu
 ./jobs.sh start                  # interactive queue picker
 ./jobs.sh status prefix_scale/sprint_twostep_0to50
+./jobs.sh status prefix_scale/sprint_twostep_0to50 --watch
+./jobs.sh running
 ```
 
 `./jobs.sh` auto-prompts for sudo on commands that need elevated privileges.

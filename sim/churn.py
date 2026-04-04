@@ -54,6 +54,7 @@ def run_variant(ns3_dir, *, topo_rel, topology, topo_id_str,
     pkt_csv = os.path.abspath(os.path.join(out_dir, f"packet-trace-{tag}.csv"))
     evt_csv = os.path.abspath(os.path.join(out_dir, f"event-log-{tag}.csv"))
     log_file = os.path.abspath(os.path.join(out_dir, f"log-{tag}.txt"))
+    suppress_json = os.path.abspath(os.path.join(out_dir, f"svs-suppression-{tag}.json"))
 
     dvc = dict(dv_config) if dv_config else {}
     if mode in ("one_step", "baseline"):
@@ -122,6 +123,8 @@ def run_variant(ns3_dir, *, topo_rel, topology, topo_id_str,
         packet_trace=pkt_csv,
         event_log=evt_csv,
         churn_start_trace=churn_start_file,
+        suppress_trace=suppress_json,
+        suppress_phase_start=None if churn_after_conv else phase2_start,
         dv_config=dvc or None,
         num_prefixes=pfx_count,
         churn_events=churn_events,
@@ -189,6 +192,13 @@ def _run_grid(ns3_dir, cfg, dv_config, out_dir, writer, f):
     cores = cfg["cores"]
     trials = cfg["trials"]
 
+    prefix_counts = cfg.get("prefix_counts", [])
+    if not prefix_counts:
+        prefix_counts = [num_prefixes]
+    sweeping = len(prefix_counts) > 1
+
+    modes = cfg.get("modes", []) or ["baseline", "two_step", "one_step"]
+
     for grid_size in cfg["grids"]:
         link_src, link_dst, churn_node = grid_churn_targets(grid_size)
         all_links_list = grid_links(grid_size)
@@ -206,32 +216,38 @@ def _run_grid(ns3_dir, cfg, dv_config, out_dir, writer, f):
         num_nodes, num_links = grid_stats(grid_size)
 
         for trial in range(1, trials + 1):
-            for mode in ("baseline", "two_step", "one_step"):
-                rows = run_variant(
-                    ns3_dir,
-                    topo_rel=topo_rel,
-                    topology="grid",
-                    topo_id_str=f"{grid_size}x{grid_size}",
-                    grid_size=grid_size,
-                    num_nodes=num_nodes,
-                    num_links=num_links,
-                    trial=trial,
-                    mode=mode,
-                    num_prefixes=num_prefixes,
-                    window_s=sim_time,
-                    dv_config=dv_config,
-                    sim_time=sim_time,
-                    phase2_start=phase2_start,
-                    link_src=link_src,
-                    link_dst=link_dst,
-                    churn_node=churn_node,
-                    cores=cores,
-                    out_dir=out_dir,
-                    cfg=cfg,
-                    all_links=all_links_list,
-                    all_nodes=all_nodes_list,
-                )
-                _write_rows(writer, f, rows)
+            baseline_done = False
+            for pfx_count in prefix_counts:
+                for mode in modes:
+                    if sweeping and mode == "baseline" and baseline_done:
+                        continue
+                    rows = run_variant(
+                        ns3_dir,
+                        topo_rel=topo_rel,
+                        topology="grid",
+                        topo_id_str=f"{grid_size}x{grid_size}",
+                        grid_size=grid_size,
+                        num_nodes=num_nodes,
+                        num_links=num_links,
+                        trial=trial,
+                        mode=mode,
+                        num_prefixes=pfx_count,
+                        window_s=sim_time,
+                        dv_config=dv_config,
+                        sim_time=sim_time,
+                        phase2_start=phase2_start,
+                        link_src=link_src,
+                        link_dst=link_dst,
+                        churn_node=churn_node,
+                        cores=cores,
+                        out_dir=out_dir,
+                        cfg=cfg,
+                        all_links=all_links_list,
+                        all_nodes=all_nodes_list,
+                    )
+                    _write_rows(writer, f, rows)
+                    if mode == "baseline":
+                        baseline_done = True
 
 
 def _run_conf(ns3_dir, cfg, dv_config, out_dir, writer, f, topo_name):

@@ -16,6 +16,6 @@
   "per_prefix_rate": 0.1,
   "prefix_counts": [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50],
   "modes": ["two_step"],
-  "phase2_start_s": 10.0,
+  "phase2_start_s": 30.0,
   "churn_duration_s": 120.0
 }

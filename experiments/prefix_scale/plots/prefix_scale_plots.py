@@ -73,7 +73,18 @@ def plot_churn_breakdown(rows, out_dir, source_label):
     print(f"  Saved {path}")
 
 
-def plot_io_per_variant(data_dir, out_dir, source_label, phase2_start=10.0):
+def plot_io_per_variant(data_dir, out_dir, source_label, phase2_start=None):
+    # Auto-detect phase2_start from churn.csv if not given
+    if phase2_start is None:
+        csv_path = os.path.join(data_dir, "churn.csv")
+        if os.path.exists(csv_path):
+            import csv as _csv
+            with open(csv_path) as _f:
+                for row in _csv.DictReader(_f):
+                    phase2_start = float(row["phase2_start"])
+                    break
+        if phase2_start is None:
+            phase2_start = 10.0
     prefix_counts = set()
     for filename in os.listdir(data_dir):
         match = re.match(r"packet-trace-(two_step|one_step)-.*-p(\d+)-t\d+\.csv", filename)

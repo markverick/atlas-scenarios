@@ -402,6 +402,8 @@ def sync_churn_scenario(ns3_dir):
 def run_churn_scenario(ns3_dir, *, topo, sim_time=60.0, cores=0,
                        conv_trace=None, link_trace=None, packet_trace=None,
                        event_log=None, churn_start_trace=None,
+                       suppress_trace=None,
+                       suppress_phase_start=None,
                        dv_config=None, network="/minindn",
                        num_prefixes=0, churn_events=None,
                        churn_after_convergence=False, churn_margin=10.0,
@@ -446,6 +448,10 @@ def run_churn_scenario(ns3_dir, *, topo, sim_time=60.0, cores=0,
         run_args.append(f"--eventLog={event_log}")
     if churn_start_trace:
         run_args.append(f"--churnStartTrace={churn_start_trace}")
+    if suppress_trace:
+        run_args.append(f"--suppressTrace={suppress_trace}")
+    if suppress_phase_start is not None:
+        run_args.append(f"--suppressPhaseStart={suppress_phase_start}")
     if dv_config:
         run_args.append(f"--dvConfig={json.dumps(dv_config, separators=(',', ':'))}")
     if num_prefixes > 0:

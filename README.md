@@ -125,6 +125,8 @@ Convergence is measured identically on both sides: span from the first
 # Prefix-scaling queue (Sprint topology, timestamped outputs)
 sudo ./jobs.sh start --fresh prefix_scale/sprint_twostep_0to50
 ./jobs.sh status prefix_scale/sprint_twostep_0to50
+./jobs.sh status prefix_scale/sprint_twostep_0to50 --watch
+./jobs.sh running
 ```
 
 Each queue run writes to a unique timestamped output root under:

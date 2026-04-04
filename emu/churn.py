@@ -96,6 +96,108 @@ def _write_variant_stats(out_dir, tag, stats):
     return path
 
 
+def _write_svs_suppression(out_dir, tag, data):
+    path = os.path.join(out_dir, f"svs-suppression-{tag}.json")
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2, sort_keys=True)
+    return path
+
+
+def _collect_svs_suppression_stats(hosts):
+    result = {
+        "nodes": {},
+        "aggregate": {"enter": 0, "ok": 0, "fail": 0, "unresolved": 0},
+        "errors": {},
+    }
+    for host in hosts:
+        raw = host.cmd("ndnd dv svs-status 2>/dev/null").strip()
+        if not raw:
+            result["errors"][host.name] = "empty response"
+            continue
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            start = raw.find("{")
+            end = raw.rfind("}")
+            if start == -1 or end == -1 or end <= start:
+                result["errors"][host.name] = f"invalid json: {exc}"
+                continue
+            try:
+                payload = json.loads(raw[start:end + 1])
+            except json.JSONDecodeError as inner_exc:
+                result["errors"][host.name] = f"invalid json: {inner_exc}"
+                continue
+
+        suppression = payload.get("suppression", {})
+        enter = int(suppression.get("enter", 0))
+        ok = int(suppression.get("ok", 0))
+        fail = int(suppression.get("fail", 0))
+        suppression["unresolved"] = enter - ok - fail
+        payload["suppression"] = suppression
+        result["nodes"][host.name] = payload
+        result["aggregate"]["enter"] += enter
+        result["aggregate"]["ok"] += ok
+        result["aggregate"]["fail"] += fail
+
+    result["aggregate"]["unresolved"] = (
+        result["aggregate"]["enter"]
+        - result["aggregate"]["ok"]
+        - result["aggregate"]["fail"]
+    )
+    return result
+
+
+def _compute_svs_suppression_delta(start_snapshot, end_snapshot, *, phase, start_s, end_s):
+    delta = {
+        "phase": phase,
+        "window": {
+            "start_s": round(start_s, 6),
+            "end_s": round(end_s, 6),
+            "duration_s": round(end_s - start_s, 6),
+        },
+        "nodes": {},
+        "aggregate": {"enter": 0, "ok": 0, "fail": 0, "unresolved": 0},
+        "errors": {
+            "start": dict(start_snapshot.get("errors", {})),
+            "end": dict(end_snapshot.get("errors", {})),
+        },
+        "snapshots": {
+            "start": start_snapshot,
+            "end": end_snapshot,
+        },
+    }
+
+    node_names = set(start_snapshot.get("nodes", {})) | set(end_snapshot.get("nodes", {}))
+    for node_name in sorted(node_names):
+        start_payload = start_snapshot.get("nodes", {}).get(node_name, {})
+        end_payload = end_snapshot.get("nodes", {}).get(node_name, {})
+        start_supp = start_payload.get("suppression", {})
+        end_supp = end_payload.get("suppression", {})
+
+        enter = int(end_supp.get("enter", 0)) - int(start_supp.get("enter", 0))
+        ok = int(end_supp.get("ok", 0)) - int(start_supp.get("ok", 0))
+        fail = int(end_supp.get("fail", 0)) - int(start_supp.get("fail", 0))
+
+        node_payload = dict(end_payload or start_payload)
+        node_payload["suppression"] = {
+            "enter": enter,
+            "ok": ok,
+            "fail": fail,
+            "unresolved": enter - ok - fail,
+        }
+        delta["nodes"][node_name] = node_payload
+        delta["aggregate"]["enter"] += enter
+        delta["aggregate"]["ok"] += ok
+        delta["aggregate"]["fail"] += fail
+
+    delta["aggregate"]["unresolved"] = (
+        delta["aggregate"]["enter"]
+        - delta["aggregate"]["ok"]
+        - delta["aggregate"]["fail"]
+    )
+    return delta
+
+
 # ---- Host-level prefix management (topology-agnostic) ----
 
 def announce_prefixes(hosts, num_prefixes):
@@ -144,7 +246,7 @@ def withdraw_all(announced_hosts, stats=None):
 
 # ---- Churn event scheduler ----
 
-def schedule_churn_events(ndn, hosts, churn_events, dv_start, stats=None):
+def schedule_churn_events(ndn, hosts, churn_events, dv_start, stats=None, action_lock=None):
     """Schedule churn events as timed threads (wall-clock based).
 
     Parameters
@@ -159,7 +261,7 @@ def schedule_churn_events(ndn, hosts, churn_events, dv_start, stats=None):
     host_map = {h.name: h for h in hosts}
     timers = []
     # Mininet node.cmd() is not thread-safe; serialize all churn actions.
-    lock = threading.Lock()
+    lock = action_lock or threading.Lock()
 
     for ev in churn_events:
         delay = dv_start + ev["time"] - time.time()
@@ -363,24 +465,42 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
             ev_abs = dict(ev)
             ev_abs["time"] = ev["time"] + phase2_start_rel
             churn_events_abs.append(ev_abs)
-        timers = schedule_churn_events(ndn, ndn.net.hosts,
-                                       churn_events_abs, dv_start, stats)
+        scheduled_events = churn_events_abs
     else:
-        timers = schedule_churn_events(ndn, ndn.net.hosts,
-                                       churn_events, dv_start, stats)
+        scheduled_events = churn_events
+
+    action_lock = threading.Lock()
+    timers = schedule_churn_events(
+        ndn,
+        ndn.net.hosts,
+        scheduled_events,
+        dv_start,
+        stats,
+        action_lock=action_lock,
+    )
 
     # Write event log CSV (for plot markers) — use absolute times
     evt_csv = os.path.join(out_dir, f"event-log-{tag}.csv")
     with open(evt_csv, "w", newline="") as ef:
         ew = csv.writer(ef)
         ew.writerow(["Time", "Event", "Details"])
-        logged_events = churn_events_abs if churn_after_conv else churn_events
-        for ev in logged_events:
+        for ev in scheduled_events:
             if ev["type"] in ("link_down", "link_up"):
                 details = f"{ev['src']}--{ev['dst']}"
             else:
                 details = f"{ev['node']} {ev['prefix']}"
             ew.writerow([ev["time"], ev["type"], details])
+
+    # Query suppression counters immediately before the churn phase begins.
+    phase_start_wall = dv_start + phase2_start_rel
+    pre_phase_deadline = max(dv_start, phase_start_wall - 0.01)
+    now = time.time()
+    if now < pre_phase_deadline:
+        time.sleep(pre_phase_deadline - now)
+    t0 = time.monotonic()
+    with action_lock:
+        suppression_start = _collect_svs_suppression_stats(ndn.net.hosts)
+    stats["timing_s"]["svs_status_query_start"] = round(time.monotonic() - t0, 3)
 
     # Wait for observation window
     if churn_after_conv:
@@ -396,6 +516,11 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
 
     for t in timers:
         t.cancel()
+
+    t0 = time.monotonic()
+    with action_lock:
+        suppression_end = _collect_svs_suppression_stats(ndn.net.hosts)
+    stats["timing_s"]["svs_status_query_end"] = round(time.monotonic() - t0, 3)
 
     stop_tcpdump(ndn.net.hosts, cap_tag, prefix="ndnd_churn")
 
@@ -426,6 +551,14 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
     conv_time = parse_router_reachable_logs(dv_log_paths, num_nodes=num_nodes)
     stats["timing_s"]["convergence_log_parse"] = round(time.monotonic() - t0, 3)
 
+    suppression = _compute_svs_suppression_delta(
+        suppression_start,
+        suppression_end,
+        phase="churn",
+        start_s=phase2_start_rel,
+        end_s=window_end - dv_start,
+    )
+
     rows = build_result_rows(
         phases,
         topology=topology,
@@ -452,6 +585,7 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
     stats["timing_s"]["cleanup"] = round(time.monotonic() - t0, 3)
     stats["timing_s"]["total"] = round(time.monotonic() - run_t0, 3)
 
+    suppress_path = _write_svs_suppression(out_dir, tag, suppression)
     stats_path = _write_variant_stats(out_dir, tag, stats)
     info(
         "  CHURN: stats "
@@ -462,6 +596,7 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
         f"parse={stats['timing_s']['pcap_parse']:.1f}s, cleanup={stats['timing_s']['cleanup']:.1f}s)\n"
     )
     info(f"  CHURN: wrote stats {stats_path}\n")
+    info(f"  CHURN: wrote suppression {suppress_path}\n")
 
     return rows
 
@@ -484,6 +619,13 @@ def _run_grid(cfg, dv_config, out_dir, writer, f):
     cores = cfg["cores"]
     trials = cfg["trials"]
 
+    prefix_counts = cfg.get("prefix_counts", [])
+    if not prefix_counts:
+        prefix_counts = [num_prefixes]
+    sweeping = len(prefix_counts) > 1
+
+    modes = cfg.get("modes", []) or ["baseline", "two_step", "one_step"]
+
     for grid_size in cfg["grids"]:
         link_src, link_dst, churn_node = grid_churn_targets(grid_size)
         num_nodes, num_links = grid_stats(grid_size)
@@ -494,30 +636,36 @@ def _run_grid(cfg, dv_config, out_dir, writer, f):
             return setup_grid(gs, delay_ms, bw_mbps, cores)
 
         for trial in range(1, trials + 1):
-            for mode in ("baseline", "two_step", "one_step"):
-                rows = _run_one_variant(
-                    ndn_factory=ndn_factory,
-                    topology="grid",
-                    topo_id_str=f"{grid_size}x{grid_size}",
-                    grid_size=grid_size,
-                    num_nodes=num_nodes,
-                    num_links=num_links,
-                    link_src=link_src,
-                    link_dst=link_dst,
-                    churn_node=churn_node,
-                    trial=trial,
-                    mode=mode,
-                    num_prefixes=num_prefixes,
-                    window_s=sim_time,
-                    dv_config=dv_config,
-                    sim_time=sim_time,
-                    deadline=120,
-                    out_dir=out_dir,
-                    cfg=cfg,
-                    all_links=all_links_list,
-                    all_nodes=all_nodes_list,
-                )
-                _write_rows(writer, f, rows)
+            baseline_done = False
+            for pfx_count in prefix_counts:
+                for mode in modes:
+                    if sweeping and mode == "baseline" and baseline_done:
+                        continue
+                    rows = _run_one_variant(
+                        ndn_factory=ndn_factory,
+                        topology="grid",
+                        topo_id_str=f"{grid_size}x{grid_size}",
+                        grid_size=grid_size,
+                        num_nodes=num_nodes,
+                        num_links=num_links,
+                        link_src=link_src,
+                        link_dst=link_dst,
+                        churn_node=churn_node,
+                        trial=trial,
+                        mode=mode,
+                        num_prefixes=pfx_count,
+                        window_s=sim_time,
+                        dv_config=dv_config,
+                        sim_time=sim_time,
+                        deadline=120,
+                        out_dir=out_dir,
+                        cfg=cfg,
+                        all_links=all_links_list,
+                        all_nodes=all_nodes_list,
+                    )
+                    _write_rows(writer, f, rows)
+                    if mode == "baseline":
+                        baseline_done = True
 
 
 def _run_conf(cfg, dv_config, out_dir, writer, f, topo_name):

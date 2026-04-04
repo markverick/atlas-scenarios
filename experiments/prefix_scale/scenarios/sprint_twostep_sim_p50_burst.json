@@ -1,10 +1,10 @@
 {
-  "_comment": "Sprint two-step prefix-scalability sweep for emu, prefixes 0..50 in steps of 5, snapshots disabled",
+  "_comment": "Sprint p=50 only — no churn, just measure initial PfxSync burst duration",
   "topology": "sprint",
   "delay_ms": 10,
   "bandwidth_mbps": 10,
   "trials": 1,
-  "window_s": 300.0,
+  "window_s": 60.0,
   "advertise_interval": 5000,
   "router_dead_interval": 30000,
   "prefix_sync_delay": 2000,
@@ -13,9 +13,9 @@
   "churn_mode": "prefix_scaling",
   "churn_seed": 42,
   "churn_recovery_delay": 3.0,
-  "per_prefix_rate": 0.1,
-  "prefix_counts": [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50],
+  "per_prefix_rate": 0.0,
+  "prefix_counts": [50],
   "modes": ["two_step"],
-  "phase2_start_s": 30.0,
-  "churn_duration_s": 120.0
+  "phase2_start_s": 60.0,
+  "churn_duration_s": 0.0
 }

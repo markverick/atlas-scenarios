@@ -1,4 +1,5 @@
 import atexit
+import curses
 import os
 import signal
 import subprocess
@@ -6,7 +7,7 @@ import sys
 import time
 from datetime import datetime, timezone
 
-from .conventions import discover_catalog, queue_stem, selector_from_path
+from .conventions import discover_active_queues, discover_catalog, queue_stem, selector_from_path
 from .spec import build_run_context, load_job_spec, load_jobs
 from .state import (
     RUNNER_HOST,
@@ -63,7 +64,33 @@ def clear_queue_error(state):
     meta.pop("queue_error_at", None)
 
 
-def cmd_list():
+def cmd_list(*, running_only=False):
+    if running_only:
+        active = discover_active_queues()
+        if not active:
+            print("No running queues found.")
+            return
+
+        print("Running queues\n")
+        for queue in active:
+            counts = queue["counts"]
+            meta = []
+            if queue.get("topology"):
+                meta.append(f"topology={queue['topology']}")
+            if queue.get("mode"):
+                meta.append(f"mode={queue['mode']}")
+            suffix = f" ({', '.join(meta)})" if meta else ""
+            print(f"- {queue['selector']}{suffix}")
+            print(
+                "  "
+                f"running={counts[STATE_RUNNING]} done={counts[STATE_DONE]} "
+                f"pending={counts[STATE_PENDING]} failed={counts[STATE_FAILED]}"
+            )
+            if queue.get("run_root"):
+                print(f"  run_root: {queue['run_root']}")
+            print("")
+        return
+
     catalog = discover_catalog()
     if not catalog:
         print("No experiment queues discovered under experiments/.")
@@ -92,38 +119,200 @@ def cmd_list():
         print("")
 
 
-def cmd_status(job_path):
+def _status_lines(job_path, *, running_mark="~"):
     _, state, run_context, selector = queue_context(job_path)
     jobs = load_jobs(job_path, run_context)
     stale = cleanup_stale_running(job_path, jobs, state)
+    lines = []
     if stale:
-        print("WARNING: cleaned up stale running state:")
+        lines.append("WARNING: cleaned up stale running state:")
         for job in stale:
-            print(f"  - job #{job['id']}: {job['name']}")
-        print("  Review failure details, then reset explicitly before rerunning.\n")
+            lines.append(f"  - job #{job['id']}: {job['name']}")
+        lines.append("  Review failure details, then reset explicitly before rerunning.")
+        lines.append("")
         state = load_state(job_path)
 
     if run_context.get("run_root"):
-        print(f"Run root: {run_context['run_root']}")
-    print(f"Queue:    {selector}\n")
+        lines.append(f"Run root: {run_context['run_root']}")
+    lines.append(f"Queue:    {selector}")
 
     meta = state.get(STATE_META_KEY, {})
     if meta.get("queue_error"):
         timestamp = meta.get("queue_error_at")
         suffix = f" ({timestamp})" if timestamp else ""
-        print(f"Queue error: {meta['queue_error']}{suffix}\n")
+        lines.append("")
+        lines.append(f"Queue error: {meta['queue_error']}{suffix}")
 
     counts = {STATE_PENDING: 0, STATE_RUNNING: 0, STATE_DONE: 0, STATE_FAILED: 0}
-    marks = {STATE_PENDING: " ", STATE_RUNNING: "~", STATE_DONE: "+", STATE_FAILED: "X"}
+    marks = {STATE_PENDING: " ", STATE_RUNNING: running_mark, STATE_DONE: "+", STATE_FAILED: "X"}
     for job in jobs:
         entry = state.get(str(job["id"]), {})
         status = entry.get("status", STATE_PENDING)
         counts[status] += 1
-        elapsed = f"  ({entry['elapsed_s']:.0f}s)" if entry.get("elapsed_s") else ""
-        print(f"  [{marks[status]}] #{job['id']:>2}  {status:<8}  {job['name']}{elapsed}")
 
     total = len(jobs)
-    print(f"\n  {counts[STATE_DONE]}/{total} done, {counts[STATE_FAILED]} failed, {counts[STATE_PENDING]} pending")
+    completed = counts[STATE_DONE] + counts[STATE_FAILED]
+    lines.append("")
+    lines.append(
+        f"Progress: [{_progress_bar(completed, total)}] "
+        f"{completed}/{total} complete"
+    )
+    lines.append(
+        "State:    "
+        f"running={counts[STATE_RUNNING]} done={counts[STATE_DONE]} "
+        f"pending={counts[STATE_PENDING]} failed={counts[STATE_FAILED]}"
+    )
+    lines.append("")
+
+    for job in jobs:
+        entry = state.get(str(job["id"]), {})
+        status = entry.get("status", STATE_PENDING)
+        elapsed = f"  ({entry['elapsed_s']:.0f}s)" if entry.get("elapsed_s") else ""
+        lines.append(f"  [{marks[status]}] #{job['id']:>2}  {status:<8}  {job['name']}{elapsed}")
+
+    lines.append("")
+    lines.append(f"  {counts[STATE_DONE]}/{total} done, {counts[STATE_FAILED]} failed, {counts[STATE_PENDING]} pending")
+    return lines
+
+
+def _render_status(job_path):
+    return "\n".join(_status_lines(job_path))
+
+
+def _trim_line(line, width):
+    if width <= 0:
+        return ""
+    if len(line) <= width:
+        return line
+    if width <= 3:
+        return line[:width]
+    return f"{line[:width - 3]}..."
+
+
+def _progress_bar(completed, total, *, width=24):
+    if width <= 0:
+        return ""
+    if total <= 0:
+        return "-" * width
+    filled = min(width, max(0, int(round((completed / total) * width))))
+    return "#" * filled + "-" * (width - filled)
+
+
+def _watch_status_tui(job_path, *, interval_s):
+    spinner_frames = "|/-\\"
+    running_frames = ("~", ">", "~", "<")
+
+    def run(stdscr):
+        try:
+            curses.curs_set(0)
+        except curses.error:
+            pass
+        stdscr.keypad(True)
+        stdscr.nodelay(False)
+        stdscr.timeout(max(100, int(interval_s * 1000)))
+
+        if curses.has_colors():
+            curses.start_color()
+            curses.use_default_colors()
+            curses.init_pair(1, curses.COLOR_CYAN, -1)
+            curses.init_pair(2, curses.COLOR_YELLOW, -1)
+
+        scroll = 0
+        spinner_index = 0
+
+        while True:
+            lines = _status_lines(
+                job_path,
+                running_mark=running_frames[spinner_index % len(running_frames)],
+            )
+            rows, cols = stdscr.getmaxyx()
+            body_top = 1
+            footer_rows = 2
+            body_height = max(1, rows - body_top - footer_rows)
+            max_scroll = max(0, len(lines) - body_height)
+            scroll = min(scroll, max_scroll)
+
+            stdscr.erase()
+
+            title = f" {spinner_frames[spinner_index % len(spinner_frames)]} Live Queue Status "
+            subtitle = f"refresh {interval_s:g}s"
+            header = _trim_line(f"{title} {subtitle}", cols - 1)
+            try:
+                attr = curses.color_pair(1) | curses.A_BOLD if curses.has_colors() else curses.A_BOLD
+                stdscr.addnstr(0, 0, header, max(0, cols - 1), attr)
+            except curses.error:
+                pass
+
+            visible_lines = lines[scroll:scroll + body_height]
+            for index, line in enumerate(visible_lines, start=body_top):
+                try:
+                    stdscr.addnstr(index, 0, _trim_line(line, cols - 1), max(0, cols - 1))
+                except curses.error:
+                    pass
+
+            footer_y = rows - 2
+            nav = "Arrows scroll  PgUp/PgDn jump  Home/End bounds  q quit"
+            pos = f"lines {scroll + 1}-{min(len(lines), scroll + body_height)}/{len(lines)}"
+            try:
+                attr = curses.color_pair(2) if curses.has_colors() else curses.A_REVERSE
+                stdscr.addnstr(footer_y, 0, _trim_line(nav, cols - 1), max(0, cols - 1), attr)
+                stdscr.addnstr(footer_y + 1, 0, _trim_line(pos, cols - 1), max(0, cols - 1), attr)
+            except curses.error:
+                pass
+
+            stdscr.refresh()
+            spinner_index += 1
+
+            key = stdscr.getch()
+            if key in (-1, curses.KEY_RESIZE):
+                continue
+            if key in (ord("q"), ord("Q")):
+                return
+            if key == curses.KEY_UP:
+                scroll = max(0, scroll - 1)
+            elif key == curses.KEY_DOWN:
+                scroll = min(max_scroll, scroll + 1)
+            elif key == curses.KEY_PPAGE:
+                scroll = max(0, scroll - body_height)
+            elif key == curses.KEY_NPAGE:
+                scroll = min(max_scroll, scroll + body_height)
+            elif key == curses.KEY_HOME:
+                scroll = 0
+            elif key == curses.KEY_END:
+                scroll = max_scroll
+
+    curses.wrapper(run)
+
+
+def cmd_status(job_path, *, watch=False, interval_s=1.0, output=None, _max_updates=None):
+    output = output or sys.stdout
+    updates = 0
+
+    if watch and _max_updates is None and hasattr(output, "isatty") and output.isatty():
+        _watch_status_tui(job_path, interval_s=interval_s)
+        return
+
+    while True:
+        report = _render_status(job_path)
+        if watch:
+            if hasattr(output, "isatty") and output.isatty():
+                output.write("\x1b[2J\x1b[H")
+            elif updates > 0:
+                output.write("\n")
+            output.write(report)
+            output.write(f"\n\nRefreshing every {interval_s:g}s. Press Ctrl-C to stop.\n")
+            output.flush()
+
+            updates += 1
+            if _max_updates is not None and updates >= _max_updates:
+                return
+            time.sleep(interval_s)
+            continue
+
+        output.write(report)
+        output.write("\n")
+        output.flush()
+        return
 
 
 def cmd_reset(job_path, job_id=None):

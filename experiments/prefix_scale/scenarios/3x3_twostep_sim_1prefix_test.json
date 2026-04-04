@@ -1,6 +1,7 @@
 {
-  "_comment": "Sprint two-step prefix-scalability sweep for emu, prefixes 0..50 in steps of 5, snapshots disabled",
-  "topology": "sprint",
+  "_comment": "3x3 two-step prefix-scale test scenario for sim, single prefix, snapshots disabled",
+  "topology": "grid",
+  "grids": [3],
   "delay_ms": 10,
   "bandwidth_mbps": 10,
   "trials": 1,
@@ -14,8 +15,8 @@
   "churn_seed": 42,
   "churn_recovery_delay": 3.0,
   "per_prefix_rate": 0.1,
-  "prefix_counts": [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50],
+  "prefix_counts": [1],
   "modes": ["two_step"],
-  "phase2_start_s": 30.0,
+  "phase2_start_s": 10.0,
   "churn_duration_s": 120.0
 }

@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 from .spec import load_job_spec
+from .state import STATE_DONE, STATE_FAILED, STATE_PENDING, STATE_RUNNING, load_state, screen_exists, screen_name, state_job_keys
 
 
 def workspace_root():
@@ -62,6 +63,72 @@ def discover_catalog(root=None):
     return catalog
 
 
+def discover_active_queues(root=None):
+    active = []
+    for experiment in discover_catalog(root):
+        for queue in experiment["queues"]:
+            state = load_state(queue["path"])
+            counts = {
+                STATE_PENDING: 0,
+                STATE_RUNNING: 0,
+                STATE_DONE: 0,
+                STATE_FAILED: 0,
+            }
+            for key in state_job_keys(state):
+                status = state.get(key, {}).get("status", STATE_PENDING)
+                counts[status] = counts.get(status, 0) + 1
+
+            has_screen = screen_exists(screen_name(queue["path"]))
+            if not has_screen and counts[STATE_RUNNING] == 0:
+                continue
+
+            meta = state.get("__meta__", {})
+            run_context = meta.get("run_context") if isinstance(meta, dict) else {}
+            active.append(
+                {
+                    **queue,
+                    "experiment": experiment["experiment"],
+                    "counts": counts,
+                    "has_screen": has_screen,
+                    "run_root": (run_context or {}).get("run_root"),
+                }
+            )
+    return active
+
+
+def select_active_queue_interactively(active_queues):
+    if not sys.stdin.isatty():
+        print("ERROR: no queue specified and stdin is not interactive.", file=sys.stderr)
+        sys.exit(1)
+    if not active_queues:
+        print("ERROR: no running queues found.", file=sys.stderr)
+        sys.exit(1)
+
+    print("Running queues:\n")
+    for index, queue in enumerate(active_queues, start=1):
+        counts = queue["counts"]
+        status_bits = [
+            f"running={counts[STATE_RUNNING]}",
+            f"done={counts[STATE_DONE]}",
+            f"pending={counts[STATE_PENDING]}",
+        ]
+        if counts[STATE_FAILED]:
+            status_bits.append(f"failed={counts[STATE_FAILED]}")
+        print(f"  {index:>2}. {queue['selector']}  [{' '.join(status_bits)}]")
+        if queue.get("run_root"):
+            print(f"      run_root: {queue['run_root']}")
+
+    while True:
+        queue_choice = input("\nSelect running queue number (or 'q' to cancel): ").strip()
+        if queue_choice.lower() in {"q", "quit", "exit"}:
+            sys.exit(1)
+        if queue_choice.isdigit():
+            queue_index = int(queue_choice)
+            if 1 <= queue_index <= len(active_queues):
+                return active_queues[queue_index - 1]["path"]
+        print("Invalid selection.", file=sys.stderr)
+
+
 def select_queue_interactively(catalog):
     if not sys.stdin.isatty():
         print("ERROR: no queue specified and stdin is not interactive.", file=sys.stderr)
@@ -116,12 +183,16 @@ def select_queue_interactively(catalog):
         print("Invalid selection.", file=sys.stderr)
 
 
-def resolve_queue_path(target=None, root=None):
+def resolve_queue_path(target=None, root=None, prefer_active=False):
     if target and os.path.exists(target):
         return str(Path(target).resolve())
 
     catalog = discover_catalog(root)
     if not target:
+        if prefer_active:
+            active_queues = discover_active_queues(root)
+            if active_queues:
+                return select_active_queue_interactively(active_queues)
         return select_queue_interactively(catalog)
 
     needle = target.strip().rstrip("/")

@@ -12,7 +12,10 @@ def build_parser():
     parser = argparse.ArgumentParser(description="Experiment queue runner for atlas-scenarios")
     sub = parser.add_subparsers(dest="command")
 
-    sub.add_parser("list", help="Show experiments, scenarios, and queues")
+    p_list = sub.add_parser("list", help="Show experiments, scenarios, and queues")
+    p_list.add_argument("--running", action="store_true", help="Show only currently running queues")
+
+    sub.add_parser("running", help="Show currently running queues")
 
     p_start = sub.add_parser("start", help="Launch queue in a detached screen")
     p_start.add_argument("queue", nargs="?", help="Queue selector like prefix_scale/sprint_twostep_0to50")
@@ -35,6 +38,8 @@ def build_parser():
 
     p_status = sub.add_parser("status", help="Show job status")
     p_status.add_argument("queue", nargs="?", help="Queue selector")
+    p_status.add_argument("-w", "--watch", action="store_true", help="Refresh status continuously")
+    p_status.add_argument("--interval", type=float, default=1.0, help="Refresh interval in seconds for --watch (default: 1.0)")
 
     p_reset = sub.add_parser("reset", help="Reset job(s) to pending")
     p_reset.add_argument("queue", nargs="?", help="Queue selector")
@@ -48,6 +53,7 @@ def select_command_interactively():
 
     options = [
         ("list", "List experiments and queues"),
+        ("running", "List running queues"),
         ("start", "Start a queue"),
         ("status", "Show queue status"),
         ("log", "Show queue log"),
@@ -97,6 +103,22 @@ def prompt_job_id():
         print("Invalid job number.", file=sys.stderr)
 
 
+def prompt_float(prompt, *, default):
+    while True:
+        value = input(f"{prompt} [{default}]: ").strip()
+        if not value:
+            return default
+        try:
+            parsed = float(value)
+        except ValueError:
+            print("Please enter a number.", file=sys.stderr)
+            continue
+        if parsed <= 0:
+            print("Please enter a positive number.", file=sys.stderr)
+            continue
+        return parsed
+
+
 def command_requires_sudo(command):
     return command in {"start", "run", "attach", "stop", "log"}
 
@@ -119,8 +141,12 @@ def main(argv=None):
         if command == "list":
             cmd_list()
             return 0
+        if command == "running":
+            cmd_list(running_only=True)
+            return 0
 
-        queue_path = resolve_queue_path(None)
+        prefer_active = command in {"status", "log", "attach", "stop"}
+        queue_path = resolve_queue_path(None, prefer_active=prefer_active)
         queue_selector = selector_from_path(queue_path)
         if command == "start":
             fresh = prompt_yes_no("Reset all jobs before starting?", default=True)
@@ -159,7 +185,9 @@ def main(argv=None):
                 exec_with_sudo(cli_args)
             return cmd_run(queue_path, dry=dry)
         if command == "status":
-            cmd_status(queue_path)
+            watch = prompt_yes_no("Watch status updates?", default=False)
+            interval = prompt_float("Refresh interval in seconds", default=1.0) if watch else 1.0
+            cmd_status(queue_path, watch=watch, interval_s=interval)
             return 0
         if command == "reset":
             cmd_reset(queue_path, prompt_job_id())
@@ -171,10 +199,14 @@ def main(argv=None):
         exec_with_sudo(argv)
 
     if args.command == "list":
-        cmd_list()
+        cmd_list(running_only=args.running)
+        return 0
+    if args.command == "running":
+        cmd_list(running_only=True)
         return 0
 
-    queue_path = resolve_queue_path(getattr(args, "queue", None))
+    prefer_active = args.command in {"status", "log", "attach", "stop"}
+    queue_path = resolve_queue_path(getattr(args, "queue", None), prefer_active=prefer_active)
     if args.command == "start":
         cmd_start(queue_path, dry=args.dry, fresh=args.fresh)
         return 0
@@ -190,7 +222,7 @@ def main(argv=None):
     if args.command == "run":
         return cmd_run(queue_path, dry=args.dry)
     if args.command == "status":
-        cmd_status(queue_path)
+        cmd_status(queue_path, watch=args.watch, interval_s=args.interval)
         return 0
     if args.command == "reset":
         cmd_reset(queue_path, args.job_id)
