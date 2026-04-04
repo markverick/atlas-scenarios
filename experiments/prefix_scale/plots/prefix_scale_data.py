@@ -1,4 +1,5 @@
 import csv
+import json
 import os
 
 
@@ -35,6 +36,26 @@ def load_packet_trace(path):
             categories.append(row["Category"])
             sizes.append(int(row["Bytes"]))
     return times, categories, sizes
+
+
+def load_svs_suppression_dir(data_dir):
+    results = {}
+    for name in os.listdir(data_dir):
+        if not (name.startswith("svs-suppression-") and name.endswith(".json")):
+            continue
+        if "two_step" not in name:
+            continue
+        marker = "-p"
+        if marker not in name:
+            continue
+        try:
+            prefix_count = int(name.split(marker, 1)[1].split("-", 1)[0])
+        except ValueError:
+            continue
+        path = os.path.join(data_dir, name)
+        with open(path) as handle:
+            results[prefix_count] = json.load(handle)
+    return results
 
 
 def bin_io(times, sizes, bin_width=1.0):

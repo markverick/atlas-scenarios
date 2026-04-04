@@ -12,7 +12,7 @@ from jobs.conventions import discover_active_queues, discover_catalog, resolve_q
 from jobs import cli as jobs_cli
 from jobs.runner import _progress_bar, _trim_line, cmd_list, cmd_run, cmd_status
 from jobs.spec import expand_matrix, load_job_spec, load_jobs
-from jobs.state import STATE_META_KEY, load_state, save_state
+from jobs.state import STATE_META_KEY, load_state, save_state, state_path
 
 
 def test_expand_matrix_no_matrix():
@@ -260,6 +260,29 @@ def test_cmd_run_clears_stale_queue_error_on_retry(tmp_path, monkeypatch):
     meta = updated[STATE_META_KEY]
     assert "queue_error" not in meta
     assert "queue_error_at" not in meta
+
+
+def test_load_state_retries_on_transient_invalid_json(tmp_path, monkeypatch):
+    exp_jobs_dir = tmp_path / "experiments" / "prefix_scale" / "queues"
+    exp_jobs_dir.mkdir(parents=True)
+    queue_path = exp_jobs_dir / "sprint.json"
+    queue_path.write_text(json.dumps({"jobs": [{"name": "build", "cmd": "true"}]}))
+
+    save_state(str(queue_path), {"1": {"status": "running"}})
+    path = state_path(str(queue_path))
+    real_open = open
+    state = {"calls": 0}
+
+    def flaky_open(file, *args, **kwargs):
+        if os.path.abspath(file) == os.path.abspath(path) and state["calls"] == 0:
+            state["calls"] += 1
+            return io.StringIO("")
+        return real_open(file, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", flaky_open)
+
+    loaded = load_state(str(queue_path))
+    assert loaded["1"]["status"] == "running"
 
 
 def test_cmd_status_watch_refreshes_output(tmp_path):

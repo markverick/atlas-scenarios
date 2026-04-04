@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
 
-from .prefix_scale_data import bin_io, human_bytes, load_packet_trace
+from .prefix_scale_data import bin_io, human_bytes, load_packet_trace, load_svs_suppression_dir
 
 
 def plot_churn_comparison(rows, out_dir, source_label):
@@ -219,3 +219,41 @@ def plot_sim_vs_emu(sim_rows, emu_rows, out_dir):
         fig.savefig(path, dpi=150)
         plt.close(fig)
         print(f"  Saved {path}")
+
+
+def plot_svs_suppression_compare(sim_data_dir, emu_data_dir, out_dir):
+    sim_data = load_svs_suppression_dir(sim_data_dir)
+    emu_data = load_svs_suppression_dir(emu_data_dir)
+    prefix_counts = sorted(set(sim_data) | set(emu_data))
+    if not prefix_counts:
+        return
+
+    metrics = [
+        ("enter", "Suppress Enter"),
+        ("ok", "Suppress OK"),
+        ("fail", "Suppress Fail"),
+        ("unresolved", "Unresolved"),
+    ]
+    fig, axes = plt.subplots(2, 2, figsize=(11, 7), sharex=True)
+    axes = axes.flatten()
+
+    for axis, (metric, title) in zip(axes, metrics):
+        sim_values = [sim_data.get(prefix_count, {}).get("aggregate", {}).get(metric, 0) for prefix_count in prefix_counts]
+        emu_values = [emu_data.get(prefix_count, {}).get("aggregate", {}).get(metric, 0) for prefix_count in prefix_counts]
+
+        axis.plot(prefix_counts, sim_values, "o-", label="Simulation", color="#4C72B0", linewidth=2)
+        axis.plot(prefix_counts, emu_values, "s-", label="Emulation", color="#DD8452", linewidth=2)
+        axis.set_title(title)
+        axis.set_ylabel("Count")
+        axis.grid(True, alpha=0.25)
+        axis.set_xticks(prefix_counts)
+
+    for axis in axes[-2:]:
+        axis.set_xlabel("Number of Prefixes")
+    axes[0].legend()
+    fig.suptitle("SVS Suppression During Churn", fontsize=13, y=0.98)
+    fig.tight_layout()
+    path = os.path.join(out_dir, "svs_suppression_compare.png")
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    print(f"  Saved {path}")

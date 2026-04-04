@@ -5,6 +5,8 @@ import pwd
 import socket
 import subprocess
 import sys
+import tempfile
+import time
 from datetime import datetime, timezone
 
 
@@ -61,17 +63,34 @@ def screen_exists(name):
 
 def load_state(job_path):
     path = state_path(job_path)
-    if os.path.exists(path):
-        with open(path) as handle:
-            return json.load(handle)
+    for attempt in range(5):
+        if not os.path.exists(path):
+            return {}
+        try:
+            with open(path) as handle:
+                return json.load(handle)
+        except (FileNotFoundError, json.JSONDecodeError):
+            if attempt == 4:
+                raise
+            time.sleep(0.02)
     return {}
 
 
 def save_state(job_path, state):
     path = state_path(job_path)
-    with open(path, "w") as handle:
-        json.dump(state, handle, indent=2)
-        handle.write("\n")
+    directory = os.path.dirname(path)
+    fd, tmp_path = tempfile.mkstemp(prefix="state-", suffix=".json", dir=directory)
+    try:
+        with os.fdopen(fd, "w") as handle:
+            json.dump(state, handle, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        _fix_owner(tmp_path)
+        os.replace(tmp_path, path)
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
     _fix_owner(path)
 
 

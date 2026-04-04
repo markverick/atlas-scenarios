@@ -9,6 +9,7 @@ from .prefix_scale_plots import (
     plot_net_overhead,
     plot_raw_overhead,
     plot_sim_vs_emu,
+    plot_svs_suppression_compare,
 )
 
 
@@ -47,9 +48,12 @@ def main(argv=None):
             rows_2 = load_churn_csv(csv_path_2)
             if "sim" in os.path.basename(os.path.abspath(args.data)):
                 sim_rows, emu_rows = rows, rows_2
+                sim_dir, emu_dir = args.data, args.data2
             else:
                 sim_rows, emu_rows = rows_2, rows
+                sim_dir, emu_dir = args.data2, args.data
             plot_sim_vs_emu(sim_rows, emu_rows, out_dir)
+            plot_svs_suppression_compare(sim_dir, emu_dir, out_dir)
 
     print("Done.")
     return 0
