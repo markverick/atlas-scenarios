@@ -3,7 +3,7 @@ import os
 import shutil
 import sys
 
-from .conventions import resolve_queue_path, selector_from_path
+from .conventions import InteractiveCancel, resolve_queue_path, selector_from_path
 from .runner import cmd_list, cmd_reset, cmd_run, cmd_status
 from .screen_ops import cmd_attach, cmd_log, cmd_start, cmd_stop
 
@@ -21,6 +21,9 @@ def build_parser():
     p_start.add_argument("queue", nargs="?", help="Queue selector like prefix_scale/sprint_twostep_0to50")
     p_start.add_argument("--dry", action="store_true", help="Dry-run inside the screen")
     p_start.add_argument("--fresh", action="store_true", help="Reset all jobs to pending before starting")
+    p_start.add_argument("--watch-status", dest="watch_status", action="store_true", help="Watch queue status after starting")
+    p_start.add_argument("--no-watch-status", dest="watch_status", action="store_false", help="Do not watch queue status after starting")
+    p_start.set_defaults(watch_status=None)
 
     p_attach = sub.add_parser("attach", help="Reattach to the running screen")
     p_attach.add_argument("queue", nargs="?", help="Queue selector")
@@ -69,7 +72,10 @@ def select_command_interactively():
         print(f"  {index:>2}. {label}")
 
     while True:
-        choice = input("\nSelect action number: ").strip()
+        try:
+            choice = input("\nSelect action number: ").strip()
+        except (KeyboardInterrupt, EOFError) as exc:
+            raise InteractiveCancel() from exc
         if not choice:
             continue
         if choice.isdigit():
@@ -119,6 +125,15 @@ def prompt_float(prompt, *, default):
         return parsed
 
 
+def maybe_watch_started_queue(job_path, *, watch_status=None, default=True):
+    if watch_status is None:
+        if not sys.stdin.isatty():
+            return
+        watch_status = prompt_yes_no("Watch status updates?", default=default)
+    if watch_status:
+        cmd_status(job_path, watch=True, interval_s=1.0)
+
+
 def command_requires_sudo(command):
     return command in {"start", "run", "attach", "stop", "log"}
 
@@ -131,104 +146,115 @@ def exec_with_sudo(cli_args):
 
 
 def main(argv=None):
-    argv = list(sys.argv[1:] if argv is None else argv)
-    parser = build_parser()
-    args = parser.parse_args(argv)
-    if not args.command:
-        command = select_command_interactively()
-        if command is None:
+    try:
+        argv = list(sys.argv[1:] if argv is None else argv)
+        parser = build_parser()
+        args = parser.parse_args(argv)
+        if not args.command:
+            command = select_command_interactively()
+            if command is None:
+                return 0
+            if command == "list":
+                cmd_list()
+                return 0
+            if command == "running":
+                cmd_list(running_only=True)
+                return 0
+
+            prefer_active = command in {"status", "log", "attach", "stop"}
+            active_only = command in {"attach", "stop"}
+            queue_path = resolve_queue_path(None, prefer_active=prefer_active, active_only=active_only)
+            queue_selector = selector_from_path(queue_path)
+            if command == "start":
+                fresh = True
+                if os.geteuid() != 0 and command_requires_sudo(command):
+                    cli_args = [command, queue_selector]
+                    if fresh:
+                        cli_args.append("--fresh")
+                    cli_args.append("--watch-status")
+                    exec_with_sudo(cli_args)
+                cmd_start(queue_path, dry=False, fresh=fresh)
+                maybe_watch_started_queue(queue_path, watch_status=True)
+                return 0
+            if command == "attach":
+                if os.geteuid() != 0 and command_requires_sudo(command):
+                    exec_with_sudo([command, queue_selector])
+                cmd_attach(queue_path)
+                return 0
+            if command == "stop":
+                if os.geteuid() != 0 and command_requires_sudo(command):
+                    exec_with_sudo([command, queue_selector])
+                cmd_stop(queue_path)
+                return 0
+            if command == "log":
+                follow = False
+                if os.geteuid() != 0 and command_requires_sudo(command):
+                    cli_args = [command, queue_selector]
+                    if follow:
+                        cli_args.append("--follow")
+                    exec_with_sudo(cli_args)
+                cmd_log(queue_path, follow=follow)
+                return 0
+            if command == "run":
+                dry = False
+                if os.geteuid() != 0 and command_requires_sudo(command):
+                    cli_args = [command, queue_selector]
+                    if dry:
+                        cli_args.append("--dry")
+                    exec_with_sudo(cli_args)
+                return cmd_run(queue_path, dry=dry)
+            if command == "status":
+                watch = True
+                interval = 1.0
+                cmd_status(queue_path, watch=watch, interval_s=interval)
+                return 0
+            if command == "reset":
+                cmd_reset(queue_path, None)
+                return 0
+            parser.print_help()
+            return 1
+
+        if os.geteuid() != 0 and command_requires_sudo(args.command):
+            exec_with_sudo(argv)
+
+        if args.command == "list":
+            cmd_list(running_only=args.running)
             return 0
-        if command == "list":
-            cmd_list()
-            return 0
-        if command == "running":
+        if args.command == "running":
             cmd_list(running_only=True)
             return 0
 
-        prefer_active = command in {"status", "log", "attach", "stop"}
-        queue_path = resolve_queue_path(None, prefer_active=prefer_active)
-        queue_selector = selector_from_path(queue_path)
-        if command == "start":
-            fresh = prompt_yes_no("Reset all jobs before starting?", default=True)
-            if os.geteuid() != 0 and command_requires_sudo(command):
-                cli_args = [command, queue_selector]
-                if fresh:
-                    cli_args.append("--fresh")
-                exec_with_sudo(cli_args)
-            cmd_start(queue_path, dry=False, fresh=fresh)
+        prefer_active = args.command in {"status", "log", "attach", "stop"}
+        active_only = args.command in {"attach", "stop"}
+        queue_path = resolve_queue_path(getattr(args, "queue", None), prefer_active=prefer_active, active_only=active_only)
+        if args.command == "start":
+            cmd_start(queue_path, dry=args.dry, fresh=args.fresh)
+            if not args.dry:
+                maybe_watch_started_queue(queue_path, watch_status=args.watch_status)
             return 0
-        if command == "attach":
-            if os.geteuid() != 0 and command_requires_sudo(command):
-                exec_with_sudo([command, queue_selector])
+        if args.command == "attach":
             cmd_attach(queue_path)
             return 0
-        if command == "stop":
-            if os.geteuid() != 0 and command_requires_sudo(command):
-                exec_with_sudo([command, queue_selector])
+        if args.command == "stop":
             cmd_stop(queue_path)
             return 0
-        if command == "log":
-            follow = prompt_yes_no("Follow log output?", default=False)
-            if os.geteuid() != 0 and command_requires_sudo(command):
-                cli_args = [command, queue_selector]
-                if follow:
-                    cli_args.append("--follow")
-                exec_with_sudo(cli_args)
-            cmd_log(queue_path, follow=follow)
+        if args.command == "log":
+            cmd_log(queue_path, follow=args.follow)
             return 0
-        if command == "run":
-            dry = prompt_yes_no("Dry run only?", default=False)
-            if os.geteuid() != 0 and command_requires_sudo(command):
-                cli_args = [command, queue_selector]
-                if dry:
-                    cli_args.append("--dry")
-                exec_with_sudo(cli_args)
-            return cmd_run(queue_path, dry=dry)
-        if command == "status":
-            watch = prompt_yes_no("Watch status updates?", default=False)
-            interval = prompt_float("Refresh interval in seconds", default=1.0) if watch else 1.0
-            cmd_status(queue_path, watch=watch, interval_s=interval)
+        if args.command == "run":
+            return cmd_run(queue_path, dry=args.dry)
+        if args.command == "status":
+            cmd_status(queue_path, watch=args.watch, interval_s=args.interval)
             return 0
-        if command == "reset":
-            cmd_reset(queue_path, prompt_job_id())
+        if args.command == "reset":
+            cmd_reset(queue_path, args.job_id)
             return 0
-        parser.print_help()
+        print(f"Unknown command: {args.command}", file=sys.stderr)
         return 1
-
-    if os.geteuid() != 0 and command_requires_sudo(args.command):
-        exec_with_sudo(argv)
-
-    if args.command == "list":
-        cmd_list(running_only=args.running)
+    except InteractiveCancel:
         return 0
-    if args.command == "running":
-        cmd_list(running_only=True)
-        return 0
-
-    prefer_active = args.command in {"status", "log", "attach", "stop"}
-    queue_path = resolve_queue_path(getattr(args, "queue", None), prefer_active=prefer_active)
-    if args.command == "start":
-        cmd_start(queue_path, dry=args.dry, fresh=args.fresh)
-        return 0
-    if args.command == "attach":
-        cmd_attach(queue_path)
-        return 0
-    if args.command == "stop":
-        cmd_stop(queue_path)
-        return 0
-    if args.command == "log":
-        cmd_log(queue_path, follow=args.follow)
-        return 0
-    if args.command == "run":
-        return cmd_run(queue_path, dry=args.dry)
-    if args.command == "status":
-        cmd_status(queue_path, watch=args.watch, interval_s=args.interval)
-        return 0
-    if args.command == "reset":
-        cmd_reset(queue_path, args.job_id)
-        return 0
-    print(f"Unknown command: {args.command}", file=sys.stderr)
-    return 1
+    except KeyboardInterrupt:
+        return 130
 
 
 if __name__ == "__main__":

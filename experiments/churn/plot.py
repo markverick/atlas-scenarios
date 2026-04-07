@@ -36,6 +36,8 @@ CATEGORIES = ["DvAdvert", "PrefixSync", "Mgmt"]
 _EVENT_STYLE = {
     "link_down":        ("link dn",  "#e74c3c"),
     "link_up":          ("link up",  "#2ecc71"),
+    "neighbor_down":    ("nbr dn",   "#8e44ad"),
+    "neighbor_up":      ("nbr up",   "#16a085"),
     "prefix_withdraw":  ("pfx rm",   "#e67e22"),
     "prefix_announce":  ("pfx add",  "#3498db"),
 }
@@ -78,6 +80,7 @@ def load_churn_csv(path):
             row["num_nodes"] = int(row["num_nodes"])
             row["num_links"] = int(row["num_links"])
             row["num_prefixes"] = int(row["num_prefixes"])
+            row["num_churn_links"] = int(row.get("num_churn_links") or 0)
             row["window_s"] = float(row["window_s"])
             row["phase2_start"] = float(row["phase2_start"])
             row["convergence_s"] = float(row["convergence_s"])
@@ -102,6 +105,62 @@ def load_packet_trace(path):
                 continue
             events.append((float(row["Time"]), row["Category"], int(row["Bytes"])))
     return events
+
+
+def is_link_scale_sweep(rows):
+    """Return True when rows represent a sweep over churn-link counts."""
+    if not rows:
+        return False
+    counts = {int(row.get("num_churn_links", 0)) for row in rows}
+    return len(counts) > 1
+
+
+def plot_link_scale_compare(sim_rows, emu_rows, out_dir):
+    """Plot churn-phase routing bytes against the number of churned links."""
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
+    mode_styles = {
+        "baseline": ("#999999", "o-"),
+        "two_step": ("#e74c3c", "s-"),
+        "one_step": ("#2ecc71", "^-"),
+    }
+
+    for ax, rows, title in [(axes[0], sim_rows, "Simulation"),
+                             (axes[1], emu_rows, "Emulation")]:
+        if not rows:
+            ax.set_title(f"{title} (no data)")
+            continue
+
+        link_counts = sorted({row["num_churn_links"] for row in rows if row["phase"] == "churn"})
+        for mode, (color, style) in mode_styles.items():
+            points = []
+            for link_count in link_counts:
+                match = [
+                    row for row in rows
+                    if row["phase"] == "churn"
+                    and row["mode"] == mode
+                    and row["num_churn_links"] == link_count
+                ]
+                if not match:
+                    continue
+                points.append((link_count, match[0]["total_routing_bytes"] / 1024.0))
+            if not points:
+                continue
+            ax.plot([x for x, _ in points], [y for _, y in points], style,
+                    color=color, linewidth=2, label=mode.replace("_", " "))
+
+        ax.set_xlabel("Churned Links")
+        ax.set_xticks(link_counts)
+        ax.set_title(title)
+        ax.grid(True, alpha=0.3)
+        ax.legend()
+
+    axes[0].set_ylabel("Churn-Phase Routing Traffic (KB)")
+    fig.suptitle("Simultaneous Link Churn Scaling: Baseline vs Two-Step", fontsize=13)
+    fig.tight_layout()
+    out = os.path.join(out_dir, "link_scale_churn_compare.png")
+    fig.savefig(out, dpi=150)
+    plt.close(fig)
+    print(f"  Saved {out}")
 
 
 def plot_phase_bars(sim_rows, emu_rows, out_dir):
@@ -582,6 +641,36 @@ def write_summary(sim_rows, emu_rows, out_dir, sim_dir="", emu_dir=""):
         if timestamps:
             f.write("**Last run**: " + " | ".join(timestamps) + "\n\n")
 
+        if is_link_scale_sweep(sim_rows or emu_rows):
+                f.write("## Simultaneous Link Churn Scaling\n\n")
+                f.write("This run sweeps how many links churn simultaneously at the start of the churn phase. "
+                    "Use it to compare scaling under concurrent link churn against the baseline heartbeat floor.\n\n")
+            for rows, label in [(sim_rows, "Simulation"), (emu_rows, "Emulation")]:
+                if not rows:
+                    continue
+                f.write(f"### {label}\n\n")
+                f.write("| Churned links | Mode | Churn total (KB) | DvAdvert (KB) | PfxSync (KB) |\n")
+                f.write("|---------------|------|------------------|---------------|--------------|\n")
+                link_counts = sorted({row["num_churn_links"] for row in rows if row["phase"] == "churn"})
+                for link_count in link_counts:
+                    for mode in ("baseline", "two_step", "one_step"):
+                        match = [
+                            row for row in rows
+                            if row["phase"] == "churn"
+                            and row["mode"] == mode
+                            and row["num_churn_links"] == link_count
+                        ]
+                        if not match:
+                            continue
+                        row = match[0]
+                        f.write(
+                            f"| {link_count} | {mode} | {row['total_routing_bytes']/1024:.1f} | "
+                            f"{row['dv_advert_bytes']/1024:.1f} | {row['pfxsync_bytes']/1024:.1f} |\n"
+                        )
+                f.write("\n")
+            print(f"  Saved {out}")
+            return
+
         # --- Scenario Design ---
         f.write("## Scenario Design\n\n")
         f.write("The churn scenario measures routing overhead under dynamic network events, "
@@ -747,15 +836,18 @@ def main():
     phase2_start = ref["phase2_start"]
 
     print("Generating churn plots...")
-    plot_phase_bars(sim_rows, emu_rows, args.out)
-    plot_breakdown(sim_rows, emu_rows, args.out)
-    plot_savings(sim_rows, emu_rows, args.out)
-    plot_time_io(args.sim, args.emu, args.out, phase2_start)
-    plot_time_io_cdf(args.sim, args.emu, args.out, phase2_start)
-    plot_cdf(args.sim, args.emu, args.out)
-    plot_phase2_io(args.sim, args.emu, args.out, phase2_start)
-    plot_phase2_io_cdf(args.sim, args.emu, args.out, phase2_start)
-    plot_phase2_cdf(args.sim, args.emu, args.out, phase2_start)
+    if is_link_scale_sweep(sim_rows or emu_rows):
+        plot_link_scale_compare(sim_rows, emu_rows, args.out)
+    else:
+        plot_phase_bars(sim_rows, emu_rows, args.out)
+        plot_breakdown(sim_rows, emu_rows, args.out)
+        plot_savings(sim_rows, emu_rows, args.out)
+        plot_time_io(args.sim, args.emu, args.out, phase2_start)
+        plot_time_io_cdf(args.sim, args.emu, args.out, phase2_start)
+        plot_cdf(args.sim, args.emu, args.out)
+        plot_phase2_io(args.sim, args.emu, args.out, phase2_start)
+        plot_phase2_io_cdf(args.sim, args.emu, args.out, phase2_start)
+        plot_phase2_cdf(args.sim, args.emu, args.out, phase2_start)
     write_summary(sim_rows, emu_rows, args.out, args.sim, args.emu)
     print("Done.")
 

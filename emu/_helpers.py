@@ -10,9 +10,13 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from minindn_ndnd.bootstrap import patch_minindn
+
+patch_minindn()
+
 from minindn.minindn import Minindn
 from minindn.apps.app_manager import AppManager
-from minindn.apps.ndnd_fw import NDNd_FW
+from minindn_ndnd.ndnd_fw import NDNd_FW
 
 from lib.topology import build_grid_topo, grid_stats, build_conf_topo, conf_stats
 
@@ -129,3 +133,35 @@ def restore_link(net, src_name, dst_name):
     src_intf, dst_intf = _link_intfs(net, src_name, dst_name)
     for intf in (src_intf, dst_intf):
         intf.cmd(f"tc qdisc del dev {intf.name} root 2>/dev/null; true")
+
+
+def _intf_ip(intf):
+    """Return the IPv4 address assigned to a Mininet interface."""
+    ip = ""
+    if hasattr(intf, "IP"):
+        ip = intf.IP() or ""
+    if ip:
+        return ip
+
+    output = intf.cmd(
+        "ip -o -4 addr show dev {} | awk '{{print $4}}' | cut -d/ -f1".format(intf.name)
+    )
+    return output.strip()
+
+
+def destroy_neighbor_link(net, src_name, dst_name):
+    """Destroy DV neighbor links on both ends of a host-to-host edge."""
+    src_intf, dst_intf = _link_intfs(net, src_name, dst_name)
+    src_uri = f'udp://{_intf_ip(dst_intf)}:6363'
+    dst_uri = f'udp://{_intf_ip(src_intf)}:6363'
+    src_intf.node.cmd(f'ndnd dv link-destroy "{src_uri}"')
+    dst_intf.node.cmd(f'ndnd dv link-destroy "{dst_uri}"')
+
+
+def create_neighbor_link(net, src_name, dst_name):
+    """Create DV neighbor links on both ends of a host-to-host edge."""
+    src_intf, dst_intf = _link_intfs(net, src_name, dst_name)
+    src_uri = f'udp://{_intf_ip(dst_intf)}:6363'
+    dst_uri = f'udp://{_intf_ip(src_intf)}:6363'
+    src_intf.node.cmd(f'ndnd dv link-create "{src_uri}"')
+    dst_intf.node.cmd(f'ndnd dv link-create "{dst_uri}"')

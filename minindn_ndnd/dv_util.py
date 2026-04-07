@@ -5,7 +5,7 @@ from mininet.log import info
 from minindn.minindn import Minindn
 from minindn.apps.app_manager import AppManager
 
-from minindn.apps.ndnd_dv import NDNd_DV, DEFAULT_NETWORK
+from minindn_ndnd.ndnd_dv import NDNd_DV, DEFAULT_NETWORK
 
 
 def setup(ndn: Minindn, network=DEFAULT_NETWORK, dv_config=None) -> float:

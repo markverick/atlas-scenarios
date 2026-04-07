@@ -11,6 +11,8 @@
  * Churn events are passed via --churnEvents as a JSON array:
  *   [{"time":20.0,"type":"link_down","src":"n0_0","dst":"n0_1"},
  *    {"time":25.0,"type":"link_up","src":"n0_0","dst":"n0_1"},
+ *    {"time":20.0,"type":"neighbor_down","src":"n0_0","dst":"n0_1"},
+ *    {"time":25.0,"type":"neighbor_up","src":"n0_0","dst":"n0_1"},
  *    {"time":22.0,"type":"prefix_withdraw","node":"n0_0","prefix":"/data/n0_0/pfx0"},
  *    {"time":27.0,"type":"prefix_announce","node":"n0_0","prefix":"/data/n0_0/pfx0"}]
  *
@@ -118,8 +120,15 @@ struct LinkErrorModels
     Ptr<RateErrorModel> rev; // to → from
 };
 
+struct LinkInterfaces
+{
+    uint32_t fromIf;
+    uint32_t toIf;
+};
+
 // Key: "srcName:dstName" (alphabetically ordered)
 static std::map<std::string, LinkErrorModels> g_linkErrors;
+static std::map<std::string, LinkInterfaces> g_linkInterfaces;
 
 static std::string
 LinkKey(const std::string& a, const std::string& b)
@@ -149,6 +158,48 @@ DoLinkUp(const std::string& src, const std::string& dst)
     std::cout << Simulator::Now().GetSeconds() << "s: LINK UP " << src << "--" << dst << std::endl;
     it->second.fwd->Disable();
     it->second.rev->Disable();
+}
+
+static void
+DoNeighborDown(const std::string& src, const std::string& dst)
+{
+    auto key = LinkKey(src, dst);
+    auto it = g_linkInterfaces.find(key);
+    NS_ABORT_MSG_IF(it == g_linkInterfaces.end(),
+                    "Link interface state not found for " << src << "--" << dst);
+
+    auto srcNode = Names::Find<Node>(src);
+    auto dstNode = Names::Find<Node>(dst);
+    NS_ABORT_MSG_IF(!srcNode || !dstNode, "Neighbor-down nodes not found for " << src << "--" << dst);
+
+    auto srcStack = srcNode->GetObject<NdndStack>();
+    auto dstStack = dstNode->GetObject<NdndStack>();
+    NS_ABORT_MSG_IF(!srcStack || !dstStack, "NDNd stack missing for " << src << "--" << dst);
+
+    std::cout << Simulator::Now().GetSeconds() << "s: NEIGHBOR DOWN " << src << "--" << dst << std::endl;
+    srcStack->DeactivateInterface(it->second.fromIf);
+    dstStack->DeactivateInterface(it->second.toIf);
+}
+
+static void
+DoNeighborUp(const std::string& src, const std::string& dst)
+{
+    auto key = LinkKey(src, dst);
+    auto it = g_linkInterfaces.find(key);
+    NS_ABORT_MSG_IF(it == g_linkInterfaces.end(),
+                    "Link interface state not found for " << src << "--" << dst);
+
+    auto srcNode = Names::Find<Node>(src);
+    auto dstNode = Names::Find<Node>(dst);
+    NS_ABORT_MSG_IF(!srcNode || !dstNode, "Neighbor-up nodes not found for " << src << "--" << dst);
+
+    auto srcStack = srcNode->GetObject<NdndStack>();
+    auto dstStack = dstNode->GetObject<NdndStack>();
+    NS_ABORT_MSG_IF(!srcStack || !dstStack, "NDNd stack missing for " << src << "--" << dst);
+
+    std::cout << Simulator::Now().GetSeconds() << "s: NEIGHBOR UP " << src << "--" << dst << std::endl;
+    srcStack->ReactivateInterface(it->second.fromIf);
+    dstStack->ReactivateInterface(it->second.toIf);
 }
 
 static void
@@ -375,6 +426,20 @@ ScheduleChurnEvents(const std::vector<ChurnEvent>& events, double baseTime)
             Simulator::Schedule(Seconds(ev.time), &DoLinkUp, src, dst);
             LogEvent(logTime, "link_up", src + "--" + dst);
         }
+        else if (ev.type == "neighbor_down")
+        {
+            auto src = ev.fields.at("src");
+            auto dst = ev.fields.at("dst");
+            Simulator::Schedule(Seconds(ev.time), &DoNeighborDown, src, dst);
+            LogEvent(logTime, "neighbor_down", src + "--" + dst);
+        }
+        else if (ev.type == "neighbor_up")
+        {
+            auto src = ev.fields.at("src");
+            auto dst = ev.fields.at("dst");
+            Simulator::Schedule(Seconds(ev.time), &DoNeighborUp, src, dst);
+            LogEvent(logTime, "neighbor_up", src + "--" + dst);
+        }
         else if (ev.type == "prefix_withdraw")
         {
             auto nodeName = ev.fields.at("node");
@@ -484,6 +549,10 @@ main(int argc, char* argv[])
             link.devices.Get(1)->SetAttribute("ReceiveErrorModel",
                                                PointerValue(lem.fwd));
             g_linkErrors[key] = lem;
+            g_linkInterfaces[key] = {
+                link.devices.Get(0)->GetIfIndex(),
+                link.devices.Get(1)->GetIfIndex(),
+            };
         }
     }
 

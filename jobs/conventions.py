@@ -6,6 +6,17 @@ from .spec import load_job_spec
 from .state import STATE_DONE, STATE_FAILED, STATE_PENDING, STATE_RUNNING, load_state, screen_exists, screen_name, state_job_keys
 
 
+class InteractiveCancel(Exception):
+    pass
+
+
+def _interactive_input(prompt):
+    try:
+        return input(prompt)
+    except (KeyboardInterrupt, EOFError) as exc:
+        raise InteractiveCancel() from exc
+
+
 def workspace_root():
     return Path(__file__).resolve().parent.parent
 
@@ -24,6 +35,19 @@ def selector_from_path(path, root=None):
     if len(parts) >= 4 and parts[0] == "experiments" and parts[2] == "queues":
         return f"{parts[1]}/{queue_path.stem}"
     raise ValueError(f"Queue path does not follow experiments/<name>/queues convention: {path}")
+
+
+def _queue_display_name(queue):
+    return queue.get("name") or queue.get("selector", "").split("/", 1)[-1]
+
+
+def _queue_meta_bits(queue):
+    meta = []
+    if queue.get("topology"):
+        meta.append(f"topology={queue['topology']}")
+    if queue.get("mode"):
+        meta.append(f"mode={queue['mode']}")
+    return meta
 
 
 def discover_catalog(root=None):
@@ -101,8 +125,8 @@ def select_active_queue_interactively(active_queues):
         print("ERROR: no queue specified and stdin is not interactive.", file=sys.stderr)
         sys.exit(1)
     if not active_queues:
-        print("ERROR: no running queues found.", file=sys.stderr)
-        sys.exit(1)
+        print("No running queues found.")
+        raise InteractiveCancel()
 
     print("Running queues:\n")
     for index, queue in enumerate(active_queues, start=1):
@@ -114,14 +138,16 @@ def select_active_queue_interactively(active_queues):
         ]
         if counts[STATE_FAILED]:
             status_bits.append(f"failed={counts[STATE_FAILED]}")
-        print(f"  {index:>2}. {queue['selector']}  [{' '.join(status_bits)}]")
+        print(f"  {index:>2}. {_queue_display_name(queue)}")
+        print(f"      status: {'  '.join(status_bits)}")
         if queue.get("run_root"):
             print(f"      run_root: {queue['run_root']}")
+        print("")
 
     while True:
-        queue_choice = input("\nSelect running queue number (or 'q' to cancel): ").strip()
+        queue_choice = _interactive_input("\nSelect running queue number (or 'q' to cancel): ").strip()
         if queue_choice.lower() in {"q", "quit", "exit"}:
-            sys.exit(1)
+            raise InteractiveCancel()
         if queue_choice.isdigit():
             queue_index = int(queue_choice)
             if 1 <= queue_index <= len(active_queues):
@@ -140,21 +166,19 @@ def select_queue_interactively(catalog):
     print("Experiments:\n")
     for index, entry in enumerate(catalog, start=1):
         print(f"  {index:>2}. {entry['experiment']}")
-        if entry["scenarios"]:
-            print(f"      scenarios: {', '.join(entry['scenarios'])}")
+        if entry["queues"]:
+            queue_names = ", ".join(_queue_display_name(queue) for queue in entry["queues"])
+            print(f"      queues: {queue_names}")
         for queue in entry["queues"]:
-            meta = []
-            if queue.get("topology"):
-                meta.append(f"topology={queue['topology']}")
-            if queue.get("mode"):
-                meta.append(f"mode={queue['mode']}")
+            meta = _queue_meta_bits(queue)
             suffix = f"  [{', '.join(meta)}]" if meta else ""
-            print(f"      - {queue['selector']}{suffix}")
+            print(f"      - {_queue_display_name(queue)}{suffix}")
+        print("")
 
     while True:
-        exp_choice = input("\nSelect experiment number (or 'q' to cancel): ").strip()
+        exp_choice = _interactive_input("\nSelect experiment number (or 'q' to cancel): ").strip()
         if exp_choice.lower() in {"q", "quit", "exit"}:
-            sys.exit(1)
+            raise InteractiveCancel()
         if exp_choice.isdigit():
             exp_index = int(exp_choice)
             if 1 <= exp_index <= len(catalog):
@@ -168,14 +192,18 @@ def select_queue_interactively(catalog):
 
     print("")
     for index, queue in enumerate(experiment["queues"], start=1):
-        print(f"  {index:>2}. {queue['selector']}")
+        print(f"  {index:>2}. {_queue_display_name(queue)}")
         if queue.get("description"):
             print(f"      {queue['description']}")
+        meta = _queue_meta_bits(queue)
+        if meta:
+            print(f"      {'  '.join(meta)}")
+        print("")
 
     while True:
-        queue_choice = input("\nSelect queue number (or 'q' to cancel): ").strip()
+        queue_choice = _interactive_input("\nSelect queue number (or 'q' to cancel): ").strip()
         if queue_choice.lower() in {"q", "quit", "exit"}:
-            sys.exit(1)
+            raise InteractiveCancel()
         if queue_choice.isdigit():
             queue_index = int(queue_choice)
             if 1 <= queue_index <= len(experiment["queues"]):
@@ -183,7 +211,7 @@ def select_queue_interactively(catalog):
         print("Invalid selection.", file=sys.stderr)
 
 
-def resolve_queue_path(target=None, root=None, prefer_active=False):
+def resolve_queue_path(target=None, root=None, prefer_active=False, active_only=False):
     if target and os.path.exists(target):
         return str(Path(target).resolve())
 
@@ -191,7 +219,9 @@ def resolve_queue_path(target=None, root=None, prefer_active=False):
     if not target:
         if prefer_active:
             active_queues = discover_active_queues(root)
-            if active_queues:
+            if active_only:
+                active_queues = [queue for queue in active_queues if queue.get("has_screen")]
+            if active_queues or active_only:
                 return select_active_queue_interactively(active_queues)
         return select_queue_interactively(catalog)
 

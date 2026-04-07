@@ -36,12 +36,13 @@ from emu._helpers import (
     NETWORK,
     setup_grid, setup_conf_topo, start_tcpdump, stop_tcpdump,
     blackhole_link, restore_link,
+    destroy_neighbor_link, create_neighbor_link,
 )
-from minindn.helpers import dv_util
+from minindn_ndnd import dv_util
 from lib.churn_common import (
     FIELDNAMES, KNOWN_TOPOLOGIES,
     build_churn_events, build_random_churn_events,
-    build_prefix_scaling_events,
+    build_prefix_scaling_events, build_link_scaling_events,
     parse_packet_events_by_phase, build_result_rows,
     make_tag, auto_plot, default_out_dir, grid_churn_targets,
 )
@@ -62,12 +63,16 @@ def _init_variant_stats(tag, *, topology, mode, num_prefixes, trial):
         "planned": _zero_counts(
             "link_down",
             "link_up",
+            "neighbor_down",
+            "neighbor_up",
             "prefix_withdraw",
             "prefix_announce",
         ),
         "executed": _zero_counts(
             "link_down",
             "link_up",
+            "neighbor_down",
+            "neighbor_up",
             "prefix_withdraw",
             "prefix_announce",
         ),
@@ -279,6 +284,16 @@ def schedule_churn_events(ndn, hosts, churn_events, dv_start, stats=None, action
                     blackhole_link(ndn.net, s, d)
             t = threading.Timer(delay, do_link_down)
 
+        elif etype == "neighbor_down":
+            src, dst = ev["src"], ev["dst"]
+            def do_neighbor_down(s=src, d=dst):
+                info(f"  CHURN: neighbor DOWN {s}--{d}\n")
+                with lock:
+                    if stats is not None:
+                        _bump(stats, "executed", "neighbor_down")
+                    destroy_neighbor_link(ndn.net, s, d)
+            t = threading.Timer(delay, do_neighbor_down)
+
         elif etype == "link_up":
             src, dst = ev["src"], ev["dst"]
             def do_link_up(s=src, d=dst):
@@ -288,6 +303,16 @@ def schedule_churn_events(ndn, hosts, churn_events, dv_start, stats=None, action
                         _bump(stats, "executed", "link_up")
                     restore_link(ndn.net, s, d)
             t = threading.Timer(delay, do_link_up)
+
+        elif etype == "neighbor_up":
+            src, dst = ev["src"], ev["dst"]
+            def do_neighbor_up(s=src, d=dst):
+                info(f"  CHURN: neighbor UP {s}--{d}\n")
+                with lock:
+                    if stats is not None:
+                        _bump(stats, "executed", "neighbor_up")
+                    create_neighbor_link(ndn.net, s, d)
+            t = threading.Timer(delay, do_neighbor_up)
 
         elif etype == "prefix_withdraw":
             node_name, pfx = ev["node"], ev["prefix"]
@@ -350,10 +375,12 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
                      grid_size, num_nodes, num_links,
                      link_src, link_dst, churn_node,
                      trial, mode, num_prefixes, window_s,
+                     num_churn_links,
                      dv_config, sim_time, deadline, out_dir, cfg=None,
                      all_links=None, all_nodes=None):
     """Run one variant and return a list of result dicts."""
-    tag = make_tag(mode, topo_id_str, num_prefixes, trial)
+    tag = make_tag(mode, topo_id_str, num_prefixes, trial,
+                   num_churn_links=num_churn_links)
     pfx_count = num_prefixes if mode != "baseline" else 0
     run_t0 = time.monotonic()
     stats = _init_variant_stats(
@@ -436,6 +463,14 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
             seed=cfg.get("churn_seed", 42),
             recovery_delay=cfg.get("churn_recovery_delay", 3.0),
             all_nodes=all_nodes)
+    elif churn_mode_str == "link_scaling":
+        churn_events = build_link_scaling_events(
+            num_churn_links, evt_start,
+            all_links=all_links,
+            window_end=evt_end,
+            seed=cfg.get("churn_seed", 42),
+            recovery_delay=cfg.get("churn_recovery_delay", 5.0),
+            link_event_mode=cfg.get("link_event_mode", "blackhole"))
     elif churn_mode_str == "random":
         churn_events = build_random_churn_events(
             pfx_count, evt_start,
@@ -447,11 +482,15 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
             recovery_delay=cfg.get("churn_recovery_delay", 3.0),
             all_links=all_links,
             all_nodes=all_nodes,
-            prefix_churn_rate=cfg.get("churn_prefix_rate", 0.0))
+            prefix_churn_rate=cfg.get("churn_prefix_rate", 0.0),
+            link_event_mode=cfg.get("link_event_mode", "blackhole"),
+            include_prefix_churn=cfg.get("include_prefix_churn", True))
     else:
         churn_events = build_churn_events(
             pfx_count, evt_start,
-            link_src=link_src, link_dst=link_dst, churn_node=churn_node)
+            link_src=link_src, link_dst=link_dst, churn_node=churn_node,
+            link_event_mode=cfg.get("link_event_mode", "blackhole"),
+            include_prefix_churn=cfg.get("include_prefix_churn", True))
 
     for ev in churn_events:
         etype = ev["type"]
@@ -485,7 +524,7 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
         ew = csv.writer(ef)
         ew.writerow(["Time", "Event", "Details"])
         for ev in scheduled_events:
-            if ev["type"] in ("link_down", "link_up"):
+            if ev["type"] in ("link_down", "link_up", "neighbor_down", "neighbor_up"):
                 details = f"{ev['src']}--{ev['dst']}"
             else:
                 details = f"{ev['node']} {ev['prefix']}"
@@ -568,6 +607,7 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
         trial=trial,
         mode=mode,
         num_prefixes=pfx_count,
+        num_churn_links=num_churn_links,
         window_s=window_s,
         phase2_start=phase2_start_rel,
         convergence_s=conv_time,
@@ -623,6 +663,13 @@ def _run_grid(cfg, dv_config, out_dir, writer, f):
     if not prefix_counts:
         prefix_counts = [num_prefixes]
     sweeping = len(prefix_counts) > 1
+    link_counts = cfg.get("link_counts", [])
+    if not link_counts:
+        link_counts = [cfg.get("num_churn_links", 1)]
+    churn_mode_str = cfg.get("churn_mode", "fixed")
+    sweep_link_counts = churn_mode_str == "link_scaling"
+    if not sweep_link_counts:
+        link_counts = [1]
 
     modes = cfg.get("modes", []) or ["baseline", "two_step", "one_step"]
 
@@ -637,35 +684,38 @@ def _run_grid(cfg, dv_config, out_dir, writer, f):
 
         for trial in range(1, trials + 1):
             baseline_done = False
-            for pfx_count in prefix_counts:
-                for mode in modes:
-                    if sweeping and mode == "baseline" and baseline_done:
-                        continue
-                    rows = _run_one_variant(
-                        ndn_factory=ndn_factory,
-                        topology="grid",
-                        topo_id_str=f"{grid_size}x{grid_size}",
-                        grid_size=grid_size,
-                        num_nodes=num_nodes,
-                        num_links=num_links,
-                        link_src=link_src,
-                        link_dst=link_dst,
-                        churn_node=churn_node,
-                        trial=trial,
-                        mode=mode,
-                        num_prefixes=pfx_count,
-                        window_s=sim_time,
-                        dv_config=dv_config,
-                        sim_time=sim_time,
-                        deadline=120,
-                        out_dir=out_dir,
-                        cfg=cfg,
-                        all_links=all_links_list,
-                        all_nodes=all_nodes_list,
-                    )
-                    _write_rows(writer, f, rows)
-                    if mode == "baseline":
-                        baseline_done = True
+            for link_count in link_counts:
+                for pfx_count in prefix_counts:
+                    for mode in modes:
+                        if (sweeping and not sweep_link_counts and mode == "baseline"
+                                and baseline_done):
+                            continue
+                        rows = _run_one_variant(
+                            ndn_factory=ndn_factory,
+                            topology="grid",
+                            topo_id_str=f"{grid_size}x{grid_size}",
+                            grid_size=grid_size,
+                            num_nodes=num_nodes,
+                            num_links=num_links,
+                            link_src=link_src,
+                            link_dst=link_dst,
+                            churn_node=churn_node,
+                            trial=trial,
+                            mode=mode,
+                            num_prefixes=pfx_count,
+                            num_churn_links=link_count,
+                            window_s=sim_time,
+                            dv_config=dv_config,
+                            sim_time=sim_time,
+                            deadline=120,
+                            out_dir=out_dir,
+                            cfg=cfg,
+                            all_links=all_links_list,
+                            all_nodes=all_nodes_list,
+                        )
+                        _write_rows(writer, f, rows)
+                        if mode == "baseline":
+                            baseline_done = True
 
 
 def _run_conf(cfg, dv_config, out_dir, writer, f, topo_name):
@@ -700,6 +750,13 @@ def _run_conf(cfg, dv_config, out_dir, writer, f, topo_name):
     if not prefix_counts:
         prefix_counts = [num_prefixes]
     sweeping = len(prefix_counts) > 1
+    link_counts = cfg.get("link_counts", [])
+    if not link_counts:
+        link_counts = [cfg.get("num_churn_links", 1)]
+    churn_mode_str = cfg.get("churn_mode", "fixed")
+    sweep_link_counts = churn_mode_str == "link_scaling"
+    if not sweep_link_counts:
+        link_counts = [1]
 
     modes = cfg.get("modes", []) or ["baseline", "two_step", "one_step"]
 
@@ -708,37 +765,38 @@ def _run_conf(cfg, dv_config, out_dir, writer, f, topo_name):
 
     for trial in range(1, trials + 1):
         baseline_done = False
-        for pfx_count in prefix_counts:
-            for mode in modes:
-                # When sweeping prefix counts, baseline (0 prefixes)
-                # is identical for every count — run it only once.
-                if sweeping and mode == "baseline" and baseline_done:
-                    continue
-                rows = _run_one_variant(
-                    ndn_factory=ndn_factory,
-                    topology=topo_name,
-                    topo_id_str=topo_name,
-                    grid_size=0,
-                    num_nodes=num_nodes,
-                    num_links=num_links,
-                    link_src=link_src,
-                    link_dst=link_dst,
-                    churn_node=churn_node,
-                    trial=trial,
-                    mode=mode,
-                    num_prefixes=pfx_count,
-                    window_s=sim_time,
-                    dv_config=dv_config,
-                    sim_time=sim_time,
-                    deadline=300,
-                    out_dir=out_dir,
-                    cfg=cfg,
-                    all_links=all_links_list,
-                    all_nodes=all_nodes_list,
-                )
-                _write_rows(writer, f, rows)
-                if mode == "baseline":
-                    baseline_done = True
+        for link_count in link_counts:
+            for pfx_count in prefix_counts:
+                for mode in modes:
+                    if (sweeping and not sweep_link_counts and mode == "baseline"
+                            and baseline_done):
+                        continue
+                    rows = _run_one_variant(
+                        ndn_factory=ndn_factory,
+                        topology=topo_name,
+                        topo_id_str=topo_name,
+                        grid_size=0,
+                        num_nodes=num_nodes,
+                        num_links=num_links,
+                        link_src=link_src,
+                        link_dst=link_dst,
+                        churn_node=churn_node,
+                        trial=trial,
+                        mode=mode,
+                        num_prefixes=pfx_count,
+                        num_churn_links=link_count,
+                        window_s=sim_time,
+                        dv_config=dv_config,
+                        sim_time=sim_time,
+                        deadline=300,
+                        out_dir=out_dir,
+                        cfg=cfg,
+                        all_links=all_links_list,
+                        all_nodes=all_nodes_list,
+                    )
+                    _write_rows(writer, f, rows)
+                    if mode == "baseline":
+                        baseline_done = True
 
 
 def _write_rows(writer, f, rows):

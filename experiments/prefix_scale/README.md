@@ -12,23 +12,36 @@ Structure:
 Primary queue:
 
 ```bash
-sudo ./jobs.sh start --fresh prefix_scale/sprint_twostep_0to50
+sudo ./jobs.sh start --fresh prefix_scale/sprint_bothstep_0to50
 ```
 
 Testing queue:
 
 ```bash
-sudo ./jobs.sh start --fresh prefix_scale/sprint_twostep_1prefix_test
+sudo ./jobs.sh start --fresh prefix_scale/3x3_prefix_churn_compare_1prefix_test
+sudo ./jobs.sh start --fresh prefix_scale/sprint_bothstep_0to5
+sudo ./jobs.sh start --fresh prefix_scale/sprint_bothstep_sim_p50
+sudo ./jobs.sh start --fresh prefix_scale/sprint_bothstep_emu_p50
 ```
+
+Focused single-point scenarios:
+
+- `experiments/prefix_scale/scenarios/sprint_bothstep_emu_p50.json`
+- `experiments/prefix_scale/scenarios/sprint_bothstep_sim_p50.json`
 
 Outputs:
 
-- `experiments/prefix_scale/results/sprint_twostep_0to50/<timestamp>/sim`
-- `experiments/prefix_scale/results/sprint_twostep_0to50/<timestamp>/emu`
-- `experiments/prefix_scale/results/sprint_twostep_0to50/<timestamp>/compare`
-- `experiments/prefix_scale/results/sprint_twostep_1prefix_test/<timestamp>/sim`
-- `experiments/prefix_scale/results/sprint_twostep_1prefix_test/<timestamp>/emu`
-- `experiments/prefix_scale/results/sprint_twostep_1prefix_test/<timestamp>/compare`
+- `experiments/prefix_scale/results/sprint_bothstep_0to50/<timestamp>/sim`
+- `experiments/prefix_scale/results/sprint_bothstep_0to50/<timestamp>/emu`
+- `experiments/prefix_scale/results/sprint_bothstep_0to50/<timestamp>/compare`
+- `experiments/prefix_scale/results/3x3_prefix_churn_compare_1prefix_test/<timestamp>/sim`
+- `experiments/prefix_scale/results/3x3_prefix_churn_compare_1prefix_test/<timestamp>/emu`
+- `experiments/prefix_scale/results/3x3_prefix_churn_compare_1prefix_test/<timestamp>/compare`
+- `experiments/prefix_scale/results/sprint_bothstep_0to5/<timestamp>/sim`
+- `experiments/prefix_scale/results/sprint_bothstep_0to5/<timestamp>/emu`
+- `experiments/prefix_scale/results/sprint_bothstep_0to5/<timestamp>/compare`
+- `experiments/prefix_scale/results/sprint_bothstep_sim_p50/<timestamp>/sim`
+- `experiments/prefix_scale/results/sprint_bothstep_emu_p50/<timestamp>/emu`
 
 Useful CLI shortcuts:
 
@@ -36,8 +49,8 @@ Useful CLI shortcuts:
 ./jobs.sh list
 ./jobs.sh                        # numbered interactive menu
 ./jobs.sh start                  # interactive queue picker
-./jobs.sh status prefix_scale/sprint_twostep_0to50
-./jobs.sh status prefix_scale/sprint_twostep_0to50 --watch
+./jobs.sh status prefix_scale/sprint_bothstep_0to50
+./jobs.sh status prefix_scale/sprint_bothstep_0to50 --watch
 ./jobs.sh running
 ```
 

@@ -21,6 +21,10 @@ def test_load_defaults(tmp_path):
     assert cfg["trials"] == 1
     assert cfg["window_s"] == 60.0
     assert cfg["modes"] == []
+    assert cfg["link_event_mode"] == "blackhole"
+    assert cfg["include_prefix_churn"] is True
+    assert cfg["num_churn_links"] == 1
+    assert cfg["link_counts"] == []
 
 
 def test_load_overrides(tmp_path):
@@ -29,12 +33,20 @@ def test_load_overrides(tmp_path):
         "trials": 3,
         "window_s": 120.0,
         "modes": ["baseline"],
+        "link_event_mode": "neighbor",
+        "include_prefix_churn": False,
+        "num_churn_links": 4,
+        "link_counts": [0, 4, 8],
     })
     cfg = load_config(path)
     assert cfg["topology"] == "sprint"
     assert cfg["trials"] == 3
     assert cfg["window_s"] == 120.0
     assert cfg["modes"] == ["baseline"]
+    assert cfg["link_event_mode"] == "neighbor"
+    assert cfg["include_prefix_churn"] is False
+    assert cfg["num_churn_links"] == 4
+    assert cfg["link_counts"] == [0, 4, 8]
 
 
 def test_int_promoted_to_float(tmp_path):
@@ -53,7 +65,7 @@ def test_type_mismatch_raises(tmp_path):
 def test_dv_config_none_by_default(tmp_path):
     path = _write_cfg(str(tmp_path), {})
     cfg = load_config(path)
-    assert dv_config_from(cfg) is None
+    assert dv_config_from(cfg) == {"disable_prefix_snap": True}
 
 
 def test_dv_config_with_overrides(tmp_path):

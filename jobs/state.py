@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 import pwd
+import shutil
 import socket
 import subprocess
 import sys
@@ -57,8 +58,15 @@ def screen_name(job_path):
 
 
 def screen_exists(name):
-    result = subprocess.run(["screen", "-ls"], capture_output=True, text=True)
-    return f".{name}\t" in result.stdout
+    commands = [["screen", "-ls"]]
+    if os.geteuid() != 0 and shutil.which("sudo") is not None:
+        commands.append(["sudo", "-n", "screen", "-ls"])
+
+    for command in commands:
+        result = subprocess.run(command, capture_output=True, text=True)
+        if f".{name}\t" in result.stdout:
+            return True
+    return False
 
 
 def load_state(job_path):

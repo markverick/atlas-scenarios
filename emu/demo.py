@@ -11,14 +11,21 @@ Usage:
 
 import os
 import time
+import sys
 
 from mininet.log import setLogLevel, info
 from mininet.topo import Topo
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from minindn_ndnd.bootstrap import patch_minindn
+
+patch_minindn()
+
 from minindn.minindn import Minindn
 from minindn.apps.app_manager import AppManager
-from minindn.apps.ndnd_fw import NDNd_FW
-from minindn.helpers import dv_util
+from minindn_ndnd.ndnd_fw import NDNd_FW
+from minindn_ndnd import dv_util
 from minindn.util import MiniNDNCLI
 
 NETWORK = "/minindn"

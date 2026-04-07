@@ -1,0 +1,36 @@
+{
+  "_comment": "Prefix-churn bothstep queue: Sprint, baseline vs two_step vs one_step, prefixes 0..50 in steps of 5, sim+emu, snapshots disabled. Run with: sudo ./jobs.sh start --fresh prefix_scale/sprint_bothstep_0to50",
+  "selector": "prefix_scale/sprint_bothstep_0to50",
+  "name": "sprint_bothstep_0to50",
+  "experiment": "prefix_scale",
+  "topology": "sprint",
+  "mode": "mixed",
+  "description": "Sprint prefix-churn bothstep sweep for sim and emu, prefixes 0..50 in steps of 5, comparing baseline vs two_step vs one_step",
+  "run_root_template": "experiments/prefix_scale/results/sprint_bothstep_0to50/{timestamp}",
+  "jobs": [
+    {
+      "name": "build",
+      "cmd": "./run.sh build"
+    },
+    {
+      "name": "sim {mode} p{prefixes}",
+      "cmd": "./run.sh sim --no-build churn.py --config experiments/prefix_scale/scenarios/sprint_bothstep_sim_0to50.json --out {run_root}/sim --mode {mode} --prefixes {prefixes} --append",
+      "matrix": {
+        "mode": ["baseline", "two_step", "one_step"],
+        "prefixes": [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
+      }
+    },
+    {
+      "name": "emu {mode} p{prefixes}",
+      "cmd": "./run.sh emu --no-build churn.py --config experiments/prefix_scale/scenarios/sprint_bothstep_emu_0to50.json --out {run_root}/emu --mode {mode} --prefixes {prefixes} --append",
+      "matrix": {
+        "mode": ["baseline", "two_step", "one_step"],
+        "prefixes": [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
+      }
+    },
+    {
+      "name": "plot sim-vs-emu bothstep 0to50",
+      "cmd": "python3 experiments/prefix_scale/plot.py --data {run_root}/emu --data2 {run_root}/sim --out {run_root}/compare"
+    }
+  ]
+}

@@ -17,9 +17,9 @@ import sys
 import time
 
 from mininet.log import setLogLevel, info
-from minindn.helpers import dv_util
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from minindn_ndnd import dv_util
 from lib.config import add_grid_scenario_args, apply_config_overrides
 from lib.pcap import collect_traffic
 from lib.result_adapter import ResultWriter, TrialResult

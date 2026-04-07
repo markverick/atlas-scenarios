@@ -1,0 +1,36 @@
+{
+  "_comment": "Sprint bothstep 0to5 test: compare baseline vs two_step vs one_step for sim+emu under prefix churn over prefix counts 0 through 5. Run with: sudo ./jobs.sh start --fresh prefix_scale/sprint_bothstep_0to5",
+  "selector": "prefix_scale/sprint_bothstep_0to5",
+  "name": "sprint_bothstep_0to5",
+  "experiment": "prefix_scale",
+  "topology": "sprint",
+  "mode": "mixed",
+  "description": "Sprint prefix-churn bothstep test over p=0..5 for sim and emu, comparing baseline vs two_step vs one_step",
+  "run_root_template": "experiments/prefix_scale/results/sprint_bothstep_0to5/{timestamp}",
+  "jobs": [
+    {
+      "name": "build",
+      "cmd": "./run.sh build"
+    },
+    {
+      "name": "sim {mode} p{prefixes}",
+      "cmd": "./run.sh sim --no-build churn.py --config experiments/prefix_scale/scenarios/sprint_bothstep_sim_0to5.json --out {run_root}/sim --mode {mode} --prefixes {prefixes} --append",
+      "matrix": {
+        "mode": ["baseline", "two_step", "one_step"],
+        "prefixes": [0, 1, 2, 3, 4, 5]
+      }
+    },
+    {
+      "name": "emu {mode} p{prefixes}",
+      "cmd": "./run.sh emu --no-build churn.py --config experiments/prefix_scale/scenarios/sprint_bothstep_emu_0to5.json --out {run_root}/emu --mode {mode} --prefixes {prefixes} --append",
+      "matrix": {
+        "mode": ["baseline", "two_step", "one_step"],
+        "prefixes": [0, 1, 2, 3, 4, 5]
+      }
+    },
+    {
+      "name": "plot sim-vs-emu bothstep 0to5",
+      "cmd": "python3 experiments/prefix_scale/plot.py --data {run_root}/emu --data2 {run_root}/sim --out {run_root}/compare"
+    }
+  ]
+}

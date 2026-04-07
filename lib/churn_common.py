@@ -16,7 +16,7 @@ import sys
 
 FIELDNAMES = [
     "topology", "grid_size", "num_nodes", "num_links", "trial", "mode",
-    "num_prefixes", "window_s", "phase2_start", "convergence_s", "phase",
+    "num_prefixes", "num_churn_links", "window_s", "phase2_start", "convergence_s", "phase",
     "dv_advert_pkts", "dv_advert_bytes",
     "pfxsync_pkts", "pfxsync_bytes",
     "mgmt_pkts", "mgmt_bytes",
@@ -73,13 +73,15 @@ def default_out_dir(cfg, runner="sim"):
       sprint       -> results/sim_churn_sprint
     """
     topo = cfg.get("topology", "grid")
+    link_event_mode = cfg.get("link_event_mode", "blackhole")
+    mode_suffix = "" if link_event_mode == "blackhole" else f"_{link_event_mode}"
     if topo != "grid":
-        return f"results/{runner}_churn_{topo}"
+        return f"results/{runner}_churn{mode_suffix}_{topo}"
     grids = cfg.get("grids", [])
     if len(grids) == 1:
         g = grids[0]
-        return f"results/{runner}_churn_{g}x{g}"
-    return f"results/{runner}_churn"
+        return f"results/{runner}_churn{mode_suffix}_{g}x{g}"
+    return f"results/{runner}_churn{mode_suffix}"
 
 
 def grid_churn_targets(grid_size):
@@ -92,24 +94,28 @@ def grid_churn_targets(grid_size):
 # --- Churn event builder ---
 
 def build_churn_events(num_prefixes, phase2_start, *,
-                       link_src, link_dst, churn_node):
+                       link_src, link_dst, churn_node,
+                       link_event_mode="blackhole",
+                       include_prefix_churn=True):
     """Build deterministic churn events for any topology.
 
     Events at offsets from phase2_start:
-      +0.1s  link_down   link_src -- link_dst
-      +2.0s  prefix_withdraw on churn_node  (if num_prefixes > 0)
-      +5.1s  link_up     link_src -- link_dst
-      +7.0s  prefix_announce on churn_node  (if num_prefixes > 0)
+    +0.1s  link_down/neighbor_down   link_src -- link_dst
+    +2.0s  prefix_withdraw on churn_node  (if enabled and num_prefixes > 0)
+    +5.1s  link_up/neighbor_up       link_src -- link_dst
+    +7.0s  prefix_announce on churn_node  (if enabled and num_prefixes > 0)
     """
     if link_src is None or link_dst is None:
         return []
+    down_type = "neighbor_down" if link_event_mode == "neighbor" else "link_down"
+    up_type = "neighbor_up" if link_event_mode == "neighbor" else "link_up"
     events = [
-        {"time": phase2_start + 0.1, "type": "link_down",
+        {"time": phase2_start + 0.1, "type": down_type,
          "src": link_src, "dst": link_dst},
-        {"time": phase2_start + 5.1, "type": "link_up",
+        {"time": phase2_start + 5.1, "type": up_type,
          "src": link_src, "dst": link_dst},
     ]
-    if num_prefixes > 0 and churn_node:
+    if include_prefix_churn and num_prefixes > 0 and churn_node:
         pfx = f"/data/{churn_node}/pfx0"
         events.append({"time": phase2_start + 2.0, "type": "prefix_withdraw",
                        "node": churn_node, "prefix": pfx})
@@ -123,7 +129,9 @@ def build_random_churn_events(num_prefixes, phase2_start, *,
                               window_end, seed=42, num_cycles=3,
                               interval=5.0, recovery_delay=3.0,
                               all_links=None, all_nodes=None,
-                              prefix_churn_rate=0.0):
+                              prefix_churn_rate=0.0,
+                              link_event_mode="blackhole",
+                              include_prefix_churn=True):
     """Build stochastic churn events drawn from exponential distributions.
 
     Two independent event streams are generated:
@@ -157,6 +165,8 @@ def build_random_churn_events(num_prefixes, phase2_start, *,
     events = []
     links_pool = all_links if all_links else [(link_src, link_dst)]
     nodes_pool = all_nodes if all_nodes else ([churn_node] if churn_node else [])
+    down_type = "neighbor_down" if link_event_mode == "neighbor" else "link_down"
+    up_type = "neighbor_up" if link_event_mode == "neighbor" else "link_up"
 
     # --- Stream 1: link failures ---
     t = phase2_start
@@ -172,13 +182,14 @@ def build_random_churn_events(num_prefixes, phase2_start, *,
             t_up = window_end - 0.5
 
         src, dst = rng.choice(links_pool)
-        events.append({"time": round(t_down, 3), "type": "link_down",
+        events.append({"time": round(t_down, 3), "type": down_type,
                        "src": src, "dst": dst})
-        events.append({"time": round(t_up, 3), "type": "link_up",
+        events.append({"time": round(t_up, 3), "type": up_type,
                        "src": src, "dst": dst})
 
         # Coupled prefix churn (legacy)
-        if prefix_churn_rate == 0 and num_prefixes > 0 and nodes_pool:
+        if (include_prefix_churn and prefix_churn_rate == 0
+            and num_prefixes > 0 and nodes_pool):
             node = src if src in nodes_pool else rng.choice(nodes_pool)
             pfx = f"/data/{node}/pfx0"
             t_withdraw = min(t_down + 0.5, t_up - 0.1)
@@ -273,6 +284,40 @@ def build_prefix_scaling_events(num_prefixes, phase2_start, *,
     return events
 
 
+def build_link_scaling_events(num_churn_links, phase2_start, *,
+                              all_links, window_end, seed=42,
+                              recovery_delay=5.0,
+                              link_event_mode="blackhole"):
+    """Build a simultaneous burst of link churn at phase start.
+
+    Select up to *num_churn_links* links from *all_links* deterministically via
+    *seed*. All selected links go down near the phase start and come back after
+    a common recovery delay.
+    """
+    if num_churn_links <= 0 or not all_links:
+        return []
+
+    sample_size = min(num_churn_links, len(all_links))
+    rng = random.Random(seed)
+    selected_links = rng.sample(list(all_links), sample_size)
+    selected_links.sort()
+
+    down_type = "neighbor_down" if link_event_mode == "neighbor" else "link_down"
+    up_type = "neighbor_up" if link_event_mode == "neighbor" else "link_up"
+    t_down = phase2_start + 0.1
+    t_up = min(t_down + recovery_delay, window_end - 0.1)
+
+    events = []
+    for src, dst in selected_links:
+        events.append({"time": round(t_down, 3), "type": down_type,
+                       "src": src, "dst": dst})
+        events.append({"time": round(t_up, 3), "type": up_type,
+                       "src": src, "dst": dst})
+
+    events.sort(key=lambda e: (e["time"], e["src"], e["dst"], e["type"]))
+    return events
+
+
 # --- Packet trace parsers ---
 
 def parse_packet_trace_by_phase(path, phase_boundary):
@@ -312,7 +357,7 @@ def parse_packet_events_by_phase(events, phase_boundary):
 # --- Result row builder ---
 
 def build_result_rows(phases, *, topology, grid_size, num_nodes, num_links,
-                      trial, mode, num_prefixes, window_s, phase2_start,
+                      trial, mode, num_prefixes, num_churn_links, window_s, phase2_start,
                       convergence_s):
     """Build CSV result dicts from parsed phase traffic."""
     rows = []
@@ -327,6 +372,7 @@ def build_result_rows(phases, *, topology, grid_size, num_nodes, num_links,
             "trial": trial,
             "mode": mode,
             "num_prefixes": num_prefixes,
+            "num_churn_links": num_churn_links,
             "window_s": window_s,
             "phase2_start": phase2_start,
             "convergence_s": convergence_s,
@@ -345,12 +391,16 @@ def build_result_rows(phases, *, topology, grid_size, num_nodes, num_links,
 
 # --- File tag builder ---
 
-def make_tag(mode, topo_id_str, num_prefixes, trial):
+def make_tag(mode, topo_id_str, num_prefixes, trial, *, num_churn_links=None):
     """Build a filename tag for trace files.
 
     topo_id_str: e.g. "3x3", "4x4", "sprint".
     """
-    return f"{mode}-{topo_id_str}-p{num_prefixes}-t{trial}"
+    tag = f"{mode}-{topo_id_str}-p{num_prefixes}"
+    if num_churn_links is not None:
+        tag += f"-l{num_churn_links}"
+    tag += f"-t{trial}"
+    return tag
 
 
 # --- Auto-plot helper ---

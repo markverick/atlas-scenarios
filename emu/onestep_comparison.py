@@ -31,7 +31,7 @@ from emu._helpers import (
     NETWORK,
     setup_grid, start_tcpdump, stop_tcpdump, collect_memory,
 )
-from minindn.helpers import dv_util
+from minindn_ndnd import dv_util
 
 FIELDNAMES = [
     "grid_size", "num_nodes", "num_links", "trial", "mode", "num_prefixes",

@@ -80,14 +80,10 @@ info "Building Mini-NDN from source"
 if [[ ! -d "$DEPS_DIR/mini-ndn" ]]; then
     git clone --depth 1 https://github.com/named-data/mini-ndn.git "$DEPS_DIR/mini-ndn"
 fi
-# Inject NDNd integration modules into mini-ndn's package tree
-cp "$REPO_DIR/minindn_ndnd/ndnd_fw.py"  "$DEPS_DIR/mini-ndn/minindn/apps/"
-cp "$REPO_DIR/minindn_ndnd/ndnd_dv.py"  "$DEPS_DIR/mini-ndn/minindn/apps/"
-cp "$REPO_DIR/minindn_ndnd/dv_util.py"  "$DEPS_DIR/mini-ndn/minindn/helpers/"
 cd "$DEPS_DIR/mini-ndn"
 sudo pip3 install --break-system-packages -e . 2>/dev/null \
     || sudo pip3 install -e .
-ok "Mini-NDN installed (with NDNd modules)"
+ok "Mini-NDN installed"
 
 # -- 4. Python plotting deps --
 info "Installing Python plotting dependencies"

@@ -1,0 +1,23 @@
+{
+  "_comment": "Sprint bothstep sim p50 test: compare baseline vs two_step vs one_step under prefix churn. Run with: sudo ./jobs.sh start --fresh prefix_scale/sprint_bothstep_sim_p50",
+  "selector": "prefix_scale/sprint_bothstep_sim_p50",
+  "name": "sprint_bothstep_sim_p50",
+  "experiment": "prefix_scale",
+  "topology": "sprint",
+  "mode": "sim",
+  "description": "Sprint prefix-churn bothstep sim test at p=50, comparing baseline vs two_step vs one_step",
+  "run_root_template": "experiments/prefix_scale/results/sprint_bothstep_sim_p50/{timestamp}",
+  "jobs": [
+    {
+      "name": "build",
+      "cmd": "./run.sh build"
+    },
+    {
+      "name": "sim {mode} p50",
+      "cmd": "./run.sh sim --no-build churn.py --config experiments/prefix_scale/scenarios/sprint_bothstep_sim_p50.json --out {run_root}/sim --mode {mode} --prefixes 50 --append",
+      "matrix": {
+        "mode": ["two_step"]
+      }
+    }
+  ]
+}

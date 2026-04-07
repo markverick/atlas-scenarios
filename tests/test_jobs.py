@@ -8,11 +8,12 @@ from contextlib import redirect_stdout
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from jobs.conventions import discover_active_queues, discover_catalog, resolve_queue_path, selector_from_path
+from jobs.conventions import InteractiveCancel, discover_active_queues, discover_catalog, resolve_queue_path, selector_from_path, select_queue_interactively
 from jobs import cli as jobs_cli
 from jobs.runner import _progress_bar, _trim_line, cmd_list, cmd_run, cmd_status
 from jobs.spec import expand_matrix, load_job_spec, load_jobs
-from jobs.state import STATE_META_KEY, load_state, save_state, state_path
+from jobs import state as jobs_state
+from jobs.state import STATE_META_KEY, load_state, save_state, screen_exists, state_path
 
 
 def test_expand_matrix_no_matrix():
@@ -189,6 +190,29 @@ def test_discover_active_queues_filters_running(tmp_path, monkeypatch):
     assert active[0]["run_root"] == "results/demo/active"
 
 
+def test_screen_exists_checks_root_owned_sessions_with_sudo(monkeypatch):
+    calls = []
+
+    class Result:
+        def __init__(self, stdout):
+            self.stdout = stdout
+
+    def fake_run(command, capture_output=False, text=False):
+        calls.append(command)
+        if command == ["screen", "-ls"]:
+            return Result("No Sockets found.\n")
+        if command == ["sudo", "-n", "screen", "-ls"]:
+            return Result("\t1234.demo-abcdef12\t(Detached)\n")
+        raise AssertionError(f"unexpected command: {command}")
+
+    monkeypatch.setattr(jobs_state.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(jobs_state.shutil, "which", lambda tool: "/usr/bin/sudo" if tool == "sudo" else None)
+    monkeypatch.setattr(jobs_state.subprocess, "run", fake_run)
+
+    assert screen_exists("demo-abcdef12") is True
+    assert calls == [["screen", "-ls"], ["sudo", "-n", "screen", "-ls"]]
+
+
 def test_resolve_queue_path_prefers_active_when_requested(tmp_path, monkeypatch):
     exp_jobs_dir = tmp_path / "experiments" / "prefix_scale" / "queues"
     exp_jobs_dir.mkdir(parents=True)
@@ -206,6 +230,40 @@ def test_resolve_queue_path_prefers_active_when_requested(tmp_path, monkeypatch)
 
     resolved = resolve_queue_path(None, root=str(tmp_path), prefer_active=True)
     assert resolved == str(queue_path.resolve())
+
+
+def test_resolve_queue_path_active_only_filters_stale_running(tmp_path, monkeypatch):
+    exp_jobs_dir = tmp_path / "experiments" / "prefix_scale" / "queues"
+    exp_jobs_dir.mkdir(parents=True)
+    stale_path = exp_jobs_dir / "stale.json"
+    live_path = exp_jobs_dir / "live.json"
+    stale_path.write_text(json.dumps({"jobs": [{"name": "build", "cmd": "true"}]}))
+    live_path.write_text(json.dumps({"jobs": [{"name": "build", "cmd": "true"}]}))
+
+    monkeypatch.setattr(
+        "jobs.conventions.discover_active_queues",
+        lambda root=None: [
+            {
+                "path": str(stale_path.resolve()),
+                "selector": "prefix_scale/stale",
+                "counts": {"running": 1, "done": 0, "pending": 0, "failed": 0},
+                "has_screen": False,
+            },
+            {
+                "path": str(live_path.resolve()),
+                "selector": "prefix_scale/live",
+                "counts": {"running": 1, "done": 0, "pending": 0, "failed": 0},
+                "has_screen": True,
+            },
+        ],
+    )
+    monkeypatch.setattr(
+        "jobs.conventions.select_active_queue_interactively",
+        lambda active: active[0]["path"],
+    )
+
+    resolved = resolve_queue_path(None, root=str(tmp_path), prefer_active=True, active_only=True)
+    assert resolved == str(live_path.resolve())
 
 
 def test_cmd_run_records_queue_bootstrap_failure(tmp_path, monkeypatch, capsys):
@@ -334,6 +392,50 @@ def test_cmd_list_running_only_prints_active(tmp_path, monkeypatch):
     assert "running=1 done=3 pending=20 failed=0" in output
 
 
+def test_select_queue_interactively_shows_short_names_and_description(monkeypatch):
+    catalog = [
+        {
+            "experiment": "prefix_scale",
+            "path": "/tmp/experiments/prefix_scale",
+            "scenarios": ["demo.json"],
+            "queues": [
+                {
+                    "path": "/tmp/experiments/prefix_scale/queues/3x3_prefix_churn_compare_1prefix_test.json",
+                    "selector": "prefix_scale/3x3_prefix_churn_compare_1prefix_test",
+                    "name": "3x3_prefix_churn_compare_1prefix_test",
+                    "description": "3x3 grid prefix-churn comparison test run for sim and emu with one prefix, comparing baseline vs two_step vs one_step",
+                    "topology": "grid",
+                    "mode": "mixed",
+                },
+                {
+                    "path": "/tmp/experiments/prefix_scale/queues/3x3_twostep_1prefix_test.json",
+                    "selector": "prefix_scale/3x3_twostep_1prefix_test",
+                    "name": "3x3_twostep_1prefix_test",
+                    "description": "3x3 grid two-step single-prefix test run for sim and emu",
+                    "topology": "grid",
+                    "mode": "two_step",
+                },
+            ],
+        }
+    ]
+
+    answers = iter(["1", "2"])
+    monkeypatch.setattr("jobs.conventions.sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
+
+    stdout = io.StringIO()
+    with redirect_stdout(stdout):
+        selected = select_queue_interactively(catalog)
+
+    output = stdout.getvalue()
+    assert selected == "/tmp/experiments/prefix_scale/queues/3x3_twostep_1prefix_test.json"
+    assert "prefix_scale/3x3_twostep_1prefix_test" not in output
+    assert "1. 3x3_prefix_churn_compare_1prefix_test" in output
+    assert "2. 3x3_twostep_1prefix_test" in output
+    assert "3x3 grid prefix-churn comparison test run for sim and emu with one prefix, comparing baseline vs two_step vs one_step" in output
+    assert "topology=grid  mode=two_step" in output
+
+
 def test_interactive_status_can_enable_watch(tmp_path, monkeypatch):
     exp_jobs_dir = tmp_path / "experiments" / "prefix_scale" / "queues"
     exp_jobs_dir.mkdir(parents=True)
@@ -346,10 +448,8 @@ def test_interactive_status_can_enable_watch(tmp_path, monkeypatch):
     captured = {}
 
     monkeypatch.setattr(jobs_cli, "select_command_interactively", lambda: "status")
-    monkeypatch.setattr(jobs_cli, "resolve_queue_path", lambda _queue, prefer_active=False: str(queue_path))
+    monkeypatch.setattr(jobs_cli, "resolve_queue_path", lambda _queue, prefer_active=False, active_only=False: str(queue_path))
     monkeypatch.setattr(jobs_cli, "selector_from_path", lambda _path: "prefix_scale/sprint")
-    monkeypatch.setattr(jobs_cli, "prompt_yes_no", lambda prompt, default=False: True)
-    monkeypatch.setattr(jobs_cli, "prompt_float", lambda prompt, default: 2.5)
     monkeypatch.setattr(
         jobs_cli,
         "cmd_status",
@@ -364,7 +464,7 @@ def test_interactive_status_can_enable_watch(tmp_path, monkeypatch):
     assert captured == {
         "job_path": str(queue_path),
         "watch": True,
-        "interval_s": 2.5,
+        "interval_s": 1.0,
     }
 
 
@@ -382,10 +482,12 @@ def test_interactive_status_prefers_active_queue(tmp_path, monkeypatch):
     monkeypatch.setattr(
         jobs_cli,
         "resolve_queue_path",
-        lambda _queue, prefer_active=False: captured.update({"prefer_active": prefer_active}) or str(queue_path),
+        lambda _queue, prefer_active=False, active_only=False: captured.update({
+            "prefer_active": prefer_active,
+            "active_only": active_only,
+        }) or str(queue_path),
     )
     monkeypatch.setattr(jobs_cli, "selector_from_path", lambda _path: "prefix_scale/sprint")
-    monkeypatch.setattr(jobs_cli, "prompt_yes_no", lambda prompt, default=False: False)
     monkeypatch.setattr(
         jobs_cli,
         "cmd_status",
@@ -395,4 +497,140 @@ def test_interactive_status_prefers_active_queue(tmp_path, monkeypatch):
     assert jobs_cli.main([]) == 0
     assert captured["prefer_active"] is True
     assert captured["job_path"] == str(queue_path)
-    assert captured["watch"] is False
+    assert captured["watch"] is True
+
+
+def test_interactive_start_defaults_to_watching_status(tmp_path, monkeypatch):
+    exp_jobs_dir = tmp_path / "experiments" / "prefix_scale" / "queues"
+    exp_jobs_dir.mkdir(parents=True)
+    queue_path = exp_jobs_dir / "sprint.json"
+    queue_path.write_text(json.dumps({
+        "selector": "prefix_scale/sprint",
+        "jobs": [{"name": "build", "cmd": "true"}],
+    }))
+
+    captured = {}
+    monkeypatch.setattr(jobs_cli.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(jobs_cli.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(jobs_cli, "select_command_interactively", lambda: "start")
+    monkeypatch.setattr(jobs_cli, "resolve_queue_path", lambda _queue, prefer_active=False, active_only=False: str(queue_path))
+    monkeypatch.setattr(jobs_cli, "selector_from_path", lambda _path: "prefix_scale/sprint")
+    monkeypatch.setattr(
+        jobs_cli,
+        "cmd_start",
+        lambda job_path, dry=False, fresh=False: captured.update({
+            "job_path": job_path,
+            "dry": dry,
+            "fresh": fresh,
+        }),
+    )
+    monkeypatch.setattr(
+        jobs_cli,
+        "cmd_status",
+        lambda job_path, watch=False, interval_s=1.0: captured.update({
+            "status_job_path": job_path,
+            "watch": watch,
+            "interval_s": interval_s,
+        }),
+    )
+
+    assert jobs_cli.main([]) == 0
+    assert captured["job_path"] == str(queue_path)
+    assert captured["fresh"] is True
+    assert captured["status_job_path"] == str(queue_path)
+    assert captured["watch"] is True
+    assert captured["interval_s"] == 1.0
+
+
+def test_interactive_stop_prefers_active_queue_only(tmp_path, monkeypatch):
+    exp_jobs_dir = tmp_path / "experiments" / "prefix_scale" / "queues"
+    exp_jobs_dir.mkdir(parents=True)
+    queue_path = exp_jobs_dir / "sprint.json"
+    queue_path.write_text(json.dumps({
+        "selector": "prefix_scale/sprint",
+        "jobs": [{"name": "build", "cmd": "true"}],
+    }))
+
+    captured = {}
+    monkeypatch.setattr(jobs_cli, "select_command_interactively", lambda: "stop")
+    monkeypatch.setattr(
+        jobs_cli,
+        "resolve_queue_path",
+        lambda _queue, prefer_active=False, active_only=False: captured.update({
+            "prefer_active": prefer_active,
+            "active_only": active_only,
+        }) or str(queue_path),
+    )
+    monkeypatch.setattr(jobs_cli.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(jobs_cli, "selector_from_path", lambda _path: "prefix_scale/sprint")
+    monkeypatch.setattr(jobs_cli, "cmd_stop", lambda job_path: captured.update({"job_path": job_path}))
+
+    assert jobs_cli.main([]) == 0
+    assert captured["prefer_active"] is True
+    assert captured["active_only"] is True
+    assert captured["job_path"] == str(queue_path)
+
+
+def test_interactive_ctrl_c_exits_quietly(monkeypatch, capsys):
+    monkeypatch.setattr(jobs_cli.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _prompt: (_ for _ in ()).throw(KeyboardInterrupt()))
+
+    assert jobs_cli.main([]) == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+
+
+def test_resolve_queue_path_active_only_without_running_raises_cancel(tmp_path):
+    exp_jobs_dir = tmp_path / "experiments" / "prefix_scale" / "queues"
+    exp_jobs_dir.mkdir(parents=True)
+    queue_path = exp_jobs_dir / "sprint.json"
+    queue_path.write_text(json.dumps({"jobs": [{"name": "build", "cmd": "true"}]}))
+
+    stdin = sys.stdin
+    old_isatty = stdin.isatty
+    stdin.isatty = lambda: True
+    with pytest.raises(InteractiveCancel):
+        resolve_queue_path(None, root=str(tmp_path), prefer_active=True, active_only=True)
+    stdin.isatty = old_isatty
+
+
+def test_start_command_line_watch_status_flag_skips_prompt_and_watches(tmp_path, monkeypatch):
+    exp_jobs_dir = tmp_path / "experiments" / "prefix_scale" / "queues"
+    exp_jobs_dir.mkdir(parents=True)
+    queue_path = exp_jobs_dir / "sprint.json"
+    queue_path.write_text(json.dumps({
+        "selector": "prefix_scale/sprint",
+        "jobs": [{"name": "build", "cmd": "true"}],
+    }))
+
+    captured = {}
+    monkeypatch.setattr(jobs_cli.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(jobs_cli, "resolve_queue_path", lambda _queue, prefer_active=False, active_only=False: str(queue_path))
+    monkeypatch.setattr(
+        jobs_cli,
+        "cmd_start",
+        lambda job_path, dry=False, fresh=False: captured.update({
+            "job_path": job_path,
+            "dry": dry,
+            "fresh": fresh,
+        }),
+    )
+    monkeypatch.setattr(
+        jobs_cli,
+        "cmd_status",
+        lambda job_path, watch=False, interval_s=1.0: captured.update({
+            "status_job_path": job_path,
+            "watch": watch,
+            "interval_s": interval_s,
+        }),
+    )
+    monkeypatch.setattr(
+        jobs_cli,
+        "prompt_yes_no",
+        lambda prompt, default=False: (_ for _ in ()).throw(AssertionError("prompt should not be called")),
+    )
+
+    assert jobs_cli.main(["start", "prefix_scale/sprint", "--watch-status"]) == 0
+    assert captured["job_path"] == str(queue_path)
+    assert captured["status_job_path"] == str(queue_path)
+    assert captured["watch"] is True

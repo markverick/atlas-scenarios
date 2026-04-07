@@ -43,6 +43,8 @@ _SCHEMA = {
 
     # Churn mode
     "churn_mode":            (str,   "fixed"),   # "fixed" or "random"
+    "link_event_mode":       (str,   "blackhole"), # "blackhole" or "neighbor"
+    "include_prefix_churn":  (bool,  True),      # fixed/random churn: withdraw/reannounce prefixes during churn
     "churn_seed":            (int,   42),        # RNG seed for random churn
     "churn_num_cycles":      (int,   3),         # fail/recover cycles in random mode
     "churn_interval":        (float, 5.0),       # mean inter-cycle gap (s), exponential
@@ -50,6 +52,8 @@ _SCHEMA = {
     "churn_prefix_rate":     (float, 0.0),       # independent prefix churn rate (events/s); 0 = coupled to link events
     "per_prefix_rate":       (float, 0.0),       # per-prefix churn rate (events/s/prefix) for prefix_scaling mode
     "prefix_counts":         (list,  []),         # list of num_prefixes to sweep (prefix_scaling mode); empty = use num_prefixes
+    "num_churn_links":       (int,   1),         # number of links to churn for link_scaling mode
+    "link_counts":           (list,  []),        # list of churn-link counts to sweep in link_scaling mode
     "modes":                 (list,  []),         # routing modes to run; empty = ["baseline","two_step","one_step"]
 
     # Churn-after-convergence mode

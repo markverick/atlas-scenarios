@@ -1,0 +1,28 @@
+{
+  "_comment": "3x3 prefix-churn comparison test queue for sim+emu, single prefix, compare baseline vs two_step vs one_step, snapshots disabled. Run with: sudo ./jobs.sh start --fresh prefix_scale/3x3_prefix_churn_compare_1prefix_test",
+  "selector": "prefix_scale/3x3_prefix_churn_compare_1prefix_test",
+  "name": "3x3_prefix_churn_compare_1prefix_test",
+  "experiment": "prefix_scale",
+  "topology": "grid",
+  "mode": "mixed",
+  "description": "3x3 grid prefix-churn comparison test run for sim and emu with one prefix, comparing baseline vs two_step vs one_step",
+  "run_root_template": "experiments/prefix_scale/results/3x3_prefix_churn_compare_1prefix_test/{timestamp}",
+  "jobs": [
+    {
+      "name": "build",
+      "cmd": "./run.sh build"
+    },
+    {
+      "name": "sim prefix churn compare p1",
+      "cmd": "./run.sh sim --no-build churn.py --config experiments/prefix_scale/scenarios/3x3_prefix_churn_compare_sim_1prefix_test.json --out {run_root}/sim --append"
+    },
+    {
+      "name": "emu prefix churn compare p1",
+      "cmd": "./run.sh emu --no-build churn.py --config experiments/prefix_scale/scenarios/3x3_prefix_churn_compare_emu_1prefix_test.json --out {run_root}/emu --append"
+    },
+    {
+      "name": "plot sim-vs-emu prefix churn compare p1",
+      "cmd": "python3 experiments/prefix_scale/plot.py --data {run_root}/emu --data2 {run_root}/sim --out {run_root}/compare"
+    }
+  ]
+}

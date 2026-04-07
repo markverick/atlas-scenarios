@@ -168,6 +168,10 @@ The JSON schema is implemented in `lib/config.py`:
 - `prefix_sync_delay`: delay (ms) before starting PrefixSync SVS (`0` = immediate)
 - `disable_prefix_snap`: disable PrefixSync snapshots (`true` by default)
 - `prefix_snap_threshold`: snapshot threshold override when snapshots are enabled (`0` = Go default)
+- `link_event_mode`: link-event primitive for fixed/random churn: `"blackhole"` keeps the face up and drops packets, `"neighbor"` destroys and recreates the neighbor/face
+- `include_prefix_churn`: include prefix withdraw/re-announce events during fixed/random churn (`true` by default); set to `false` for link-only or neighbor-only controls
+- `num_churn_links`: number of links to churn in `link_scaling` mode
+- `link_counts`: list of churn-link counts to sweep in `link_scaling` mode
 - `per_prefix_rate`: per-prefix churn rate (events/s/prefix) for prefix-scaling mode
 - `prefix_counts`: list of num_prefixes to sweep; empty = use `num_prefixes`
 - `modes`: routing modes to run; empty = `["baseline", "two_step", "one_step"]`
@@ -257,8 +261,8 @@ Minimal template:
 from mininet.topo import Topo
 from minindn.minindn import Minindn
 from minindn.apps.app_manager import AppManager
-from minindn.apps.ndnd_fw import NDNd_FW
-from minindn.helpers import dv_util
+from minindn_ndnd.ndnd_fw import NDNd_FW
+from minindn_ndnd import dv_util
 
 NETWORK = "/minindn"
 
