@@ -8,10 +8,11 @@ from lib.config import load_config
 
 
 REPO_DIR = os.path.join(os.path.dirname(__file__), "..")
-PREFIX_SCALE_SCENARIO_DIR = os.path.join(REPO_DIR, "experiments", "prefix_scale", "scenarios")
 SCENARIO_FILES = sorted(
-    os.path.join(PREFIX_SCALE_SCENARIO_DIR, name)
-    for name in os.listdir(PREFIX_SCALE_SCENARIO_DIR)
+    os.path.join(root, name)
+    for root, _, files in os.walk(os.path.join(REPO_DIR, "experiments"))
+    if os.path.basename(root) == "scenarios"
+    for name in files
     if name.endswith(".json")
 )
 

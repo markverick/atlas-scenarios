@@ -168,11 +168,20 @@ The JSON schema is implemented in `lib/config.py`:
 - `prefix_sync_delay`: delay (ms) before starting PrefixSync SVS (`0` = immediate)
 - `disable_prefix_snap`: disable PrefixSync snapshots (`true` by default)
 - `prefix_snap_threshold`: snapshot threshold override when snapshots are enabled (`0` = Go default)
-- `link_event_mode`: link-event primitive for fixed/random churn: `"blackhole"` keeps the face up and drops packets, `"neighbor"` destroys and recreates the neighbor/face
-- `include_prefix_churn`: include prefix withdraw/re-announce events during fixed/random churn (`true` by default); set to `false` for link-only or neighbor-only controls
-- `num_churn_links`: number of links to churn in `link_scaling` mode
-- `link_counts`: list of churn-link counts to sweep in `link_scaling` mode
-- `per_prefix_rate`: per-prefix churn rate (events/s/prefix) for prefix-scaling mode
+- `link_event_mode`: link-event primitive for all link churn: `"neighbor"` destroys and recreates the neighbor/face, `"blackhole"` keeps the face up and drops packets. Default is `neighbor`.
+- `target_link_failure_enabled`: enable the deterministic target-link failure/recovery event on the topology's designated churn link
+- `target_prefix_churn_enabled`: enable the deterministic target-prefix withdraw/re-announce event on the topology's designated churn node
+- `prefix_event_rate_per_prefix`: independent per-prefix churn rate
+- `prefix_mean_time_to_recover_s`: mean time until a withdrawn prefix is re-announced
+- `link_fail_all_links`: when `true`, every topology link is eligible to churn
+- `link_churned_link_count`: number of links eligible to churn when not using `link_fail_all_links`
+- `link_churned_link_count_values`: list of eligible-link counts to sweep
+- `link_mean_time_to_fail_s`: mean per-link time from recovery to the next failure
+- `link_mean_time_to_recover_s`: mean per-link downtime before recovery
+- `link_mean_time_to_fail_s_values`: list of failure means to sweep
+- `link_mean_time_to_recover_s_values`: list of recovery means to sweep
+- `link_distribution`: event timing distribution for stochastic link churn (`exponential` or `pareto`)
+- `link_pareto_alpha`: Pareto shape parameter when `link_distribution = pareto`
 - `prefix_counts`: list of num_prefixes to sweep; empty = use `num_prefixes`
 - `modes`: routing modes to run; empty = `["baseline", "two_step", "one_step"]`
 - `cores`: CPU core limit (`0` = no limit)

@@ -7,7 +7,13 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
 
-from .prefix_scale_data import bin_io, human_bytes, load_packet_trace, load_svs_suppression_dir
+from .prefix_scale_data import bin_io, human_bytes, load_event_log, load_packet_trace, load_svs_suppression_dir
+
+
+TRACE_CATEGORY_STYLES = {
+    "DvAdvert": ("#4C72B0", "DV"),
+    "PrefixSync": ("#C44E52", "PfxSync"),
+}
 
 
 def plot_churn_comparison(rows, out_dir, source_label):
@@ -85,12 +91,8 @@ def plot_io_per_variant(data_dir, out_dir, source_label, phase2_start=None):
                     break
         if phase2_start is None:
             phase2_start = 10.0
-    prefix_counts = set()
-    for filename in os.listdir(data_dir):
-        match = re.match(r"packet-trace-(two_step|one_step)-.*-p(\d+)-t\d+\.csv", filename)
-        if match:
-            prefix_counts.add(int(match.group(2)))
-    prefix_counts = sorted(prefix_counts)
+    trace_index = _discover_trace_index(data_dir)
+    prefix_counts = sorted({prefix_count for _, prefix_count in trace_index})
     if not prefix_counts:
         print("  No packet traces found, skipping IO plots")
         return
@@ -99,10 +101,11 @@ def plot_io_per_variant(data_dir, out_dir, source_label, phase2_start=None):
     for col, mode in enumerate(["two_step", "one_step"]):
         for row, prefix_count in enumerate(prefix_counts):
             axis = axes[row][col]
-            trace_path = os.path.join(data_dir, f"packet-trace-{mode}-sprint-p{prefix_count}-t1.csv")
-            if not os.path.exists(trace_path):
+            tag = trace_index.get((mode, prefix_count))
+            if not tag:
                 axis.text(0.5, 0.5, "No data", transform=axis.transAxes, ha="center", va="center")
                 continue
+            trace_path = os.path.join(data_dir, f"packet-trace-{tag}.csv")
             times, categories, sizes = load_packet_trace(trace_path)
             dv_times, dv_sizes, ps_times, ps_sizes = [], [], [], []
             for point, category, size in zip(times, categories, sizes):
@@ -134,6 +137,140 @@ def plot_io_per_variant(data_dir, out_dir, source_label, phase2_start=None):
     fig.savefig(path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"  Saved {path}")
+
+
+def _discover_trace_index(data_dir, *, modes=("two_step", "one_step")):
+    trace_index = {}
+    pattern = re.compile(r"packet-trace-([a-z_]+)-.+-p(\d+)-.*\.csv$")
+    for filename in os.listdir(data_dir):
+        match = pattern.match(filename)
+        if not match:
+            continue
+        mode = match.group(1)
+        if mode not in modes:
+            continue
+        prefix_count = int(match.group(2))
+        tag = filename[len("packet-trace-"):-len(".csv")]
+        trace_index[(mode, prefix_count)] = tag
+    return trace_index
+
+
+def _plot_event_lines(axis, event_rows):
+    seen = set()
+    for row in event_rows:
+        event = row["event"]
+        label = event.replace("_", " ")
+        color = "#c0392b" if "down" in event else "#2980b9"
+        style = "--" if "down" in event else ":"
+        show_label = label not in seen
+        axis.axvline(
+            row["time"],
+            color=color,
+            linestyle=style,
+            linewidth=1.0,
+            alpha=0.3,
+            label=label if show_label else None,
+        )
+        seen.add(label)
+
+
+def _plot_trace_io(axis, times, categories, sizes, event_rows, *, title, phase2_start=None):
+    category_points = {category: ([], []) for category in TRACE_CATEGORY_STYLES}
+    for point, category, size in zip(times, categories, sizes):
+        if category not in category_points:
+            continue
+        category_points[category][0].append(point)
+        category_points[category][1].append(size)
+
+    for category, (color, label) in TRACE_CATEGORY_STYLES.items():
+        edges, bins = bin_io(category_points[category][0], category_points[category][1])
+        if edges:
+            axis.step(edges, bins, where="mid", color=color, linewidth=1.6, label=label)
+
+    if phase2_start is not None:
+        axis.axvline(phase2_start, color="red", ls="--", lw=0.8, alpha=0.6, label="phase2")
+    _plot_event_lines(axis, event_rows)
+    axis.set_title(title)
+    axis.set_xlabel("Time (s)")
+    axis.set_ylabel("Traffic per 1s bin (bytes)")
+    axis.yaxis.set_major_formatter(ticker.FuncFormatter(human_bytes))
+    axis.grid(True, alpha=0.25)
+
+
+def _plot_packet_cdf(axis, categories, sizes, *, title):
+    total_sizes = []
+    for category, (color, label) in TRACE_CATEGORY_STYLES.items():
+        values = sorted(size for item_category, size in zip(categories, sizes) if item_category == category)
+        if not values:
+            continue
+        total_sizes.extend(values)
+        cdf_y = np.arange(1, len(values) + 1) / len(values)
+        axis.plot(values, cdf_y, color=color, linewidth=1.5, label=label)
+
+    if total_sizes:
+        total_sizes = sorted(total_sizes)
+        cdf_y = np.arange(1, len(total_sizes) + 1) / len(total_sizes)
+        axis.plot(total_sizes, cdf_y, color="#222222", linewidth=2.0, label="Total")
+
+    axis.set_title(title)
+    axis.set_xlabel("Packet size (bytes)")
+    axis.set_ylabel("CDF")
+    axis.grid(True, alpha=0.25)
+
+
+def plot_io_cdf_compare(sim_dir, emu_dir, out_dir, phase2_start=None):
+    sim_index = _discover_trace_index(sim_dir)
+    emu_index = _discover_trace_index(emu_dir)
+    cases = []
+    for key, sim_tag in sim_index.items():
+        emu_tag = emu_index.get(key)
+        if emu_tag:
+            mode, prefix_count = key
+            cases.append((mode, prefix_count, sim_tag, emu_tag))
+    if not cases:
+        print("  No shared packet traces found, skipping IO/CDF comparison plots")
+        return
+
+    detail_dir = os.path.join(out_dir, "trace_details")
+    os.makedirs(detail_dir, exist_ok=True)
+
+    for mode, prefix_count, sim_tag, emu_tag in sorted(cases, key=lambda item: (item[1], item[0])):
+        sim_trace = os.path.join(sim_dir, f"packet-trace-{sim_tag}.csv")
+        emu_trace = os.path.join(emu_dir, f"packet-trace-{emu_tag}.csv")
+        sim_event = os.path.join(sim_dir, f"event-log-{sim_tag}.csv")
+        emu_event = os.path.join(emu_dir, f"event-log-{emu_tag}.csv")
+
+        sim_times, sim_categories, sim_sizes = load_packet_trace(sim_trace)
+        emu_times, emu_categories, emu_sizes = load_packet_trace(emu_trace)
+        sim_events = load_event_log(sim_event) if os.path.exists(sim_event) else []
+        emu_events = load_event_log(emu_event) if os.path.exists(emu_event) else []
+
+        fig, axes = plt.subplots(2, 2, figsize=(14, 8))
+        mode_label = "Two-Step" if mode == "two_step" else "One-Step"
+        prefix_label = f"p{prefix_count}"
+
+        _plot_trace_io(axes[0, 0], sim_times, sim_categories, sim_sizes, sim_events,
+                       title=f"Simulation {mode_label} {prefix_label} I/O", phase2_start=phase2_start)
+        _plot_trace_io(axes[0, 1], emu_times, emu_categories, emu_sizes, emu_events,
+                       title=f"Emulation {mode_label} {prefix_label} I/O", phase2_start=phase2_start)
+        _plot_packet_cdf(axes[1, 0], sim_categories, sim_sizes,
+                         title=f"Simulation {mode_label} {prefix_label} Packet CDF")
+        _plot_packet_cdf(axes[1, 1], emu_categories, emu_sizes,
+                         title=f"Emulation {mode_label} {prefix_label} Packet CDF")
+
+        for axis in axes.flat:
+            handles, labels = axis.get_legend_handles_labels()
+            if handles:
+                unique = {}
+                for handle, label in zip(handles, labels):
+                    unique.setdefault(label, handle)
+                axis.legend(unique.values(), unique.keys(), fontsize=8, loc="best")
+
+        fig.tight_layout()
+        path = os.path.join(detail_dir, f"io-cdf-{mode}-p{prefix_count}.png")
+        fig.savefig(path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        print(f"  Saved {path}")
 
 
 def plot_net_overhead(rows, out_dir, source_label):

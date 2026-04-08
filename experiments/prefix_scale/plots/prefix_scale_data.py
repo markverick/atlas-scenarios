@@ -38,6 +38,23 @@ def load_packet_trace(path):
     return times, categories, sizes
 
 
+def load_event_log(path):
+    rows = []
+    with open(path) as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            try:
+                when = float(row["Time"])
+            except (KeyError, ValueError):
+                continue
+            rows.append({
+                "time": when,
+                "event": row.get("Event", ""),
+                "details": row.get("Details", ""),
+            })
+    return rows
+
+
 def load_svs_suppression_dir(data_dir):
     results = {}
     for name in os.listdir(data_dir):

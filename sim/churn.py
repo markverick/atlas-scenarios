@@ -30,11 +30,11 @@ from lib.result_adapter import parse_conv_trace
 from sim._helpers import resolve_ns3_dir, run_churn_scenario
 from lib.churn_common import (
     FIELDNAMES, CATEGORIES, KNOWN_TOPOLOGIES,
-    build_churn_events, build_random_churn_events,
+    build_churn_events,
     build_prefix_scaling_events, build_link_scaling_events,
     parse_packet_trace_by_phase,
     build_result_rows, make_tag, auto_plot,
-    default_out_dir, grid_churn_targets,
+    default_out_dir, grid_churn_targets, resolve_link_scaling_sweep,
 )
 
 
@@ -42,13 +42,17 @@ def run_variant(ns3_dir, *, topo_rel, topology, topo_id_str,
                 grid_size, num_nodes, num_links,
                 trial, mode, num_prefixes, window_s,
                 num_churn_links,
+                link_mean_time_to_fail_s,
+                link_mean_time_to_recover_s,
                 dv_config, sim_time, phase2_start,
                 link_src, link_dst, churn_node,
                 cores, out_dir, cfg=None,
                 all_links=None, all_nodes=None):
     """Run one variant and return a list of result dicts (one per phase)."""
     tag = make_tag(mode, topo_id_str, num_prefixes, trial,
-                   num_churn_links=num_churn_links)
+                   num_churn_links=num_churn_links,
+                   link_mean_time_to_fail_s=link_mean_time_to_fail_s,
+                   link_mean_time_to_recover_s=link_mean_time_to_recover_s)
     pfx_count = num_prefixes if mode != "baseline" else 0
 
     conv_file = os.path.abspath(os.path.join(out_dir, f"conv-{tag}.txt"))
@@ -74,44 +78,38 @@ def run_variant(ns3_dir, *, topo_rel, topology, topo_id_str,
     evt_start = 0.0 if churn_after_conv else phase2_start
     evt_end = churn_duration if churn_after_conv else sim_time
 
-    churn_mode = (cfg or {}).get("churn_mode", "fixed")
-    if churn_mode == "prefix_scaling":
-        churn_events = build_prefix_scaling_events(
+    churn_events = []
+    if cfg["target_link_failure_enabled"] or cfg["target_prefix_churn_enabled"]:
+        churn_events.extend(build_churn_events(
             pfx_count, evt_start,
-            per_prefix_rate=cfg.get("per_prefix_rate", 0.1),
-            churn_node=churn_node,
-            window_end=evt_end,
-            seed=cfg.get("churn_seed", 42),
-            recovery_delay=cfg.get("churn_recovery_delay", 3.0),
-            all_nodes=all_nodes)
-    elif churn_mode == "link_scaling":
-        churn_events = build_link_scaling_events(
+            link_src=link_src, link_dst=link_dst, churn_node=churn_node,
+            include_link_failure=cfg["target_link_failure_enabled"],
+            link_event_mode=cfg["link_event_mode"],
+            include_target_prefix_churn=cfg["target_prefix_churn_enabled"]))
+
+    if num_churn_links > 0:
+        churn_events.extend(build_link_scaling_events(
             num_churn_links, evt_start,
             all_links=all_links,
             window_end=evt_end,
-            seed=cfg.get("churn_seed", 42),
-            recovery_delay=cfg.get("churn_recovery_delay", 5.0),
-            link_event_mode=cfg.get("link_event_mode", "blackhole"))
-    elif churn_mode == "random":
-        churn_events = build_random_churn_events(
+            seed=cfg["churn_seed"],
+            mean_time_to_recover_s=link_mean_time_to_recover_s,
+            mean_time_to_fail_s=link_mean_time_to_fail_s,
+            distribution=cfg["link_distribution"],
+            pareto_alpha=cfg["link_pareto_alpha"],
+            link_event_mode=cfg["link_event_mode"]))
+
+    if cfg["prefix_event_rate_per_prefix"] > 0:
+        churn_events.extend(build_prefix_scaling_events(
             pfx_count, evt_start,
-            link_src=link_src, link_dst=link_dst, churn_node=churn_node,
+            prefix_event_rate_per_prefix=cfg["prefix_event_rate_per_prefix"],
+            churn_node=churn_node,
             window_end=evt_end,
-            seed=cfg.get("churn_seed", 42),
-            num_cycles=cfg.get("churn_num_cycles", 3),
-            interval=cfg.get("churn_interval", 5.0),
-            recovery_delay=cfg.get("churn_recovery_delay", 3.0),
-            all_links=all_links,
-            all_nodes=all_nodes,
-            prefix_churn_rate=cfg.get("churn_prefix_rate", 0.0),
-            link_event_mode=cfg.get("link_event_mode", "blackhole"),
-            include_prefix_churn=cfg.get("include_prefix_churn", True))
-    else:
-        churn_events = build_churn_events(
-            pfx_count, evt_start,
-            link_src=link_src, link_dst=link_dst, churn_node=churn_node,
-            link_event_mode=cfg.get("link_event_mode", "blackhole"),
-            include_prefix_churn=cfg.get("include_prefix_churn", True))
+            seed=cfg["churn_seed"],
+            prefix_mean_time_to_recover_s=cfg["prefix_mean_time_to_recover_s"],
+            all_nodes=all_nodes))
+
+    churn_events.sort(key=lambda event: event["time"])
 
     churn_start_file = None
     if churn_after_conv:
@@ -176,6 +174,8 @@ def run_variant(ns3_dir, *, topo_rel, topology, topo_id_str,
         mode=mode,
         num_prefixes=pfx_count,
         num_churn_links=num_churn_links,
+        link_mean_time_to_fail_s=link_mean_time_to_fail_s,
+        link_mean_time_to_recover_s=link_mean_time_to_recover_s,
         window_s=window_s,
         phase2_start=phase_boundary,
         convergence_s=conv,
@@ -211,13 +211,6 @@ def _run_grid(ns3_dir, cfg, dv_config, out_dir, writer, f):
     if not prefix_counts:
         prefix_counts = [num_prefixes]
     sweeping = len(prefix_counts) > 1
-    link_counts = cfg.get("link_counts", [])
-    if not link_counts:
-        link_counts = [cfg.get("num_churn_links", 1)]
-    churn_mode_str = cfg.get("churn_mode", "fixed")
-    sweep_link_counts = churn_mode_str == "link_scaling"
-    if not sweep_link_counts:
-        link_counts = [1]
 
     modes = cfg.get("modes", []) or ["baseline", "two_step", "one_step"]
 
@@ -225,6 +218,13 @@ def _run_grid(ns3_dir, cfg, dv_config, out_dir, writer, f):
         link_src, link_dst, churn_node = grid_churn_targets(grid_size)
         all_links_list = grid_links(grid_size)
         all_nodes_list = grid_nodes(grid_size)
+        link_counts, rate_pairs = resolve_link_scaling_sweep(
+            cfg, total_links=len(all_links_list))
+        sweep_link_counts = len(link_counts) > 1
+        if not link_counts:
+            link_counts = [0]
+            rate_pairs = [(cfg.get("link_mean_time_to_fail_s", 5.0),
+                           cfg.get("link_mean_time_to_recover_s", 5.0))]
 
         topo_dir = os.path.join(
             ns3_dir, "contrib", "ndndSIM", "examples", "topologies")
@@ -240,39 +240,42 @@ def _run_grid(ns3_dir, cfg, dv_config, out_dir, writer, f):
         for trial in range(1, trials + 1):
             baseline_done = False
             for link_count in link_counts:
-                for pfx_count in prefix_counts:
-                    for mode in modes:
-                        if (sweeping and not sweep_link_counts and mode == "baseline"
-                                and baseline_done):
-                            continue
-                        rows = run_variant(
-                            ns3_dir,
-                            topo_rel=topo_rel,
-                            topology="grid",
-                            topo_id_str=f"{grid_size}x{grid_size}",
-                            grid_size=grid_size,
-                            num_nodes=num_nodes,
-                            num_links=num_links,
-                            trial=trial,
-                            mode=mode,
-                            num_prefixes=pfx_count,
-                            num_churn_links=link_count,
-                            window_s=sim_time,
-                            dv_config=dv_config,
-                            sim_time=sim_time,
-                            phase2_start=phase2_start,
-                            link_src=link_src,
-                            link_dst=link_dst,
-                            churn_node=churn_node,
-                            cores=cores,
-                            out_dir=out_dir,
-                            cfg=cfg,
-                            all_links=all_links_list,
-                            all_nodes=all_nodes_list,
-                        )
-                        _write_rows(writer, f, rows)
-                        if mode == "baseline":
-                            baseline_done = True
+                for link_mean_time_to_fail_s, link_mean_time_to_recover_s in rate_pairs:
+                    for pfx_count in prefix_counts:
+                        for mode in modes:
+                            if (sweeping and not sweep_link_counts and mode == "baseline"
+                                    and baseline_done):
+                                continue
+                            rows = run_variant(
+                                ns3_dir,
+                                topo_rel=topo_rel,
+                                topology="grid",
+                                topo_id_str=f"{grid_size}x{grid_size}",
+                                grid_size=grid_size,
+                                num_nodes=num_nodes,
+                                num_links=num_links,
+                                trial=trial,
+                                mode=mode,
+                                num_prefixes=pfx_count,
+                                num_churn_links=link_count,
+                                link_mean_time_to_fail_s=link_mean_time_to_fail_s,
+                                link_mean_time_to_recover_s=link_mean_time_to_recover_s,
+                                window_s=sim_time,
+                                dv_config=dv_config,
+                                sim_time=sim_time,
+                                phase2_start=phase2_start,
+                                link_src=link_src,
+                                link_dst=link_dst,
+                                churn_node=churn_node,
+                                cores=cores,
+                                out_dir=out_dir,
+                                cfg=cfg,
+                                all_links=all_links_list,
+                                all_nodes=all_nodes_list,
+                            )
+                            _write_rows(writer, f, rows)
+                            if mode == "baseline":
+                                baseline_done = True
 
 
 def _run_conf(ns3_dir, cfg, dv_config, out_dir, writer, f, topo_name):
@@ -320,52 +323,55 @@ def _run_conf(ns3_dir, cfg, dv_config, out_dir, writer, f, topo_name):
     if not prefix_counts:
         prefix_counts = [num_prefixes]
     sweeping = len(prefix_counts) > 1
-    link_counts = cfg.get("link_counts", [])
+    link_counts, rate_pairs = resolve_link_scaling_sweep(
+        cfg, total_links=len(all_links_list))
+    sweep_link_counts = len(link_counts) > 1
     if not link_counts:
-        link_counts = [cfg.get("num_churn_links", 1)]
-    churn_mode_str = cfg.get("churn_mode", "fixed")
-    sweep_link_counts = churn_mode_str == "link_scaling"
-    if not sweep_link_counts:
-        link_counts = [1]
+        link_counts = [0]
+        rate_pairs = [(cfg.get("link_mean_time_to_fail_s", 5.0),
+                       cfg.get("link_mean_time_to_recover_s", 5.0))]
 
     modes = cfg.get("modes", []) or ["baseline", "two_step", "one_step"]
 
     for trial in range(1, trials + 1):
         baseline_done = False
         for link_count in link_counts:
-            for pfx_count in prefix_counts:
-                for mode in modes:
-                    if (sweeping and not sweep_link_counts and mode == "baseline"
-                            and baseline_done):
-                        continue
-                    rows = run_variant(
-                        ns3_dir,
-                        topo_rel=topo_rel,
-                        topology=topo_name,
-                        topo_id_str=topo_name,
-                        grid_size=0,
-                        num_nodes=num_nodes,
-                        num_links=num_links,
-                        trial=trial,
-                        mode=mode,
-                        num_prefixes=pfx_count,
-                        num_churn_links=link_count,
-                        window_s=sim_time,
-                        dv_config=dv_config,
-                        sim_time=sim_time,
-                        phase2_start=phase2_start,
-                        link_src=link_src,
-                        link_dst=link_dst,
-                        churn_node=churn_node,
-                        cores=cores,
-                        out_dir=out_dir,
-                        cfg=cfg,
-                        all_links=all_links_list,
-                        all_nodes=all_nodes_list,
-                    )
-                    _write_rows(writer, f, rows)
-                    if mode == "baseline":
-                        baseline_done = True
+            for link_mean_time_to_fail_s, link_mean_time_to_recover_s in rate_pairs:
+                for pfx_count in prefix_counts:
+                    for mode in modes:
+                        if (sweeping and not sweep_link_counts and mode == "baseline"
+                                and baseline_done):
+                            continue
+                        rows = run_variant(
+                            ns3_dir,
+                            topo_rel=topo_rel,
+                            topology=topo_name,
+                            topo_id_str=topo_name,
+                            grid_size=0,
+                            num_nodes=num_nodes,
+                            num_links=num_links,
+                            trial=trial,
+                            mode=mode,
+                            num_prefixes=pfx_count,
+                            num_churn_links=link_count,
+                            link_mean_time_to_fail_s=link_mean_time_to_fail_s,
+                            link_mean_time_to_recover_s=link_mean_time_to_recover_s,
+                            window_s=sim_time,
+                            dv_config=dv_config,
+                            sim_time=sim_time,
+                            phase2_start=phase2_start,
+                            link_src=link_src,
+                            link_dst=link_dst,
+                            churn_node=churn_node,
+                            cores=cores,
+                            out_dir=out_dir,
+                            cfg=cfg,
+                            all_links=all_links_list,
+                            all_nodes=all_nodes_list,
+                        )
+                        _write_rows(writer, f, rows)
+                        if mode == "baseline":
+                            baseline_done = True
 
 
 def _write_rows(writer, f, rows):
@@ -428,7 +434,7 @@ def main():
     print(f"\nResults written to {out_csv}")
 
     # Auto-generate plots and summary (auto-detects sibling emu dir)
-    plot_kind = "prefix_scale" if cfg.get("churn_mode") == "prefix_scaling" else "churn"
+    plot_kind = "prefix_scale" if cfg.get("prefix_counts") else "churn"
     auto_plot(out_dir, sim_dir=out_dir, plot_kind=plot_kind)
 
 

@@ -1,7 +1,6 @@
 {
-  "_comment": "3x3 two-step prefix-scale test scenario for emu, single prefix, snapshots disabled",
-  "topology": "grid",
-  "grids": [3],
+  "_comment": "Sprint bothstep 5 test for emu, compare baseline vs two_step vs one_step under prefix churn, snapshots disabled",
+  "topology": "sprint",
   "delay_ms": 10,
   "bandwidth_mbps": 10,
   "trials": 1,
@@ -14,8 +13,8 @@
   "churn_seed": 42,
   "prefix_mean_time_to_recover_s": 3.0,
   "prefix_event_rate_per_prefix": 0.1,
-  "prefix_counts": [1],
-  "modes": ["two_step"],
-  "phase2_start_s": 10.0,
+  "prefix_counts": [5],
+  "modes": ["baseline", "two_step", "one_step"],
+  "phase2_start_s": 30.0,
   "churn_duration_s": 120.0
 }

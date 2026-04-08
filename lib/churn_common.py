@@ -16,7 +16,9 @@ import sys
 
 FIELDNAMES = [
     "topology", "grid_size", "num_nodes", "num_links", "trial", "mode",
-    "num_prefixes", "num_churn_links", "window_s", "phase2_start", "convergence_s", "phase",
+    "num_prefixes", "num_churn_links",
+    "link_mean_time_to_fail_s", "link_mean_time_to_recover_s",
+    "window_s", "phase2_start", "convergence_s", "phase",
     "dv_advert_pkts", "dv_advert_bytes",
     "pfxsync_pkts", "pfxsync_bytes",
     "mgmt_pkts", "mgmt_bytes",
@@ -73,8 +75,8 @@ def default_out_dir(cfg, runner="sim"):
       sprint       -> results/sim_churn_sprint
     """
     topo = cfg.get("topology", "grid")
-    link_event_mode = cfg.get("link_event_mode", "blackhole")
-    mode_suffix = "" if link_event_mode == "blackhole" else f"_{link_event_mode}"
+    link_event_mode = cfg.get("link_event_mode", "neighbor")
+    mode_suffix = "" if link_event_mode == "neighbor" else f"_{link_event_mode}"
     if topo != "grid":
         return f"results/{runner}_churn{mode_suffix}_{topo}"
     grids = cfg.get("grids", [])
@@ -95,8 +97,9 @@ def grid_churn_targets(grid_size):
 
 def build_churn_events(num_prefixes, phase2_start, *,
                        link_src, link_dst, churn_node,
-                       link_event_mode="blackhole",
-                       include_prefix_churn=True):
+                       include_link_failure=True,
+                       link_event_mode="neighbor",
+                       include_target_prefix_churn=True):
     """Build deterministic churn events for any topology.
 
     Events at offsets from phase2_start:
@@ -105,17 +108,21 @@ def build_churn_events(num_prefixes, phase2_start, *,
     +5.1s  link_up/neighbor_up       link_src -- link_dst
     +7.0s  prefix_announce on churn_node  (if enabled and num_prefixes > 0)
     """
-    if link_src is None or link_dst is None:
+    if not include_link_failure and not include_target_prefix_churn:
+        return []
+    if include_link_failure and (link_src is None or link_dst is None):
         return []
     down_type = "neighbor_down" if link_event_mode == "neighbor" else "link_down"
     up_type = "neighbor_up" if link_event_mode == "neighbor" else "link_up"
-    events = [
-        {"time": phase2_start + 0.1, "type": down_type,
-         "src": link_src, "dst": link_dst},
-        {"time": phase2_start + 5.1, "type": up_type,
-         "src": link_src, "dst": link_dst},
-    ]
-    if include_prefix_churn and num_prefixes > 0 and churn_node:
+    events = []
+    if include_link_failure:
+        events.extend([
+            {"time": phase2_start + 0.1, "type": down_type,
+             "src": link_src, "dst": link_dst},
+            {"time": phase2_start + 5.1, "type": up_type,
+             "src": link_src, "dst": link_dst},
+        ])
+    if include_target_prefix_churn and num_prefixes > 0 and churn_node:
         pfx = f"/data/{churn_node}/pfx0"
         events.append({"time": phase2_start + 2.0, "type": "prefix_withdraw",
                        "node": churn_node, "prefix": pfx})
@@ -124,126 +131,27 @@ def build_churn_events(num_prefixes, phase2_start, *,
     return events
 
 
-def build_random_churn_events(num_prefixes, phase2_start, *,
-                              link_src, link_dst, churn_node,
-                              window_end, seed=42, num_cycles=3,
-                              interval=5.0, recovery_delay=3.0,
-                              all_links=None, all_nodes=None,
-                              prefix_churn_rate=0.0,
-                              link_event_mode="blackhole",
-                              include_prefix_churn=True):
-    """Build stochastic churn events drawn from exponential distributions.
-
-    Two independent event streams are generated:
-
-    1. **Link failures**: ``num_cycles`` fail/recover pairs.  Each cycle
-       picks a random link from *all_links* (or falls back to the single
-       *link_src*/*link_dst*).  Inter-cycle gaps and recovery times are
-       drawn from Exp(1/interval) and Exp(1/recovery_delay) respectively.
-
-    2. **Prefix churn** (if *prefix_churn_rate* > 0): an independent
-       Poisson stream of withdraw/re-announce pairs on randomly chosen
-       nodes from *all_nodes*.  Each withdrawal is re-announced after a
-       random Exp(1/recovery_delay) pause.  If *prefix_churn_rate* is 0,
-       prefix events are coupled to link events as before (one
-       withdraw/announce per link cycle on the affected link's source).
-
-    Parameters
-    ----------
-    all_links : list[(str, str)] | None
-        Full list of links to sample from.  ``None`` -> single link.
-    all_nodes : list[str] | None
-        Full list of node names to sample from.  ``None`` -> *churn_node*.
-    prefix_churn_rate : float
-        Mean prefix-churn events per second (independent stream).
-        0 means prefix events are coupled to link failures (legacy behaviour).
-    """
-    if not all_links and (link_src is None or link_dst is None):
-        return []
-
-    rng = random.Random(seed)
-    events = []
-    links_pool = all_links if all_links else [(link_src, link_dst)]
-    nodes_pool = all_nodes if all_nodes else ([churn_node] if churn_node else [])
-    down_type = "neighbor_down" if link_event_mode == "neighbor" else "link_down"
-    up_type = "neighbor_up" if link_event_mode == "neighbor" else "link_up"
-
-    # --- Stream 1: link failures ---
-    t = phase2_start
-    for _ in range(num_cycles):
-        gap = rng.expovariate(1.0 / interval)
-        t_down = t + gap
-        if t_down >= window_end - 1.0:
-            break
-
-        recovery = max(rng.expovariate(1.0 / recovery_delay), 1.0)
-        t_up = t_down + recovery
-        if t_up >= window_end - 0.5:
-            t_up = window_end - 0.5
-
-        src, dst = rng.choice(links_pool)
-        events.append({"time": round(t_down, 3), "type": down_type,
-                       "src": src, "dst": dst})
-        events.append({"time": round(t_up, 3), "type": up_type,
-                       "src": src, "dst": dst})
-
-        # Coupled prefix churn (legacy)
-        if (include_prefix_churn and prefix_churn_rate == 0
-            and num_prefixes > 0 and nodes_pool):
-            node = src if src in nodes_pool else rng.choice(nodes_pool)
-            pfx = f"/data/{node}/pfx0"
-            t_withdraw = min(t_down + 0.5, t_up - 0.1)
-            t_announce = min(t_up + 0.5, window_end - 0.1)
-            events.append({"time": round(t_withdraw, 3), "type": "prefix_withdraw",
-                           "node": node, "prefix": pfx})
-            events.append({"time": round(t_announce, 3), "type": "prefix_announce",
-                           "node": node, "prefix": pfx})
-
-        t = t_up + 1.0
-
-    # --- Stream 2: independent prefix churn (Poisson) ---
-    if prefix_churn_rate > 0 and num_prefixes > 0 and nodes_pool:
-        t = phase2_start
-        while True:
-            gap = rng.expovariate(prefix_churn_rate)
-            t_withdraw = t + gap
-            if t_withdraw >= window_end - 2.0:
-                break
-            node = rng.choice(nodes_pool)
-            pfx_idx = rng.randint(0, num_prefixes - 1)
-            pfx = f"/data/{node}/pfx{pfx_idx}"
-            pause = max(rng.expovariate(1.0 / recovery_delay), 1.0)
-            t_announce = min(t_withdraw + pause, window_end - 0.1)
-            events.append({"time": round(t_withdraw, 3), "type": "prefix_withdraw",
-                           "node": node, "prefix": pfx})
-            events.append({"time": round(t_announce, 3), "type": "prefix_announce",
-                           "node": node, "prefix": pfx})
-            t = t_withdraw
-
-    events.sort(key=lambda e: e["time"])
-    return events
-
-
 def build_prefix_scaling_events(num_prefixes, phase2_start, *,
-                                per_prefix_rate, churn_node,
+                                prefix_event_rate_per_prefix, churn_node,
                                 window_end, seed=42,
-                                recovery_delay=3.0,
+                                prefix_mean_time_to_recover_s=3.0,
                                 all_nodes=None):
     """Build independent per-prefix Poisson churn streams (no link events).
 
     Each prefix gets its own independent Poisson stream of withdraw/announce
-    pairs at *per_prefix_rate* events/s.  More prefixes -> proportionally more
+    pairs at *prefix_event_rate_per_prefix* events/s. More prefixes ->
+    proportionally more
     total churn events in the network.
 
     Parameters
     ----------
-    per_prefix_rate : float
+    prefix_event_rate_per_prefix : float
         Mean withdraw events per second **per prefix**.
     all_nodes : list[str] | None
         Node pool for distributing prefixes.  Each prefix is assigned to a
         random node at creation time and stays there throughout.
     """
-    if num_prefixes <= 0 or per_prefix_rate <= 0:
+    if num_prefixes <= 0 or prefix_event_rate_per_prefix <= 0:
         return []
 
     rng = random.Random(seed)
@@ -264,11 +172,11 @@ def build_prefix_scaling_events(num_prefixes, phase2_start, *,
     for node, pfx in prefix_assignments:
         t = phase2_start
         while True:
-            gap = rng.expovariate(per_prefix_rate)
+            gap = rng.expovariate(prefix_event_rate_per_prefix)
             t_withdraw = t + gap
             if t_withdraw >= window_end - 2.0:
                 break
-            pause = max(rng.expovariate(1.0 / recovery_delay), 1.0)
+            pause = max(rng.expovariate(1.0 / prefix_mean_time_to_recover_s), 1.0)
             t_announce = min(t_withdraw + pause, window_end - 0.1)
             events.append({"time": round(t_withdraw, 3),
                            "type": "prefix_withdraw",
@@ -286,13 +194,28 @@ def build_prefix_scaling_events(num_prefixes, phase2_start, *,
 
 def build_link_scaling_events(num_churn_links, phase2_start, *,
                               all_links, window_end, seed=42,
-                              recovery_delay=5.0,
-                              link_event_mode="blackhole"):
-    """Build a simultaneous burst of link churn at phase start.
+                              mean_time_to_recover_s=5.0,
+                              mean_time_to_fail_s=5.0,
+                              distribution="exponential",
+                              pareto_alpha=2.0,
+                              link_event_mode="neighbor"):
+    """Build independent per-link churn processes for a selected link set.
 
     Select up to *num_churn_links* links from *all_links* deterministically via
-    *seed*. All selected links go down near the phase start and come back after
-    a common recovery delay.
+    *seed*. Each selected link then runs its own fail/recover process with
+    independent samples for the time-to-failure and downtime duration.
+
+    Parameters
+    ----------
+    mean_time_to_fail_s : float
+        Mean time from the prior recovery to the next failure on the same link.
+    mean_time_to_recover_s : float
+        Mean downtime before recovery.
+    distribution : str
+        Sampling family for interval and recovery draws. Supported values are
+        ``"exponential"`` and ``"pareto"``.
+    pareto_alpha : float
+        Pareto shape parameter (> 1) when ``distribution == "pareto"``.
     """
     if num_churn_links <= 0 or not all_links:
         return []
@@ -304,18 +227,71 @@ def build_link_scaling_events(num_churn_links, phase2_start, *,
 
     down_type = "neighbor_down" if link_event_mode == "neighbor" else "link_down"
     up_type = "neighbor_up" if link_event_mode == "neighbor" else "link_up"
-    t_down = phase2_start + 0.1
-    t_up = min(t_down + recovery_delay, window_end - 0.1)
-
     events = []
+    safe_window_end = window_end - 0.1
+
+    def sample_delay(mean_value):
+        if mean_value <= 0:
+            return 0.0
+        if distribution == "pareto":
+            if pareto_alpha <= 1.0:
+                raise ValueError("pareto_alpha must be > 1 for finite mean")
+            scale = mean_value * (pareto_alpha - 1.0) / pareto_alpha
+            return scale * rng.paretovariate(pareto_alpha)
+        return rng.expovariate(1.0 / mean_value)
+
     for src, dst in selected_links:
-        events.append({"time": round(t_down, 3), "type": down_type,
-                       "src": src, "dst": dst})
-        events.append({"time": round(t_up, 3), "type": up_type,
-                       "src": src, "dst": dst})
+        current = phase2_start
+        while True:
+            t_down = current + sample_delay(mean_time_to_fail_s)
+            if t_down >= safe_window_end:
+                break
+
+            downtime = max(sample_delay(mean_time_to_recover_s), 0.1)
+            t_up = t_down + downtime
+            if t_up > safe_window_end:
+                break
+
+            events.append({"time": round(t_down, 3), "type": down_type,
+                           "src": src, "dst": dst})
+            events.append({"time": round(t_up, 3), "type": up_type,
+                           "src": src, "dst": dst})
+            current = t_up
 
     events.sort(key=lambda e: (e["time"], e["src"], e["dst"], e["type"]))
     return events
+
+
+def resolve_link_scaling_sweep(cfg, *, total_links):
+    """Return ``(link_counts, rate_pairs)`` for link_scaling mode."""
+    if cfg.get("link_fail_all_links", False):
+        link_counts = [total_links]
+    else:
+        link_counts = cfg.get("link_churned_link_count_values", [])
+    if not link_counts:
+        link_counts = [cfg.get("link_churned_link_count", total_links)]
+    link_counts = [count for count in link_counts if count > 0]
+
+    fail_values = cfg.get("link_mean_time_to_fail_s_values", [])
+    recover_values = cfg.get("link_mean_time_to_recover_s_values", [])
+    default_fail = cfg.get("link_mean_time_to_fail_s", 5.0)
+    default_recover = cfg.get("link_mean_time_to_recover_s", 5.0)
+
+    if fail_values and recover_values:
+        if len(fail_values) != len(recover_values):
+            raise ValueError(
+                "link_mean_time_to_fail_s_values and "
+                "link_mean_time_to_recover_s_values must have the same length"
+            )
+        rate_pairs = list(zip(fail_values, recover_values))
+    elif fail_values:
+        rate_pairs = [(value, default_recover) for value in fail_values]
+    elif recover_values:
+        rate_pairs = [(default_fail, value) for value in recover_values]
+    else:
+        rate_pairs = [(default_fail, default_recover)]
+
+    return link_counts, rate_pairs
 
 
 # --- Packet trace parsers ---
@@ -357,8 +333,9 @@ def parse_packet_events_by_phase(events, phase_boundary):
 # --- Result row builder ---
 
 def build_result_rows(phases, *, topology, grid_size, num_nodes, num_links,
-                      trial, mode, num_prefixes, num_churn_links, window_s, phase2_start,
-                      convergence_s):
+                      trial, mode, num_prefixes, num_churn_links,
+                      link_mean_time_to_fail_s, link_mean_time_to_recover_s,
+                      window_s, phase2_start, convergence_s):
     """Build CSV result dicts from parsed phase traffic."""
     rows = []
     for phase_name, traffic in phases.items():
@@ -373,6 +350,8 @@ def build_result_rows(phases, *, topology, grid_size, num_nodes, num_links,
             "mode": mode,
             "num_prefixes": num_prefixes,
             "num_churn_links": num_churn_links,
+            "link_mean_time_to_fail_s": link_mean_time_to_fail_s,
+            "link_mean_time_to_recover_s": link_mean_time_to_recover_s,
             "window_s": window_s,
             "phase2_start": phase2_start,
             "convergence_s": convergence_s,
@@ -391,7 +370,12 @@ def build_result_rows(phases, *, topology, grid_size, num_nodes, num_links,
 
 # --- File tag builder ---
 
-def make_tag(mode, topo_id_str, num_prefixes, trial, *, num_churn_links=None):
+def _tag_float(value):
+    return f"{value:g}".replace(".", "p")
+
+
+def make_tag(mode, topo_id_str, num_prefixes, trial, *, num_churn_links=None,
+             link_mean_time_to_fail_s=None, link_mean_time_to_recover_s=None):
     """Build a filename tag for trace files.
 
     topo_id_str: e.g. "3x3", "4x4", "sprint".
@@ -399,6 +383,10 @@ def make_tag(mode, topo_id_str, num_prefixes, trial, *, num_churn_links=None):
     tag = f"{mode}-{topo_id_str}-p{num_prefixes}"
     if num_churn_links is not None:
         tag += f"-l{num_churn_links}"
+    if link_mean_time_to_fail_s is not None:
+        tag += f"-f{_tag_float(link_mean_time_to_fail_s)}"
+    if link_mean_time_to_recover_s is not None:
+        tag += f"-r{_tag_float(link_mean_time_to_recover_s)}"
     tag += f"-t{trial}"
     return tag
 

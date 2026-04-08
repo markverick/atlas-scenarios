@@ -343,6 +343,33 @@ def test_load_state_retries_on_transient_invalid_json(tmp_path, monkeypatch):
     assert loaded["1"]["status"] == "running"
 
 
+def test_cleanup_stale_running_does_not_overwrite_newer_done_state(tmp_path):
+    exp_jobs_dir = tmp_path / "experiments" / "prefix_scale" / "queues"
+    exp_jobs_dir.mkdir(parents=True)
+    queue_path = exp_jobs_dir / "sprint.json"
+    queue_path.write_text(json.dumps({"jobs": [{"name": "build", "cmd": "true"}]}))
+
+    stale_snapshot = {
+        "1": {
+            "status": "running",
+            "runner_pid": 12345,
+            "runner_host": jobs_state.RUNNER_HOST,
+            "runner_mode": "direct",
+        }
+    }
+    save_state(str(queue_path), {"1": {"status": "done", "elapsed_s": 2.0}})
+
+    stale = jobs_state.cleanup_stale_running(
+        str(queue_path),
+        [{"id": 1, "name": "build"}],
+        stale_snapshot,
+    )
+
+    assert stale == []
+    loaded = load_state(str(queue_path))
+    assert loaded["1"]["status"] == "done"
+
+
 def test_cmd_status_watch_refreshes_output(tmp_path):
     exp_jobs_dir = tmp_path / "experiments" / "prefix_scale" / "queues"
     exp_jobs_dir.mkdir(parents=True)

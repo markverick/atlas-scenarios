@@ -21,10 +21,12 @@ def test_load_defaults(tmp_path):
     assert cfg["trials"] == 1
     assert cfg["window_s"] == 60.0
     assert cfg["modes"] == []
-    assert cfg["link_event_mode"] == "blackhole"
-    assert cfg["include_prefix_churn"] is True
-    assert cfg["num_churn_links"] == 1
-    assert cfg["link_counts"] == []
+    assert cfg["link_event_mode"] == "neighbor"
+    assert cfg["target_link_failure_enabled"] is False
+    assert cfg["target_prefix_churn_enabled"] is False
+    assert cfg["link_fail_all_links"] is False
+    assert cfg["link_churned_link_count"] == 0
+    assert cfg["link_churned_link_count_values"] == []
 
 
 def test_load_overrides(tmp_path):
@@ -34,9 +36,9 @@ def test_load_overrides(tmp_path):
         "window_s": 120.0,
         "modes": ["baseline"],
         "link_event_mode": "neighbor",
-        "include_prefix_churn": False,
-        "num_churn_links": 4,
-        "link_counts": [0, 4, 8],
+        "target_prefix_churn_enabled": True,
+        "link_churned_link_count": 4,
+        "link_churned_link_count_values": [4, 8],
     })
     cfg = load_config(path)
     assert cfg["topology"] == "sprint"
@@ -44,9 +46,9 @@ def test_load_overrides(tmp_path):
     assert cfg["window_s"] == 120.0
     assert cfg["modes"] == ["baseline"]
     assert cfg["link_event_mode"] == "neighbor"
-    assert cfg["include_prefix_churn"] is False
-    assert cfg["num_churn_links"] == 4
-    assert cfg["link_counts"] == [0, 4, 8]
+    assert cfg["target_prefix_churn_enabled"] is True
+    assert cfg["link_churned_link_count"] == 4
+    assert cfg["link_churned_link_count_values"] == [4, 8]
 
 
 def test_int_promoted_to_float(tmp_path):
@@ -59,6 +61,12 @@ def test_int_promoted_to_float(tmp_path):
 def test_type_mismatch_raises(tmp_path):
     path = _write_cfg(str(tmp_path), {"trials": "not_a_number"})
     with pytest.raises(ValueError, match="trials"):
+        load_config(path)
+
+
+def test_unknown_key_raises(tmp_path):
+    path = _write_cfg(str(tmp_path), {"churn_mode": "prefix_scaling"})
+    with pytest.raises(ValueError, match="Unknown config key"):
         load_config(path)
 
 

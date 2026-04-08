@@ -5,6 +5,7 @@ from .prefix_scale_data import load_churn_csv, source_label_from_dir
 from .prefix_scale_plots import (
     plot_churn_breakdown,
     plot_churn_comparison,
+    plot_io_cdf_compare,
     plot_io_per_variant,
     plot_net_overhead,
     plot_raw_overhead,
@@ -53,6 +54,7 @@ def main(argv=None):
                 sim_rows, emu_rows = rows_2, rows
                 sim_dir, emu_dir = args.data2, args.data
             plot_sim_vs_emu(sim_rows, emu_rows, out_dir)
+            plot_io_cdf_compare(sim_dir, emu_dir, out_dir)
             plot_svs_suppression_compare(sim_dir, emu_dir, out_dir)
 
     print("Done.")

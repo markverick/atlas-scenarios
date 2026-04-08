@@ -16,8 +16,9 @@ import os
 
 
 # All recognised keys with their types and defaults.
-# Keys not in this table are silently ignored (forward-compat).
 _SCHEMA = {
+    "_comment":       (str,   ""),       # human-readable scenario note
+
     # Topology
     "topology":       (str,   "grid"),   # "grid" or a KNOWN_TOPOLOGIES key
     "grids":          (list,  [2, 3, 4, 5]),
@@ -41,19 +42,23 @@ _SCHEMA = {
     "prefix_snap_threshold": (int, 0),    # 0 = use Go default; positive overrides PrefixSync snapshot threshold
     "disable_prefix_snap": (bool, True),  # True = disable PrefixSync snapshots entirely (default)
 
-    # Churn mode
-    "churn_mode":            (str,   "fixed"),   # "fixed" or "random"
-    "link_event_mode":       (str,   "blackhole"), # "blackhole" or "neighbor"
-    "include_prefix_churn":  (bool,  True),      # fixed/random churn: withdraw/reannounce prefixes during churn
-    "churn_seed":            (int,   42),        # RNG seed for random churn
-    "churn_num_cycles":      (int,   3),         # fail/recover cycles in random mode
-    "churn_interval":        (float, 5.0),       # mean inter-cycle gap (s), exponential
-    "churn_recovery_delay":  (float, 3.0),       # mean recovery time (s), exponential
-    "churn_prefix_rate":     (float, 0.0),       # independent prefix churn rate (events/s); 0 = coupled to link events
-    "per_prefix_rate":       (float, 0.0),       # per-prefix churn rate (events/s/prefix) for prefix_scaling mode
+    # Churn controls
+    "link_event_mode":       (str,   "neighbor"), # "neighbor" or "blackhole"
+    "churn_seed":            (int,   42),        # RNG seed for stochastic churn modes
+    "target_link_failure_enabled":   (bool,  False),    # deterministic failure/recovery of the topology's designated target link
+    "target_prefix_churn_enabled":   (bool,  False),    # deterministic withdraw/re-announce of the target prefix on the designated churn node
+    "prefix_event_rate_per_prefix":       (float, 0.0), # per-prefix churn rate (events/s/prefix) for prefix_scaling mode
+    "prefix_mean_time_to_recover_s":      (float, 3.0), # mean time until a withdrawn prefix is re-announced in prefix_scaling mode
     "prefix_counts":         (list,  []),         # list of num_prefixes to sweep (prefix_scaling mode); empty = use num_prefixes
-    "num_churn_links":       (int,   1),         # number of links to churn for link_scaling mode
-    "link_counts":           (list,  []),        # list of churn-link counts to sweep in link_scaling mode
+    "link_fail_all_links":   (bool,  False),     # True = all topology links are eligible to churn in link_scaling mode
+    "link_churned_link_count":        (int,   0), # number of links to churn for link_scaling mode
+    "link_churned_link_count_values": (list,  []), # list of churn-link counts to sweep in link_scaling mode
+    "link_mean_time_to_fail_s":    (float, 5.0), # mean per-link time from recovery to the next failure in link_scaling mode
+    "link_mean_time_to_recover_s": (float, 5.0), # mean per-link downtime in link_scaling mode
+    "link_mean_time_to_fail_s_values":    (list,  []), # list of per-link failure means to sweep in link_scaling mode
+    "link_mean_time_to_recover_s_values": (list,  []), # list of per-link recovery means to sweep in link_scaling mode
+    "link_distribution":     (str,   "exponential"), # event timing distribution for link_scaling: "exponential" or "pareto"
+    "link_pareto_alpha":     (float, 2.0),       # Pareto shape parameter (>1) when link_distribution == "pareto"
     "modes":                 (list,  []),         # routing modes to run; empty = ["baseline","two_step","one_step"]
 
     # Churn-after-convergence mode
@@ -78,6 +83,12 @@ def load_config(path):
 
     if not isinstance(raw, dict):
         raise ValueError(f"Config must be a JSON object, got {type(raw).__name__}")
+
+    unknown_keys = sorted(set(raw) - set(_SCHEMA))
+    if unknown_keys:
+        raise ValueError(
+            "Unknown config key(s): " + ", ".join(unknown_keys)
+        )
 
     cfg = {}
     for key, (typ, default) in _SCHEMA.items():

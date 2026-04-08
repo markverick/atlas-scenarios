@@ -134,6 +134,7 @@ def pid_is_alive(pid):
 
 def cleanup_stale_running(job_path, jobs, state, *, keep_pid=None):
     stale = []
+    latest_state = None
     for job in jobs:
         key = str(job["id"])
         entry = state.get(key)
@@ -145,6 +146,16 @@ def cleanup_stale_running(job_path, jobs, state, *, keep_pid=None):
         if host == RUNNER_HOST and pid == keep_pid:
             continue
         if host == RUNNER_HOST and pid_is_alive(pid):
+            continue
+
+        if latest_state is None:
+            latest_state = load_state(job_path)
+        latest_entry = latest_state.get(key, {})
+        if latest_entry.get("status") != STATE_RUNNING:
+            state[key] = latest_entry
+            continue
+        if latest_entry.get("runner_host") != host or latest_entry.get("runner_pid") != pid:
+            state[key] = latest_entry
             continue
 
         entry["status"] = STATE_FAILED
