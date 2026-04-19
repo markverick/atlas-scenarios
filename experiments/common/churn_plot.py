@@ -252,74 +252,97 @@ def _link_scale_axis(rows):
     return "count", counts or [0]
 
 
+def _prefix_axis(rows):
+    values = sorted({row["num_prefixes"] for row in rows if row["phase"] == "churn" and row["mode"] != "baseline"})
+    if values:
+        return values
+    baseline_values = sorted({row["num_prefixes"] for row in rows if row["phase"] == "churn"})
+    return baseline_values or [0]
+
+
+def _rows_for_prefix(rows, prefix_count):
+    return [
+        row for row in rows
+        if row["phase"] == "churn"
+        and (row["mode"] == "baseline" or row["num_prefixes"] == prefix_count)
+    ]
+
+
 def plot_link_scale_compare(sim_rows, emu_rows, out_dir):
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
     mode_styles = {
         "baseline": ("#999999", "o-"),
         "two_step": ("#e74c3c", "s-"),
         "one_step": ("#2ecc71", "^-"),
     }
 
-    for ax, rows, title in ((axes[0], sim_rows, "Simulation"), (axes[1], emu_rows, "Emulation")):
-        if not rows:
-            ax.set_title(f"{title} (no data)")
-            continue
+    prefix_counts = _prefix_axis(sim_rows or emu_rows)
+    for prefix_count in prefix_counts:
+        fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
+        for ax, rows, title in ((axes[0], sim_rows, "Simulation"), (axes[1], emu_rows, "Emulation")):
+            prefix_rows = _rows_for_prefix(rows, prefix_count)
+            if not prefix_rows:
+                ax.set_title(f"{title} (no data)")
+                continue
 
-        axis_kind, axis_values = _link_scale_axis(rows)
-        for mode, (color, style) in mode_styles.items():
-            points = []
+            axis_kind, axis_values = _link_scale_axis(prefix_rows)
+            for mode, (color, style) in mode_styles.items():
+                points = []
+                if axis_kind == "count":
+                    for link_count in axis_values:
+                        match = [
+                            row for row in prefix_rows
+                            if row["mode"] == mode
+                            and row["num_churn_links"] == link_count
+                        ]
+                        if match:
+                            points.append((link_count, match[0]["total_routing_bytes"] / 1024.0))
+                else:
+                    for index, (mttf, mttr) in enumerate(axis_values):
+                        match = [
+                            row for row in prefix_rows
+                            if row["mode"] == mode
+                            and row["link_mean_time_to_fail_s"] == mttf
+                            and row["link_mean_time_to_recover_s"] == mttr
+                        ]
+                        if match:
+                            points.append((index, match[0]["total_routing_bytes"] / 1024.0))
+                if points:
+                    ax.plot(
+                        [x for x, _ in points],
+                        [y for _, y in points],
+                        style,
+                        color=color,
+                        linewidth=2,
+                        label=mode.replace("_", " "),
+                    )
+
             if axis_kind == "count":
-                for link_count in axis_values:
-                    match = [
-                        row for row in rows
-                        if row["phase"] == "churn"
-                        and row["mode"] == mode
-                        and row["num_churn_links"] == link_count
-                    ]
-                    if match:
-                        points.append((link_count, match[0]["total_routing_bytes"] / 1024.0))
+                ax.set_xlabel("Churned Links")
+                ax.set_xticks(axis_values)
             else:
-                for index, (mttf, mttr) in enumerate(axis_values):
-                    match = [
-                        row for row in rows
-                        if row["phase"] == "churn"
-                        and row["mode"] == mode
-                        and row["link_mean_time_to_fail_s"] == mttf
-                        and row["link_mean_time_to_recover_s"] == mttr
-                    ]
-                    if match:
-                        points.append((index, match[0]["total_routing_bytes"] / 1024.0))
-            if points:
-                ax.plot(
-                    [x for x, _ in points],
-                    [y for _, y in points],
-                    style,
-                    color=color,
-                    linewidth=2,
-                    label=mode.replace("_", " "),
+                ax.set_xlabel("Per-Link Churn Rate")
+                ax.set_xticks(list(range(len(axis_values))))
+                ax.set_xticklabels(
+                    [f"F={mttf:g}\nR={mttr:g}" for mttf, mttr in axis_values],
+                    fontsize=8,
                 )
+            ax.set_title(f"{title} (p={prefix_count})")
+            ax.grid(True, alpha=0.3)
+            ax.legend()
 
-        if axis_kind == "count":
-            ax.set_xlabel("Churned Links")
-            ax.set_xticks(axis_values)
+        axes[0].set_ylabel("Churn-Phase Routing Traffic (KB)")
+        fig.suptitle(
+            f"Independent Link Churn Sweep at p={prefix_count}: Baseline vs Two-Step vs One-Step",
+            fontsize=13,
+        )
+        fig.tight_layout()
+        if len(prefix_counts) == 1:
+            out = os.path.join(out_dir, "link_scale_churn_compare.png")
         else:
-            ax.set_xlabel("Per-Link Churn Rate")
-            ax.set_xticks(list(range(len(axis_values))))
-            ax.set_xticklabels(
-                [f"F={mttf:g}\nR={mttr:g}" for mttf, mttr in axis_values],
-                fontsize=8,
-            )
-        ax.set_title(title)
-        ax.grid(True, alpha=0.3)
-        ax.legend()
-
-    axes[0].set_ylabel("Churn-Phase Routing Traffic (KB)")
-    fig.suptitle("Independent Link Churn Sweep: Baseline vs Two-Step vs One-Step", fontsize=13)
-    fig.tight_layout()
-    out = os.path.join(out_dir, "link_scale_churn_compare.png")
-    fig.savefig(out, dpi=150)
-    plt.close(fig)
-    print(f"  Saved {out}")
+            out = os.path.join(out_dir, f"link_scale_churn_compare_p{prefix_count}.png")
+        fig.savefig(out, dpi=150)
+        plt.close(fig)
+        print(f"  Saved {out}")
 
 
 def plot_phase_bars(sim_rows, emu_rows, out_dir):
@@ -386,45 +409,46 @@ def write_summary(sim_rows, emu_rows, out_dir, sim_dir="", emu_dir=""):
                 if not rows:
                     continue
                 handle.write(f"### {label}\n\n")
-                axis_kind, axis_values = _link_scale_axis(rows)
-                if axis_kind == "count":
-                    handle.write("| Churned links | Mode | Churn total (KB) | DvAdvert (KB) | PfxSync (KB) |\n")
-                    handle.write("|---------------|------|------------------|---------------|--------------|\n")
-                    for link_count in axis_values:
-                        for mode in ("baseline", "two_step", "one_step"):
-                            match = [
-                                row for row in rows
-                                if row["phase"] == "churn"
-                                and row["mode"] == mode
-                                and row["num_churn_links"] == link_count
-                            ]
-                            if not match:
-                                continue
-                            row = match[0]
-                            handle.write(
-                                f"| {link_count} | {mode} | {row['total_routing_bytes']/1024:.1f} | "
-                                f"{row['dv_advert_bytes']/1024:.1f} | {row['pfxsync_bytes']/1024:.1f} |\n"
-                            )
-                else:
-                    handle.write("| Mean fail (s) | Mean recover (s) | Mode | Churn total (KB) | DvAdvert (KB) | PfxSync (KB) |\n")
-                    handle.write("|---------------|------------------|------|------------------|---------------|--------------|\n")
-                    for mttf, mttr in axis_values:
-                        for mode in ("baseline", "two_step", "one_step"):
-                            match = [
-                                row for row in rows
-                                if row["phase"] == "churn"
-                                and row["mode"] == mode
-                                and row["link_mean_time_to_fail_s"] == mttf
-                                and row["link_mean_time_to_recover_s"] == mttr
-                            ]
-                            if not match:
-                                continue
-                            row = match[0]
-                            handle.write(
-                                f"| {mttf:g} | {mttr:g} | {mode} | {row['total_routing_bytes']/1024:.1f} | "
-                                f"{row['dv_advert_bytes']/1024:.1f} | {row['pfxsync_bytes']/1024:.1f} |\n"
-                            )
-                handle.write("\n")
+                for prefix_count in _prefix_axis(rows):
+                    prefix_rows = _rows_for_prefix(rows, prefix_count)
+                    axis_kind, axis_values = _link_scale_axis(prefix_rows)
+                    handle.write(f"#### Prefix count {prefix_count}\n\n")
+                    if axis_kind == "count":
+                        handle.write("| Churned links | Mode | Churn total (KB) | DvAdvert (KB) | PfxSync (KB) |\n")
+                        handle.write("|---------------|------|------------------|---------------|--------------|\n")
+                        for link_count in axis_values:
+                            for mode in ("baseline", "two_step", "one_step"):
+                                match = [
+                                    row for row in prefix_rows
+                                    if row["mode"] == mode
+                                    and row["num_churn_links"] == link_count
+                                ]
+                                if not match:
+                                    continue
+                                row = match[0]
+                                handle.write(
+                                    f"| {link_count} | {mode} | {row['total_routing_bytes']/1024:.1f} | "
+                                    f"{row['dv_advert_bytes']/1024:.1f} | {row['pfxsync_bytes']/1024:.1f} |\n"
+                                )
+                    else:
+                        handle.write("| Mean fail (s) | Mean recover (s) | Mode | Churn total (KB) | DvAdvert (KB) | PfxSync (KB) |\n")
+                        handle.write("|---------------|------------------|------|------------------|---------------|--------------|\n")
+                        for mttf, mttr in axis_values:
+                            for mode in ("baseline", "two_step", "one_step"):
+                                match = [
+                                    row for row in prefix_rows
+                                    if row["mode"] == mode
+                                    and row["link_mean_time_to_fail_s"] == mttf
+                                    and row["link_mean_time_to_recover_s"] == mttr
+                                ]
+                                if not match:
+                                    continue
+                                row = match[0]
+                                handle.write(
+                                    f"| {mttf:g} | {mttr:g} | {mode} | {row['total_routing_bytes']/1024:.1f} | "
+                                    f"{row['dv_advert_bytes']/1024:.1f} | {row['pfxsync_bytes']/1024:.1f} |\n"
+                                )
+                    handle.write("\n")
         else:
             handle.write("## Results\n\n")
             for rows, label in ((sim_rows, "Simulation"), (emu_rows, "Emulation")):

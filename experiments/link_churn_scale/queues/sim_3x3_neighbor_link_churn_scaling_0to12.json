@@ -1,0 +1,24 @@
+{
+  "_comment": "sim-only 3x3 independent neighbor-link churn rate sweep. Run with: sudo ./jobs.sh start --fresh link_churn_scale/sim_3x3_neighbor_link_churn_scaling_0to12",
+  "selector": "link_churn_scale/sim_3x3_neighbor_link_churn_scaling_0to12",
+  "name": "sim_3x3_neighbor_link_churn_scaling_0to12",
+  "experiment": "link_churn_scale",
+  "topology": "grid",
+  "mode": "sim",
+  "description": "sim-only 3x3 grid independent neighbor-link churn rate sweep comparing baseline vs two_step vs one_step while all 12 links churn with different mean fail/recover times",
+  "run_root_template": "experiments/link_churn_scale/results/sim_3x3_neighbor_link_churn_scaling_0to12/{timestamp}",
+  "jobs": [
+    {
+      "name": "build",
+      "cmd": "./run.sh build"
+    },
+    {
+      "name": "sim baseline-vs-two_step-vs-one_step independent link churn rate sweep",
+      "cmd": "./run.sh sim --no-build churn.py --config experiments/link_churn_scale/scenarios/3x3_sim_neighbor_link_churn_scaling_0to12.json --out {run_root}/sim --append"
+    },
+    {
+      "name": "plot sim-only independent link churn rate sweep",
+      "cmd": "python3 experiments/common/churn_plot.py --sim {run_root}/sim --emu {run_root}/emu --out {run_root}/compare"
+    }
+  ]
+}

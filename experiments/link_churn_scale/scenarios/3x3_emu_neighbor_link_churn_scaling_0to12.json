@@ -18,7 +18,7 @@
   "link_mean_time_to_recover_s": 5.0,
   "link_distribution": "pareto",
   "link_pareto_alpha": 2.0,
-  "num_prefixes": 1,
+  "num_prefixes": 10,
   "link_mean_time_to_fail_s_values": [20.0, 10.0, 5.0, 2.5],
   "link_mean_time_to_recover_s_values": [20.0, 10.0, 5.0, 2.5],
   "modes": ["baseline", "two_step", "one_step"],
