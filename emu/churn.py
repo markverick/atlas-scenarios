@@ -9,13 +9,12 @@ Supports any topology registered in lib/churn_common.KNOWN_TOPOLOGIES, as well
 as arbitrary NxN grid topologies.  The topology type is selected by the JSON
 config key "topology" (default: "grid").
 
-For each topology (or grid size), runs three variants:
+For each topology (or grid size), runs two variants:
   1. baseline  — no prefixes (pure DV overhead under churn)
-  2. two_step  — DV + PrefixSync under churn
-  3. one_step  — prefixes in DV adverts under churn
+  2. one_phase — DV + PrefixSync under churn (one-phase lookup)
 
 Usage (needs sudo):
-    sudo python3 emu/churn.py --config experiments/prefix_scale/scenarios/sprint_twostep_emu_0to50.json
+    sudo python3 emu/churn.py --config experiments/prefix_scale/scenarios/sprint_onephase_emu_0to50.json
 """
 
 import argparse
@@ -406,10 +405,7 @@ def _run_one_variant(*, ndn_factory, topology, topo_id_str,
          f"{' [churn-after-conv]' if churn_after_conv else ''} ===\n")
 
     dvc = dict(dv_config) if dv_config else {}
-    if mode in ("one_step", "baseline"):
-        dvc["one_step"] = True
-    else:
-        dvc.pop("one_step", None)
+    dvc.pop("one_step", None)
 
     t0 = time.monotonic()
     ndn, num_nodes, num_links = ndn_factory()
@@ -665,7 +661,7 @@ def _run_grid(cfg, dv_config, out_dir, writer, f):
         prefix_counts = [num_prefixes]
     sweeping = len(prefix_counts) > 1
 
-    modes = cfg.get("modes", []) or ["baseline", "two_step", "one_step"]
+    modes = cfg.get("modes", []) or ["baseline", "one_phase"]
 
     for grid_size in cfg["grids"]:
         link_src, link_dst, churn_node = grid_churn_targets(grid_size)
@@ -762,7 +758,7 @@ def _run_conf(cfg, dv_config, out_dir, writer, f, topo_name):
         rate_pairs = [(cfg.get("link_mean_time_to_fail_s", 5.0),
                        cfg.get("link_mean_time_to_recover_s", 5.0))]
 
-    modes = cfg.get("modes", []) or ["baseline", "two_step", "one_step"]
+    modes = cfg.get("modes", []) or ["baseline", "one_phase"]
 
     def ndn_factory():
         return setup_conf_topo(conf_path, delay_ms, bw_mbps, cores)
@@ -825,7 +821,7 @@ def main():
     parser.add_argument("--out", default=None,
                         help="Output directory (auto-derived from config)")
     parser.add_argument("--mode", default=None,
-                        help="Run only this mode (baseline/two_step/one_step)")
+                        help="Run only this mode (baseline/one_phase)")
     parser.add_argument("--prefixes", type=int, default=None,
                         help="Run only this prefix count")
     parser.add_argument("--append", action="store_true",

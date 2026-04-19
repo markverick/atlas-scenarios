@@ -9,13 +9,12 @@ Supports any topology registered in lib/churn_common.KNOWN_TOPOLOGIES, as well
 as arbitrary NxN grid topologies.  The topology type is selected by the JSON
 config key "topology" (default: "grid").
 
-For each topology (or grid size), runs three variants:
+For each topology (or grid size), runs two variants:
   1. baseline  -- no prefixes (pure DV overhead under churn)
-  2. two_step  -- DV + PrefixSync under churn
-  3. one_step  -- prefixes in DV adverts under churn
+  2. one_phase -- DV + PrefixSync under churn (one-phase lookup)
 
 Usage:
-    python3 sim/churn.py --config experiments/prefix_scale/scenarios/sprint_twostep_sim_0to50.json
+    python3 sim/churn.py --config experiments/prefix_scale/scenarios/sprint_onephase_sim_0to50.json
 """
 
 import argparse
@@ -63,10 +62,7 @@ def run_variant(ns3_dir, *, topo_rel, topology, topo_id_str,
     suppress_json = os.path.abspath(os.path.join(out_dir, f"svs-suppression-{tag}.json"))
 
     dvc = dict(dv_config) if dv_config else {}
-    if mode in ("one_step", "baseline"):
-        dvc["one_step"] = True
-    else:
-        dvc.pop("one_step", None)
+    dvc.pop("one_step", None)
 
     churn_after_conv = (cfg or {}).get("churn_after_convergence", False)
     churn_margin = (cfg or {}).get("convergence_margin_s", 10.0)
@@ -212,7 +208,7 @@ def _run_grid(ns3_dir, cfg, dv_config, out_dir, writer, f):
         prefix_counts = [num_prefixes]
     sweeping = len(prefix_counts) > 1
 
-    modes = cfg.get("modes", []) or ["baseline", "two_step", "one_step"]
+    modes = cfg.get("modes", []) or ["baseline", "one_phase"]
 
     for grid_size in cfg["grids"]:
         link_src, link_dst, churn_node = grid_churn_targets(grid_size)
@@ -331,7 +327,7 @@ def _run_conf(ns3_dir, cfg, dv_config, out_dir, writer, f, topo_name):
         rate_pairs = [(cfg.get("link_mean_time_to_fail_s", 5.0),
                        cfg.get("link_mean_time_to_recover_s", 5.0))]
 
-    modes = cfg.get("modes", []) or ["baseline", "two_step", "one_step"]
+    modes = cfg.get("modes", []) or ["baseline", "one_phase"]
 
     for trial in range(1, trials + 1):
         baseline_done = False
@@ -393,7 +389,7 @@ def main():
     parser.add_argument("--ns3-dir", default=None,
                         help="Path to ns-3 root (default: deps/ns-3)")
     parser.add_argument("--mode", default=None,
-                        help="Run only this mode (baseline/two_step/one_step)")
+                        help="Run only this mode (baseline/one_phase)")
     parser.add_argument("--prefixes", type=int, default=None,
                         help="Run only this prefix count")
     parser.add_argument("--append", action="store_true",

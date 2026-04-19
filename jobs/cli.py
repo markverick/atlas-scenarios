@@ -18,7 +18,7 @@ def build_parser():
     sub.add_parser("running", help="Show currently running queues")
 
     p_start = sub.add_parser("start", help="Launch queue in a detached screen")
-    p_start.add_argument("queue", nargs="?", help="Queue selector like prefix_scale/sprint_twostep_0to50")
+    p_start.add_argument("queue", nargs="?", help="Queue selector like prefix_scale/sprint_onephase_0to50")
     p_start.add_argument("--dry", action="store_true", help="Dry-run inside the screen")
     p_start.add_argument("--fresh", action="store_true", help="Reset all jobs to pending before starting")
     p_start.add_argument("--watch-status", dest="watch_status", action="store_true", help="Watch queue status after starting")

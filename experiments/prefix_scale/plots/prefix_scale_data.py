@@ -60,7 +60,7 @@ def load_svs_suppression_dir(data_dir):
     for name in os.listdir(data_dir):
         if not (name.startswith("svs-suppression-") and name.endswith(".json")):
             continue
-        if "two_step" not in name:
+        if "one_phase" not in name:
             continue
         marker = "-p"
         if marker not in name:

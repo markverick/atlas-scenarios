@@ -8,9 +8,9 @@ Emulation and simulation scenarios for NDN using [NDNd](https://github.com/named
 | **Simulation** | [ndndSIM](https://github.com/markverick/ndndSIM) (ns-3 + NDNd via CGo) | Convergence (RIB-based), total traffic, DV/user traffic split |
 
 Scenarios include scalability tests (NxN grids with app traffic), routing-only
-measurement (DV traffic burst with no app traffic), one-step vs two-step
-prefix routing comparisons, churn testing under link failures and prefix
-events (grid and Sprint topologies), and multi-hop DV routing change tests.
+measurement (DV traffic burst with no app traffic), churn testing under link
+failures and prefix events (grid and Sprint topologies), and multi-hop DV
+routing change tests.
 
 Both produce CSV results in the same schema so they can be plotted side-by-side.
 
@@ -123,19 +123,19 @@ Convergence is measured identically on both sides: span from the first
 
 ```bash
 # Prefix-scaling queue (Sprint topology, timestamped outputs)
-sudo ./jobs.sh start --fresh prefix_scale/sprint_twostep_0to50
-./jobs.sh status prefix_scale/sprint_twostep_0to50
-./jobs.sh status prefix_scale/sprint_twostep_0to50 --watch
+sudo ./jobs.sh start --fresh prefix_scale/sprint_onephase_0to50
+./jobs.sh status prefix_scale/sprint_onephase_0to50
+./jobs.sh status prefix_scale/sprint_onephase_0to50 --watch
 ./jobs.sh running
 ```
 
 Each queue run writes to a unique timestamped output root under:
 
-- `experiments/prefix_scale/results/sprint_twostep_0to50/<timestamp>/sim`
-- `experiments/prefix_scale/results/sprint_twostep_0to50/<timestamp>/emu`
-- `experiments/prefix_scale/results/sprint_twostep_0to50/<timestamp>/compare`
+- `experiments/prefix_scale/results/sprint_onephase_0to50/<timestamp>/sim`
+- `experiments/prefix_scale/results/sprint_onephase_0to50/<timestamp>/emu`
+- `experiments/prefix_scale/results/sprint_onephase_0to50/<timestamp>/compare`
 
-PrefixSync snapshots are disabled by default in two-step mode. This avoids the
+PrefixSync snapshots are disabled by default in one-phase mode. This avoids the
 bootstrap snapshot cliff around the historical threshold near 50 prefixes and
 makes prefix-scaling results follow the incremental-fetch path by default.
 To opt back into snapshot behavior explicitly, set
@@ -148,7 +148,7 @@ The churn framework is modular — adding a new topology requires only:
 Scenario definitions:
 - `experiments/prefix_scale/scenarios/*.json` — Prefix-scaling experiment scenarios
 
-Output: `experiments/prefix_scale/results/sprint_twostep_0to50/<timestamp>/{sim,emu,compare}`.
+Output: `experiments/prefix_scale/results/sprint_onephase_0to50/<timestamp>/{sim,emu,compare}`.
 
 For modular experiment queues, use `./jobs.sh list` to discover experiment folders, scenarios, and queue selectors instead of remembering queue file paths.
 Running `./jobs.sh` with no arguments opens a numbered interactive menu.
@@ -183,7 +183,7 @@ The JSON schema is implemented in `lib/config.py`:
 - `link_distribution`: event timing distribution for stochastic link churn (`exponential` or `pareto`)
 - `link_pareto_alpha`: Pareto shape parameter when `link_distribution = pareto`
 - `prefix_counts`: list of num_prefixes to sweep; empty = use `num_prefixes`
-- `modes`: routing modes to run; empty = `["baseline", "two_step", "one_step"]`
+- `modes`: routing modes to run; empty = `["baseline", "one_phase"]`
 - `cores`: CPU core limit (`0` = no limit)
 
 ### Prefix-Scale Plots
@@ -204,7 +204,7 @@ sudo ./run.sh emu scalability --grids 2 3 4 5 6 --trials 3 --delay 10ms --bw 10 
 ./run.sh sim scalability --grids 2 3 4 5 6 --delay 10 --window 60
 
 # Queue-driven prefix-scale pipeline
-sudo ./jobs.sh start --fresh prefix_scale/sprint_twostep_0to50
+sudo ./jobs.sh start --fresh prefix_scale/sprint_onephase_0to50
 ```
 
 ---
@@ -230,7 +230,6 @@ sim/                        # Simulation scenarios
 ├── scalability.py          #   NxN grid ndndSIM scalability test
 ├── multihop.py             #   Multi-hop DV routing test runner
 ├── routing.py              #   Routing-only traffic measurement
-├── onestep_comparison.py   #   One-step vs two-step routing comparison
 ├── churn.py                #   Unified churn driver (grid + conf topologies)
 └── churn_sprint.py         #   Sprint churn wrapper (backward compat)
 minindn_ndnd/               # Mini-NDN integration for NDNd
@@ -243,7 +242,6 @@ emu/                        # Emulation scenarios
 ├── scalability.py          #   NxN grid scalability test
 ├── multihop.py             #   Multi-hop DV routing test runner
 ├── routing.py              #   Routing-only traffic measurement
-├── onestep_comparison.py   #   One-step vs two-step routing comparison
 ├── churn.py                #   Unified churn driver (grid + conf topologies)
 └── churn_sprint.py         #   Sprint churn wrapper (backward compat)
 experiments/prefix_scale/plot.py  # Prefix-scaling overhead plots
@@ -321,14 +319,14 @@ level (excluding L2 headers) so emu and sim are directly comparable.
 
 ### Churn / Routing Comparison CSV
 
-The churn and one-step comparison scenarios produce a classified-traffic schema:
+The churn scenarios produce a classified-traffic schema:
 
 ```csv
 topology,grid_size,num_nodes,num_links,trial,mode,num_prefixes,window_s,convergence_s,phase,dv_advert_pkts,dv_advert_bytes,pfxsync_pkts,pfxsync_bytes,mgmt_pkts,mgmt_bytes,total_routing_pkts,total_routing_bytes
 ```
 
 - `topology`: `"grid"` or a named topology (e.g. `"sprint"`)
-- `mode`: `"baseline"`, `"two_step"`, or `"one_step"`
+- `mode`: `"baseline"` or `"one_phase"`
 - `phase`: `"convergence"` or `"churn"`
 - Traffic is split into DV advertisements, PrefixSync, and management categories
 

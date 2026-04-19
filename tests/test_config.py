@@ -87,4 +87,3 @@ def test_dv_config_with_overrides(tmp_path):
     assert dv["advertise_interval"] == 5000
     assert dv["router_dead_interval"] == 30000
     assert dv["prefix_sync_delay"] == 2000
-    assert "one_step" not in dv

@@ -22,7 +22,7 @@ def plot_churn_comparison(rows, out_dir, source_label):
     x_values = np.arange(len(prefix_counts))
     width = 0.35
     fig, axis = plt.subplots(figsize=(8, 5))
-    for index, mode in enumerate(["two_step", "one_step"]):
+    for index, mode in enumerate(["one_phase"]):
         values = []
         for prefix_count in prefix_counts:
             match = [row for row in churn if row["mode"] == mode and int(row["num_prefixes"]) == prefix_count]
@@ -31,8 +31,8 @@ def plot_churn_comparison(rows, out_dir, source_label):
             x_values + (index - 0.5) * width,
             values,
             width,
-            label="Two-step (DV + PfxSync)" if mode == "two_step" else "One-step (DV only)",
-            color="#4C72B0" if mode == "two_step" else "#DD8452",
+            label="One-phase (DV + PfxSync)",
+            color="#4C72B0" if mode == "one_phase" else "#DD8452",
         )
     axis.set_xlabel("Number of Prefixes")
     axis.set_ylabel("Churn-Phase Routing Bytes")
@@ -52,7 +52,7 @@ def plot_churn_breakdown(rows, out_dir, source_label):
     churn = [row for row in rows if row["phase"] == "churn" and row["mode"] != "baseline"]
     prefix_counts = sorted(set(int(row["num_prefixes"]) for row in churn))
     fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
-    for axis, mode in zip(axes, ["two_step", "one_step"]):
+    for axis, mode in zip(axes, ["one_phase"]):
         dv_values, prefix_sync_values = [], []
         for prefix_count in prefix_counts:
             match = [row for row in churn if row["mode"] == mode and int(row["num_prefixes"]) == prefix_count]
@@ -70,7 +70,7 @@ def plot_churn_breakdown(rows, out_dir, source_label):
         axis.set_xticklabels([str(value) for value in prefix_counts])
         axis.yaxis.set_major_formatter(ticker.FuncFormatter(human_bytes))
         axis.legend()
-        axis.set_title(f"{source_label} - {'Two-Step' if mode == 'two_step' else 'One-Step'} Traffic Breakdown")
+        axis.set_title(f"{source_label} - One-Phase Traffic Breakdown")
     axes[0].set_ylabel("Churn-Phase Routing Bytes")
     fig.tight_layout()
     path = os.path.join(out_dir, "prefix_scale_breakdown.png")
@@ -98,7 +98,7 @@ def plot_io_per_variant(data_dir, out_dir, source_label, phase2_start=None):
         return
 
     fig, axes = plt.subplots(len(prefix_counts), 2, figsize=(10, 3 * len(prefix_counts)), squeeze=False, sharex=True)
-    for col, mode in enumerate(["two_step", "one_step"]):
+    for col, mode in enumerate(["one_phase"]):
         for row, prefix_count in enumerate(prefix_counts):
             axis = axes[row][col]
             tag = trace_index.get((mode, prefix_count))
@@ -124,7 +124,7 @@ def plot_io_per_variant(data_dir, out_dir, source_label, phase2_start=None):
             axis.axvline(phase2_start, color="red", ls="--", lw=0.8, alpha=0.6)
             axis.yaxis.set_major_formatter(ticker.FuncFormatter(human_bytes))
             if row == 0:
-                axis.set_title("Two-Step" if mode == "two_step" else "One-Step")
+                axis.set_title("One-Phase")
             if col == 0:
                 axis.set_ylabel(f"p{prefix_count}")
             if row == len(prefix_counts) - 1:
@@ -139,7 +139,7 @@ def plot_io_per_variant(data_dir, out_dir, source_label, phase2_start=None):
     print(f"  Saved {path}")
 
 
-def _discover_trace_index(data_dir, *, modes=("two_step", "one_step")):
+def _discover_trace_index(data_dir, *, modes=("one_phase")):
     trace_index = {}
     pattern = re.compile(r"packet-trace-([a-z_]+)-.+-p(\d+)-.*\.csv$")
     for filename in os.listdir(data_dir):
@@ -246,7 +246,7 @@ def plot_io_cdf_compare(sim_dir, emu_dir, out_dir, phase2_start=None):
         emu_events = load_event_log(emu_event) if os.path.exists(emu_event) else []
 
         fig, axes = plt.subplots(2, 2, figsize=(14, 8))
-        mode_label = "Two-Step" if mode == "two_step" else "One-Step"
+        mode_label = "One-Phase"
         prefix_label = f"p{prefix_count}"
 
         _plot_trace_io(axes[0, 0], sim_times, sim_categories, sim_sizes, sim_events,
@@ -281,13 +281,13 @@ def plot_net_overhead(rows, out_dir, source_label):
     churn = [row for row in rows if row["phase"] == "churn" and row["mode"] != "baseline"]
     prefix_counts = sorted(set(int(row["num_prefixes"]) for row in churn))
     fig, axis = plt.subplots(figsize=(8, 5))
-    for mode, color in [("two_step", "#4C72B0"), ("one_step", "#DD8452")]:
+    for mode, color in [("one_phase", "#4C72B0")]:
         values = []
         for prefix_count in prefix_counts:
             match = [row for row in churn if row["mode"] == mode and int(row["num_prefixes"]) == prefix_count]
             value = int(match[0]["total_routing_bytes"]) - baseline_bytes if match else 0
             values.append(max(value, 0))
-        axis.plot(prefix_counts, values, "o-", label="Two-step" if mode == "two_step" else "One-step", color=color, linewidth=2)
+        axis.plot(prefix_counts, values, "o-", label="One-phase", color=color, linewidth=2)
     axis.set_xlabel("Number of Prefixes")
     axis.set_ylabel("Net Churn Overhead (total - baseline)")
     axis.yaxis.set_major_formatter(ticker.FuncFormatter(human_bytes))
@@ -306,12 +306,12 @@ def plot_raw_overhead(rows, out_dir, source_label):
     prefix_counts = sorted(set(int(row["num_prefixes"]) for row in churn))
     baseline = [row for row in rows if row["mode"] == "baseline" and row["phase"] == "churn"]
     fig, axis = plt.subplots(figsize=(8, 5))
-    for mode, color in [("two_step", "#4C72B0"), ("one_step", "#DD8452")]:
+    for mode, color in [("one_phase", "#4C72B0")]:
         values = []
         for prefix_count in prefix_counts:
             match = [row for row in churn if row["mode"] == mode and int(row["num_prefixes"]) == prefix_count]
             values.append(int(match[0]["total_routing_bytes"]) if match else 0)
-        axis.plot(prefix_counts, values, "o-", label="Two-step" if mode == "two_step" else "One-step", color=color, linewidth=2)
+        axis.plot(prefix_counts, values, "o-", label="One-phase", color=color, linewidth=2)
     if baseline:
         value = int(baseline[0]["total_routing_bytes"])
         axis.axhline(value, color="gray", ls="--", lw=1, alpha=0.7, label=f"Baseline ({human_bytes(value)})")
@@ -329,7 +329,7 @@ def plot_raw_overhead(rows, out_dir, source_label):
 
 
 def plot_sim_vs_emu(sim_rows, emu_rows, out_dir):
-    for mode, title in [("two_step", "Two-Step"), ("one_step", "One-Step")]:
+    for mode, title in [("one_phase", "One-Phase")]:
         sim_churn = [row for row in sim_rows if row["phase"] == "churn" and row["mode"] == mode]
         emu_churn = [row for row in emu_rows if row["phase"] == "churn" and row["mode"] == mode]
         prefix_counts = sorted(set([int(row["num_prefixes"]) for row in sim_churn] + [int(row["num_prefixes"]) for row in emu_churn]))

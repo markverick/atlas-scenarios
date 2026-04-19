@@ -271,8 +271,7 @@ def _rows_for_prefix(rows, prefix_count):
 def plot_link_scale_compare(sim_rows, emu_rows, out_dir):
     mode_styles = {
         "baseline": ("#999999", "o-"),
-        "two_step": ("#e74c3c", "s-"),
-        "one_step": ("#2ecc71", "^-"),
+        "one_phase": ("#e74c3c", "s-"),
     }
 
     prefix_counts = _prefix_axis(sim_rows or emu_rows)
@@ -332,7 +331,7 @@ def plot_link_scale_compare(sim_rows, emu_rows, out_dir):
 
         axes[0].set_ylabel("Churn-Phase Routing Traffic (KB)")
         fig.suptitle(
-            f"Independent Link Churn Sweep at p={prefix_count}: Baseline vs Two-Step vs One-Step",
+            f"Independent Link Churn Sweep at p={prefix_count}: Baseline vs One-Phase",
             fontsize=13,
         )
         fig.tight_layout()
@@ -347,9 +346,9 @@ def plot_link_scale_compare(sim_rows, emu_rows, out_dir):
 
 def plot_phase_bars(sim_rows, emu_rows, out_dir):
     fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
-    colors = {"baseline": "#999999", "two_step": "#e74c3c", "one_step": "#2ecc71"}
+    colors = {"baseline": "#999999", "one_phase": "#e74c3c"}
     phases = ["convergence", "churn"]
-    modes = ["baseline", "two_step", "one_step"]
+    modes = ["baseline", "one_phase"]
 
     for ax, rows, title in ((axes[0], sim_rows, "Simulation"), (axes[1], emu_rows, "Emulation")):
         if not rows:
@@ -417,7 +416,7 @@ def write_summary(sim_rows, emu_rows, out_dir, sim_dir="", emu_dir=""):
                         handle.write("| Churned links | Mode | Churn total (KB) | DvAdvert (KB) | PfxSync (KB) |\n")
                         handle.write("|---------------|------|------------------|---------------|--------------|\n")
                         for link_count in axis_values:
-                            for mode in ("baseline", "two_step", "one_step"):
+                            for mode in ("baseline", "one_phase"):
                                 match = [
                                     row for row in prefix_rows
                                     if row["mode"] == mode
@@ -434,7 +433,7 @@ def write_summary(sim_rows, emu_rows, out_dir, sim_dir="", emu_dir=""):
                         handle.write("| Mean fail (s) | Mean recover (s) | Mode | Churn total (KB) | DvAdvert (KB) | PfxSync (KB) |\n")
                         handle.write("|---------------|------------------|------|------------------|---------------|--------------|\n")
                         for mttf, mttr in axis_values:
-                            for mode in ("baseline", "two_step", "one_step"):
+                            for mode in ("baseline", "one_phase"):
                                 match = [
                                     row for row in prefix_rows
                                     if row["mode"] == mode
@@ -458,7 +457,7 @@ def write_summary(sim_rows, emu_rows, out_dir, sim_dir="", emu_dir=""):
                 handle.write("| Phase | Mode | Total (KB) | DvAdvert (KB) | PfxSync (KB) |\n")
                 handle.write("|-------|------|------------|---------------|--------------|\n")
                 for phase in ("convergence", "churn"):
-                    for mode in ("baseline", "two_step", "one_step"):
+                    for mode in ("baseline", "one_phase"):
                         match = [row for row in rows if row["phase"] == phase and row["mode"] == mode]
                         if not match:
                             continue

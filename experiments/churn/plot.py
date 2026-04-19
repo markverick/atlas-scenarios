@@ -5,8 +5,7 @@ Plot churn scenario results — two-phase (convergence vs churn) comparison.
 Generates:
   1. churn_phase_bars.png     — Grouped bar chart: total routing bytes by mode and phase
   2. churn_breakdown.png      — Stacked bar: DvAdvert vs PrefixSync per mode/phase
-  3. churn_savings.png        — % savings of one_step over two_step per phase
-  4. churn_time_io.png        — Time-series I/O with event markers (one_step vs two_step)
+  3. churn_time_io.png        — Time-series I/O with event markers
   5. churn_time_io_cdf.png    — Cumulative routing traffic over time
   6. churn_cdf.png            — CDF of routing packet sizes
   7. churn_phase2_io.png      — Time-series I/O (churn phase only)
@@ -120,8 +119,7 @@ def plot_link_scale_compare(sim_rows, emu_rows, out_dir):
     fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
     mode_styles = {
         "baseline": ("#999999", "o-"),
-        "two_step": ("#e74c3c", "s-"),
-        "one_step": ("#2ecc71", "^-"),
+        "one_phase": ("#e74c3c", "s-"),
     }
 
     for ax, rows, title in [(axes[0], sim_rows, "Simulation"),
@@ -155,7 +153,7 @@ def plot_link_scale_compare(sim_rows, emu_rows, out_dir):
         ax.legend()
 
     axes[0].set_ylabel("Churn-Phase Routing Traffic (KB)")
-    fig.suptitle("Simultaneous Link Churn Scaling: Baseline vs Two-Step", fontsize=13)
+    fig.suptitle("Simultaneous Link Churn Scaling: Baseline vs One-Phase", fontsize=13)
     fig.tight_layout()
     out = os.path.join(out_dir, "link_scale_churn_compare.png")
     fig.savefig(out, dpi=150)
@@ -173,11 +171,11 @@ def plot_phase_bars(sim_rows, emu_rows, out_dir):
             ax.set_title(f"{title} (no data)")
             continue
 
-        modes = ["baseline", "two_step", "one_step"]
+        modes = ["baseline", "one_phase"]
         phases = ["convergence", "churn"]
         x = np.arange(len(phases))
         width = 0.22
-        colors = {"baseline": "#999999", "two_step": "#e74c3c", "one_step": "#2ecc71"}
+        colors = {"baseline": "#999999", "one_phase": "#e74c3c"}
 
         for i, mode in enumerate(modes):
             vals = []
@@ -212,7 +210,7 @@ def plot_breakdown(sim_rows, emu_rows, out_dir):
             ax.set_title(f"{title} (no data)")
             continue
 
-        modes = ["baseline", "two_step", "one_step"]
+        modes = ["baseline", "one_phase"]
         phases = ["convergence", "churn"]
         labels = [f"{m.replace('_',' ')}\n{p[:4]}" for m in modes for p in phases]
         x = np.arange(len(labels))
@@ -245,47 +243,8 @@ def plot_breakdown(sim_rows, emu_rows, out_dir):
     print(f"  Saved {out}")
 
 
-def plot_savings(sim_rows, emu_rows, out_dir):
-    """% savings of one_step over two_step per phase."""
-    fig, ax = plt.subplots(figsize=(8, 5))
-
-    phases = ["convergence", "churn"]
-    x = np.arange(len(phases))
-    width = 0.3
-
-    for i, (rows, label) in enumerate([(sim_rows, "Sim"), (emu_rows, "Emu")]):
-        if not rows:
-            continue
-        savings = []
-        for phase in phases:
-            ts = [r for r in rows if r["mode"] == "two_step" and r["phase"] == phase]
-            os_ = [r for r in rows if r["mode"] == "one_step" and r["phase"] == phase]
-            if ts and os_ and ts[0]["total_routing_bytes"] > 0:
-                pct = 100 * (1 - os_[0]["total_routing_bytes"] / ts[0]["total_routing_bytes"])
-                savings.append(pct)
-            else:
-                savings.append(0)
-        color = "#3498db" if label == "Sim" else "#e74c3c"
-        bars = ax.bar(x + (i - 0.5) * width, savings, width, label=label, color=color)
-        for bar, val in zip(bars, savings):
-            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 1,
-                    f"{val:.0f}%", ha='center', va='bottom', fontsize=10)
-
-    ax.set_xticks(x)
-    ax.set_xticklabels([p.capitalize() for p in phases])
-    ax.set_ylabel("Savings (%)")
-    ax.set_title("One-Step Savings over Two-Step by Phase")
-    ax.legend()
-    ax.set_ylim(0, 100)
-    fig.tight_layout()
-    out = os.path.join(out_dir, "churn_savings.png")
-    fig.savefig(out, dpi=150)
-    plt.close(fig)
-    print(f"  Saved {out}")
-
-
 def plot_time_io(sim_dir, emu_dir, out_dir, phase2_start=30.0):
-    """Time-series I/O from per-packet traces: one_step vs two_step, with event markers."""
+    """Time-series I/O from per-packet traces, with event markers."""
     fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
 
     for ax, rdir, title in [(axes[0], sim_dir, "Simulation"),
@@ -294,9 +253,8 @@ def plot_time_io(sim_dir, emu_dir, out_dir, phase2_start=30.0):
             ax.set_title(f"{title} (no data)")
             continue
 
-        # Find packet traces for two_step and one_step
-        for mode, color, ls in [("two_step", "#e74c3c", "-"),
-                                 ("one_step", "#2ecc71", "-"),
+        # Find packet traces
+        for mode, color, ls in [("one_phase", "#e74c3c", "-"),
                                  ("baseline", "#999999", "--")]:
             # Find first matching packet trace
             import glob
@@ -353,7 +311,7 @@ def plot_time_io_cdf(sim_dir, emu_dir, out_dir, phase2_start=30.0):
     fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
 
     # mode → base color; category → linestyle
-    mode_colors = {"two_step": "#e74c3c", "one_step": "#2ecc71", "baseline": "#999999"}
+    mode_colors = {"one_phase": "#e74c3c", "baseline": "#999999"}
     cat_styles = {"DvAdvert": "-", "PrefixSync": "--", "Mgmt": ":"}
     cat_order = ["DvAdvert", "PrefixSync", "Mgmt"]
 
@@ -363,7 +321,7 @@ def plot_time_io_cdf(sim_dir, emu_dir, out_dir, phase2_start=30.0):
             ax.set_title(f"{title} (no data)")
             continue
 
-        for mode in ("two_step", "one_step", "baseline"):
+        for mode in ("one_phase", "baseline"):
             pattern = os.path.join(rdir, f"packet-trace-{mode}-*.csv")
             files = sorted(glob.glob(pattern))
             if not files:
@@ -414,7 +372,7 @@ def plot_time_io_cdf(sim_dir, emu_dir, out_dir, phase2_start=30.0):
 
 
 def plot_cdf(sim_dir, emu_dir, out_dir):
-    """CDF of per-packet routing traffic sizes (one_step vs two_step)."""
+    """CDF of per-packet routing traffic sizes."""
     import glob
     fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
 
@@ -424,8 +382,7 @@ def plot_cdf(sim_dir, emu_dir, out_dir):
             ax.set_title(f"{title} (no data)")
             continue
 
-        for mode, color, ls in [("two_step", "#e74c3c", "-"),
-                                 ("one_step", "#2ecc71", "-"),
+        for mode, color, ls in [("one_phase", "#e74c3c", "-"),
                                  ("baseline", "#999999", "--")]:
             pattern = os.path.join(rdir, f"packet-trace-{mode}-*.csv")
             files = sorted(glob.glob(pattern))
@@ -471,8 +428,7 @@ def plot_phase2_io(sim_dir, emu_dir, out_dir, phase2_start=30.0):
             ax.set_title(f"{title} (no data)")
             continue
 
-        for mode, color, ls in [("two_step", "#e74c3c", "-"),
-                                 ("one_step", "#2ecc71", "-"),
+        for mode, color, ls in [("one_phase", "#e74c3c", "-"),
                                  ("baseline", "#999999", "--")]:
             pattern = os.path.join(rdir, f"packet-trace-{mode}-*.csv")
             files = sorted(glob.glob(pattern))
@@ -522,7 +478,7 @@ def plot_phase2_io_cdf(sim_dir, emu_dir, out_dir, phase2_start=30.0):
     import glob
     fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
 
-    mode_colors = {"two_step": "#e74c3c", "one_step": "#2ecc71", "baseline": "#999999"}
+    mode_colors = {"one_phase": "#e74c3c", "baseline": "#999999"}
     cat_styles = {"DvAdvert": "-", "PrefixSync": "--", "Mgmt": ":"}
     cat_order = ["DvAdvert", "PrefixSync", "Mgmt"]
 
@@ -532,7 +488,7 @@ def plot_phase2_io_cdf(sim_dir, emu_dir, out_dir, phase2_start=30.0):
             ax.set_title(f"{title} (no data)")
             continue
 
-        for mode in ("two_step", "one_step", "baseline"):
+        for mode in ("one_phase", "baseline"):
             pattern = os.path.join(rdir, f"packet-trace-{mode}-*.csv")
             files = sorted(glob.glob(pattern))
             if not files:
@@ -590,8 +546,7 @@ def plot_phase2_cdf(sim_dir, emu_dir, out_dir, phase2_start=30.0):
             ax.set_title(f"{title} (no data)")
             continue
 
-        for mode, color, ls in [("two_step", "#e74c3c", "-"),
-                                 ("one_step", "#2ecc71", "-"),
+        for mode, color, ls in [("one_phase", "#e74c3c", "-"),
                                  ("baseline", "#999999", "--")]:
             pattern = os.path.join(rdir, f"packet-trace-{mode}-*.csv")
             files = sorted(glob.glob(pattern))
@@ -653,7 +608,7 @@ def write_summary(sim_rows, emu_rows, out_dir, sim_dir="", emu_dir=""):
                 f.write("|---------------|------|------------------|---------------|--------------|\n")
                 link_counts = sorted({row["num_churn_links"] for row in rows if row["phase"] == "churn"})
                 for link_count in link_counts:
-                    for mode in ("baseline", "two_step", "one_step"):
+                    for mode in ("baseline", "one_phase"):
                         match = [
                             row for row in rows
                             if row["phase"] == "churn"
@@ -673,9 +628,7 @@ def write_summary(sim_rows, emu_rows, out_dir, sim_dir="", emu_dir=""):
 
         # --- Scenario Design ---
         f.write("## Scenario Design\n\n")
-        f.write("The churn scenario measures routing overhead under dynamic network events, "
-                "comparing **one-step** (prefixes embedded in DV adverts) against "
-                "**two-step** (DV + PrefixSync) routing.\n\n")
+        f.write("The churn scenario measures routing overhead under dynamic network events.\n\n")
 
         f.write("### Topology & Parameters\n\n")
         f.write("| Parameter | Value |\n|-----------|-------|\n")
@@ -731,16 +684,13 @@ def write_summary(sim_rows, emu_rows, out_dir, sim_dir="", emu_dir=""):
         else:
             f.write("*(No event log found.)*\n\n")
 
-        f.write("### Three Modes\n\n"
-                "- **baseline**: one\\_step enabled, 0 prefixes → pure DV overhead\n"
-                "- **two\\_step**: DV carries router reachability; "
-                "PrefixSync SVS distributes prefix→router mappings\n"
-                "- **one\\_step**: Prefixes go directly into the RIB and appear in "
-                "DV adverts; no PrefixSync\n\n")
+        f.write("### Two Modes\n\n"
+                "- **baseline**: 0 prefixes \u2192 pure DV overhead\n"
+                "- **one\\_phase**: DV carries router reachability; "
+                "PrefixSync SVS distributes prefix\u2192router mappings (one-phase lookup)\n\n")
 
         # --- Results tables ---
         f.write("## Results\n\n")
-        savings_data = {}
         for rows, label in [(sim_rows, "Simulation"), (emu_rows, "Emulation")]:
             if not rows:
                 continue
@@ -757,7 +707,7 @@ def write_summary(sim_rows, emu_rows, out_dir, sim_dir="", emu_dir=""):
             f.write("| Phase | Mode | DvAdvert (KB) | PfxSync (KB) | Total (KB) |\n")
             f.write("|-------|------|--------------|-------------|------------|\n")
             for phase in ("convergence", "churn"):
-                for mode in ("baseline", "two_step", "one_step"):
+                for mode in ("baseline", "one_phase"):
                     match = [r for r in rows if r["mode"] == mode and r["phase"] == phase]
                     if not match:
                         continue
@@ -768,40 +718,11 @@ def write_summary(sim_rows, emu_rows, out_dir, sim_dir="", emu_dir=""):
                             f"{r['total_routing_bytes']/1024:.1f} |\n")
             f.write("\n")
 
-            for phase in ("convergence", "churn"):
-                ts = [r for r in rows if r["mode"] == "two_step" and r["phase"] == phase]
-                os_ = [r for r in rows if r["mode"] == "one_step" and r["phase"] == phase]
-                if ts and os_ and ts[0]["total_routing_bytes"] > 0:
-                    pct = 100 * (1 - os_[0]["total_routing_bytes"] / ts[0]["total_routing_bytes"])
-                    f.write(f"**{phase.capitalize()} savings**: {pct:.0f}%\n\n")
-                    savings_data[(label, phase)] = pct
-
         # --- Interpretation ---
         f.write("## Interpretation\n\n")
 
-        f.write("### Convergence phase: one-step wins\n\n")
-        conv_sim = savings_data.get(("Simulation", "convergence"), 0)
-        conv_emu = savings_data.get(("Emulation", "convergence"), 0)
-        f.write(f"One-step saves {conv_sim:.0f}% (sim) / {conv_emu:.0f}% (emu) over two-step "
-                "during initial convergence because it eliminates the entire PrefixSync "
-                "subsystem. Two-step needs hundreds of KB of PrefixSync traffic on top of "
-                "DV. One-step carries prefixes inside DV adverts — packets are larger "
-                "(~430 B vs ~300 B) but the total is still much less than DV + PrefixSync "
-                "combined.\n\n")
-
-        f.write("### Churn phase: two-step wins\n\n")
-        churn_sim = savings_data.get(("Simulation", "churn"), 0)
-        churn_emu = savings_data.get(("Emulation", "churn"), 0)
-        f.write(f"Under churn, one-step uses {-churn_sim:.0f}% more (sim) / "
-                f"{-churn_emu:.0f}% more (emu) traffic than two-step. When a link fails or "
-                "a prefix changes, one-step must re-advertise the *entire* RIB contents "
-                "(all prefixes) in every triggered DV update. Two-step only sends a small "
-                "PrefixSync delta for the single changed prefix, while its DV traffic stays "
-                "at baseline levels.\n\n")
-
         f.write("### Sim vs emu gap\n\n"
-                "Simulation shows larger one-step churn traffic than emulation. "
-                "ns-3's deterministic scheduler processes all DV updates in lock-step — "
+                "Simulation's deterministic scheduler processes all DV updates in lock-step — "
                 "when a link event triggers re-convergence, every router reacts within the "
                 "same simulated time window, causing a burst of updates. In emulation, "
                 "real-time scheduling spreads updates across slightly different wall-clock "
@@ -841,7 +762,6 @@ def main():
     else:
         plot_phase_bars(sim_rows, emu_rows, args.out)
         plot_breakdown(sim_rows, emu_rows, args.out)
-        plot_savings(sim_rows, emu_rows, args.out)
         plot_time_io(args.sim, args.emu, args.out, phase2_start)
         plot_time_io_cdf(args.sim, args.emu, args.out, phase2_start)
         plot_cdf(args.sim, args.emu, args.out)

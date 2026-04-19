@@ -1,5 +1,5 @@
 {
-  "_comment": "Sprint bothstep 0to5 test for emu, compare baseline vs two_step vs one_step under prefix churn, snapshots disabled",
+  "_comment": "Sprint one-phase prefix-scalability sweep for emu, prefixes 0..50 in steps of 5, snapshots disabled",
   "topology": "sprint",
   "delay_ms": 10,
   "bandwidth_mbps": 10,
@@ -13,8 +13,8 @@
   "churn_seed": 42,
   "prefix_mean_time_to_recover_s": 3.0,
   "prefix_event_rate_per_prefix": 0.1,
-  "prefix_counts": [0, 1, 2, 3, 4, 5],
-  "modes": ["baseline", "two_step", "one_step"],
+  "prefix_counts": [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50],
+  "modes": ["one_phase"],
   "phase2_start_s": 30.0,
   "churn_duration_s": 120.0
 }

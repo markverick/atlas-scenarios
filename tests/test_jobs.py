@@ -137,7 +137,7 @@ def test_discover_job_catalog_for_experiment_selector(tmp_path):
     queue_path.write_text(json.dumps({
         "experiment": "prefix_scale",
         "topology": "sprint",
-        "mode": "two_step",
+        "mode": "one_phase",
         "description": "Sprint queue",
         "jobs": [{"name": "build", "cmd": "true"}],
     }))
@@ -405,7 +405,7 @@ def test_cmd_list_running_only_prints_active(tmp_path, monkeypatch):
         lambda: [{
             "selector": "prefix_scale/sprint",
             "topology": "sprint",
-            "mode": "two_step",
+            "mode": "one_phase",
             "counts": {"running": 1, "done": 3, "pending": 20, "failed": 0},
             "run_root": "experiments/prefix_scale/results/sprint/latest",
         }],
@@ -430,17 +430,17 @@ def test_select_queue_interactively_shows_short_names_and_description(monkeypatc
                     "path": "/tmp/experiments/prefix_scale/queues/3x3_prefix_churn_compare_1prefix_test.json",
                     "selector": "prefix_scale/3x3_prefix_churn_compare_1prefix_test",
                     "name": "3x3_prefix_churn_compare_1prefix_test",
-                    "description": "3x3 grid prefix-churn comparison test run for sim and emu with one prefix, comparing baseline vs two_step vs one_step",
+                    "description": "3x3 grid prefix-churn comparison test run for sim and emu with one prefix, comparing baseline vs one_phase",
                     "topology": "grid",
                     "mode": "mixed",
                 },
                 {
-                    "path": "/tmp/experiments/prefix_scale/queues/3x3_twostep_1prefix_test.json",
-                    "selector": "prefix_scale/3x3_twostep_1prefix_test",
-                    "name": "3x3_twostep_1prefix_test",
-                    "description": "3x3 grid two-step single-prefix test run for sim and emu",
+                    "path": "/tmp/experiments/prefix_scale/queues/3x3_onephase_1prefix_test.json",
+                    "selector": "prefix_scale/3x3_onephase_1prefix_test",
+                    "name": "3x3_onephase_1prefix_test",
+                    "description": "3x3 grid one-phase single-prefix test run for sim and emu",
                     "topology": "grid",
-                    "mode": "two_step",
+                    "mode": "one_phase",
                 },
             ],
         }
@@ -455,12 +455,12 @@ def test_select_queue_interactively_shows_short_names_and_description(monkeypatc
         selected = select_queue_interactively(catalog)
 
     output = stdout.getvalue()
-    assert selected == "/tmp/experiments/prefix_scale/queues/3x3_twostep_1prefix_test.json"
-    assert "prefix_scale/3x3_twostep_1prefix_test" not in output
+    assert selected == "/tmp/experiments/prefix_scale/queues/3x3_onephase_1prefix_test.json"
+    assert "prefix_scale/3x3_onephase_1prefix_test" not in output
     assert "1. 3x3_prefix_churn_compare_1prefix_test" in output
-    assert "2. 3x3_twostep_1prefix_test" in output
-    assert "3x3 grid prefix-churn comparison test run for sim and emu with one prefix, comparing baseline vs two_step vs one_step" in output
-    assert "topology=grid  mode=two_step" in output
+    assert "2. 3x3_onephase_1prefix_test" in output
+    assert "3x3 grid prefix-churn comparison test run for sim and emu with one prefix, comparing baseline vs one_phase" in output
+    assert "topology=grid  mode=one_phase" in output
 
 
 def test_interactive_status_can_enable_watch(tmp_path, monkeypatch):

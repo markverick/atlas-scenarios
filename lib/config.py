@@ -5,8 +5,8 @@ Loads experiment parameters from a JSON config file so that paper
 scenarios are fully reproducible with a single version-controlled file.
 
 Usage:
-    ./run.sh sim churn.py --config experiments/prefix_scale/scenarios/sprint_twostep_sim_0to50.json
-    sudo ./run.sh emu churn.py --config experiments/prefix_scale/scenarios/sprint_twostep_emu_0to50.json
+    ./run.sh sim churn.py --config experiments/prefix_scale/scenarios/sprint_onephase_sim_0to50.json
+    sudo ./run.sh emu churn.py --config experiments/prefix_scale/scenarios/sprint_onephase_emu_0to50.json
 
 Config file format -- see experiments/*/scenarios/ for examples.
 """
@@ -35,8 +35,7 @@ _SCHEMA = {
     "advertise_interval":    (int, 0),   # 0 = use Go default
     "router_dead_interval":  (int, 0),   # 0 = use Go default
 
-    # One-step vs two-step routing
-    "one_step":       (bool,  False),     # True = prefixes in DV adverts (no PrefixSync)
+    # Prefix distribution
     "num_prefixes":   (int,   0),         # synthetic prefixes per node (routing-only)
     "prefix_sync_delay": (int, 0),        # ms to delay PrefixSync SVS start (0 = immediate)
     "prefix_snap_threshold": (int, 0),    # 0 = use Go default; positive overrides PrefixSync snapshot threshold
@@ -59,7 +58,7 @@ _SCHEMA = {
     "link_mean_time_to_recover_s_values": (list,  []), # list of per-link recovery means to sweep in link_scaling mode
     "link_distribution":     (str,   "exponential"), # event timing distribution for link_scaling: "exponential" or "pareto"
     "link_pareto_alpha":     (float, 2.0),       # Pareto shape parameter (>1) when link_distribution == "pareto"
-    "modes":                 (list,  []),         # routing modes to run; empty = ["baseline","two_step","one_step"]
+    "modes":                 (list,  []),         # lookup modes to run; empty = ["baseline","one_phase"]
 
     # Churn-after-convergence mode
     "churn_after_convergence": (bool, False),    # True = churn starts right after DV convergence + margin
@@ -111,8 +110,6 @@ def dv_config_from(cfg):
         dv["advertise_interval"] = cfg["advertise_interval"]
     if cfg.get("router_dead_interval"):
         dv["router_dead_interval"] = cfg["router_dead_interval"]
-    if cfg.get("one_step"):
-        dv["one_step"] = True
     if cfg.get("prefix_sync_delay"):
         dv["prefix_sync_delay"] = cfg["prefix_sync_delay"]
     if cfg.get("prefix_snap_threshold"):

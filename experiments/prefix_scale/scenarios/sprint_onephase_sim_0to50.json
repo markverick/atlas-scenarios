@@ -1,7 +1,6 @@
 {
-  "_comment": "3x3 prefix-churn comparison test for sim, single prefix, compare baseline vs two_step vs one_step, snapshots disabled",
-  "topology": "grid",
-  "grids": [3],
+  "_comment": "Sprint one-phase prefix-scalability sweep for sim, prefixes 0..50 in steps of 5, snapshots disabled",
+  "topology": "sprint",
   "delay_ms": 10,
   "bandwidth_mbps": 10,
   "trials": 1,
@@ -14,8 +13,8 @@
   "churn_seed": 42,
   "prefix_mean_time_to_recover_s": 3.0,
   "prefix_event_rate_per_prefix": 0.1,
-  "prefix_counts": [1],
-  "modes": ["baseline", "two_step", "one_step"],
-  "phase2_start_s": 10.0,
+  "prefix_counts": [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50],
+  "modes": ["one_phase"],
+  "phase2_start_s": 30.0,
   "churn_duration_s": 120.0
 }
