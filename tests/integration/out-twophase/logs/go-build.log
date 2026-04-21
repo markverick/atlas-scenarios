@@ -1,0 +1,37 @@
+==> Using clean ndnd at 76aeb89c (local worktree)
+Preparing worktree (detached HEAD 76aeb89)
+HEAD is now at 76aeb89 Merge pull request #179 from r2dev2/r2dev2/three-pipeline-forwarding
+==> Transforming ndnd source and applying overlay (phase: twophase)
+  overlay: cmd/traffic/main.go
+  overlay: dv/table/prefix_event.go
+  overlay: dv/table/router_event.go
+  overlay: sim/cgo_export.go
+  overlay: sim/clock.go
+  overlay: sim/clock_test.go
+  overlay: sim/cmd/main.go
+  overlay: sim/consumer.go
+  overlay: sim/consumer_test.go
+  overlay: sim/doc.go
+  overlay: sim/dv.go
+  overlay: sim/dv_integration_test.go
+  overlay: sim/engine.go
+  overlay: sim/engine_test.go
+  overlay: sim/face.go
+  overlay: sim/fib_debug_test.go
+  overlay: sim/forwarder.go
+  overlay: sim/fw_face.go
+  overlay: sim/ndndsim_sim.h
+  overlay: sim/node.go
+  overlay: sim/runtime.go
+  overlay: sim/timer.go
+  overlay: sim/trust.go
+  overlay: sim/util.go
+  overlay: std/security/trust_schema/null_schema_test.go
+  overlay: tools/traffic.go
+transformed ndnd written to /home/stheera/atlas-scenario-2/deps/ns-3/contrib/ndndSIM/go/.transformed-ndnd-twophase
+==> Applying overlay-op patches for phase: twophase
+==> Generating go.work
+==> Building simulation library
+==> Running sim tests
+ok  	github.com/named-data/ndnd/sim	18.487s
+==> Done: /home/stheera/atlas-scenario-2/deps/ns-3/contrib/ndndSIM/go/libndndsim-twophase.a

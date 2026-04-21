@@ -214,19 +214,43 @@ def _walk_go_sources(root):
 
 
 def _build_ns3(ns3_dir, cores=0):
-    """Build ns-3 with Go on PATH and check Go source freshness."""
+    """Build ns-3 with Go on PATH and check Go source freshness.
+
+    When the NS3_CMAKE_CACHE environment variable is set, cmake is invoked
+    directly against that cache directory (for the onephase build and any
+    other alternate build directories).  Otherwise the standard ``./ns3 build``
+    wrapper is used.
+
+    NS3_BUILD_OUT (default: "build") controls which output directory to check
+    for staleness.
+    """
     env = os.environ.copy()
     go_dir = "/usr/local/go/bin"
     if os.path.isfile(os.path.join(go_dir, "go")) and go_dir not in env.get("PATH", ""):
         env["PATH"] = go_dir + ":" + env.get("PATH", "")
 
-    ns3_bin = os.path.join(ns3_dir, "ns3")
-    build_cmd = [ns3_bin, "build"]
-    if cores > 0:
-        build_cmd += ["-j", str(cores)]
+    # Allow callers (e.g. the integration test) to skip the build step when
+    # they have already built explicitly in a prior stage.
+    if os.environ.get("NDNDSIM_NO_BUILD"):
+        return
+
+    cmake_cache = os.environ.get("NS3_CMAKE_CACHE", "")
+    if cmake_cache:
+        # Direct cmake build for alternate configurations (e.g. onephase).
+        cmake_cache_path = os.path.join(ns3_dir, cmake_cache)
+        build_cmd = ["cmake", "--build", cmake_cache_path]
+        if cores > 0:
+            build_cmd += ["--parallel", str(cores)]
+    else:
+        # Standard ns3 build (default twophase).
+        ns3_bin = os.path.join(ns3_dir, "ns3")
+        build_cmd = [ns3_bin, "build"]
+        if cores > 0:
+            build_cmd += ["-j", str(cores)]
     subprocess.run(build_cmd, cwd=ns3_dir, check=True, env=env)
 
-    so_path = os.path.join(ns3_dir, "build", "lib", "libns3.47-ndndSIM.so")
+    build_out = os.environ.get("NS3_BUILD_OUT", "build")
+    so_path = os.path.join(ns3_dir, build_out, "lib", "libns3.47-ndndSIM.so")
     ndnd_sim_dir = os.path.join(ns3_dir, "contrib", "ndndSIM", "ndnd", "sim")
     if os.path.isfile(so_path) and os.path.isdir(ndnd_sim_dir):
         so_mtime = os.path.getmtime(so_path)
@@ -239,28 +263,48 @@ def _build_ns3(ns3_dir, cores=0):
             raise RuntimeError(
                 "Go source files are newer than the built shared library -- "
                 "cmake dependency tracking missed them. "
-                "Re-run cmake configure (./ns3 configure) then build again.\n"
+                "Re-run cmake configure then build again.\n"
                 "Stale sources:\n" + "\n".join(f"  {r}" for r in rel)
             )
 
 
 def _find_scenario_exe(ns3_dir, target_substr):
-    """Find the built ns-3 scenario executable containing target_substr."""
-    build_dir = os.path.join(ns3_dir, "build")
-    scenario_exe = None
+    """Find the built ns-3 scenario executable containing target_substr.
+
+    Respects the NS3_BUILD_OUT environment variable (default: "build") so that
+    alternate build directories (e.g. "build-op" for the onephase environment)
+    are searched correctly.
+    """
+    build_out = os.environ.get("NS3_BUILD_OUT", "build")
+    build_dir = os.path.join(ns3_dir, build_out)
+    # ns-3 cmake produces executables named "ns3.<ver>-<name>" with no suffix.
+    # Exclude the "-default" suffix variant which is a stale artifact from
+    # pre-phase-rename builds (before libndndsim.a became libndndsim-twophase.a).
+    candidates = []
     for root, _dirs, files in os.walk(os.path.join(build_dir, "contrib/ndndSIM")):
         for f in files:
-            if f.startswith("ns3.") and target_substr in f:
-                candidate = os.path.join(root, f)
-                if scenario_exe is None or f.endswith("-default"):
-                    scenario_exe = candidate
-        if scenario_exe:
-            break
-    if not scenario_exe:
+            if f.startswith("ns3.") and target_substr in f and not f.endswith("-default"):
+                candidates.append(os.path.join(root, f))
+
+    if not candidates:
+        # Fall back to any match (including -default) if no non-default binary exists.
+        for root, _dirs, files in os.walk(os.path.join(build_dir, "contrib/ndndSIM")):
+            for f in files:
+                if f.startswith("ns3.") and target_substr in f:
+                    candidates.append(os.path.join(root, f))
+
+    if not candidates:
         raise RuntimeError(
             f"{target_substr} executable not found in {build_dir}/contrib/ndndSIM/"
         )
-    return scenario_exe
+
+    if len(candidates) > 1:
+        raise RuntimeError(
+            f"Ambiguous {target_substr} executables found (expected exactly one): "
+            + ", ".join(candidates)
+        )
+
+    return candidates[0]
 
 
 def _run_exe(exe, run_args, run_log=None):

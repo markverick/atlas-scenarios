@@ -1,0 +1,1098 @@
+Warn about uninitialized values.
+-- Using default output directory /home/stheera/atlas-scenario-2/deps/ns-3/build
+-- [33mProceeding without cmake-format[0m
+-- [33mPython: development libraries were not found[0m
+-- [33mdocs: doxygen documentation not enabled due to missing dependencies: dia[0m
+-- Failed to locate sphinx-build executable (missing: SPHINX_EXECUTABLE) 
+-- [33mdocs: sphinx documentation not enabled due to missing dependencies: Sphinx dia[0m
+-- Precompiled headers were enabled
+-- Processing contrib/ndndSIM
+-- ndndSIM: PointToPointNetDevice already has NDN EtherType — no patch needed
+CMake Warning (dev) at contrib/ndndSIM/CMakeLists.txt:49 (set):
+  uninitialized variable 'GOPATH'
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+-- ndndSIM: using Go: /home/stheera/atlas-scenario-2/deps/ns-3/contrib/ndndSIM/../../../gopath/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.3.linux-amd64/bin/go
+-- ndndSIM: phase = twophase
+-- Processing src/antenna
+-- Standard library Bessel function has been found
+-- Processing src/aodv
+-- Processing src/applications
+-- Processing src/bridge
+-- Processing src/brite
+-- [33mSkipping src/brite[0m
+-- Processing src/buildings
+-- Processing src/click
+-- [33mSkipping src/click[0m
+-- Processing src/config-store
+-- Processing src/core
+-- Boost Units have been found.
+-- Processing src/csma
+-- Processing src/csma-layout
+-- Processing src/dsdv
+-- Processing src/dsr
+-- Processing src/energy
+-- Processing src/fd-net-device
+-- Checking for module 'libdpdk'
+--   No package 'libdpdk' found
+-- Processing src/flow-monitor
+-- Processing src/internet
+-- Processing src/internet-apps
+-- Processing src/lr-wpan
+-- Processing src/lte
+-- Processing src/mesh
+-- Processing src/mobility
+-- Processing src/netanim
+-- Processing src/network
+-- Processing src/nix-vector-routing
+-- Processing src/olsr
+-- Processing src/openflow
+-- [33mSkipping src/openflow[0m
+-- Processing src/point-to-point
+-- Processing src/point-to-point-layout
+-- Processing src/propagation
+-- Processing src/sixlowpan
+-- Processing src/spectrum
+-- Processing src/stats
+-- Processing src/tap-bridge
+-- Processing src/test
+-- Processing src/topology-read
+-- Processing src/traffic-control
+-- Processing src/uan
+-- Processing src/virtual-net-device
+-- Processing src/wifi
+-- Processing src/zigbee
+-- ---- Summary of ns-3 settings:
+Build profile                 : release
+Build directory               : /home/stheera/atlas-scenario-2/deps/ns-3/build
+Build with runtime asserts    : OFF (not requested)
+Build with runtime logging    : OFF (not requested)
+Build version embedding       : OFF (not requested)
+BRITE Integration             : [31mOFF (Missing headers: "Brite.h" and missing libraries: "brite")[0m
+DES Metrics event collection  : OFF (not requested)
+DPDK NetDevice                : OFF (not requested)
+Emulation FdNetDevice         : [32mON[0m
+Examples                      : [32mON[0m
+File descriptor NetDevice     : [32mON[0m
+GNU Scientific Library (GSL)  : [31mOFF (GSL was not found)[0m
+GtkConfigStore                : [31mOFF (Harfbuzz is required by GTK3 and was not found)[0m
+LibXml2 support               : [32mON[0m
+MPI Support                   : OFF (not requested)
+ns-3 Click Integration        : [31mOFF (Missing headers: "simclick.h" and missing libraries: "nsclick click")[0m
+ns-3 OpenFlow Integration     : [31mOFF (Missing headers: "" and missing libraries: "openflow")[0m
+Netmap emulation FdNetDevice  : [31mOFF (missing dependency)[0m
+PyViz visualizer              : [31mOFF (Python Bindings are disabled)[0m
+Python Bindings               : OFF (not requested)
+SQLite support                : [32mON[0m
+Eigen3 support                : [31mOFF (Eigen was not found)[0m
+Tap Bridge                    : [32mON[0m
+Tap FdNetDevice               : [32mON[0m
+Tests                         : [32mON[0m
+
+
+Modules configured to be built:
+antenna                   aodv                      applications              
+bridge                    buildings                 config-store              
+core                      csma                      csma-layout               
+dsdv                      dsr                       energy                    
+fd-net-device             flow-monitor              internet                  
+internet-apps             lr-wpan                   lte                       
+mesh                      mobility                  ndndSIM                   
+netanim                   network                   nix-vector-routing        
+olsr                      point-to-point            point-to-point-layout     
+propagation               sixlowpan                 spectrum                  
+stats                     tap-bridge                test                      
+topology-read             traffic-control           uan                       
+virtual-net-device        wifi                      zigbee                    
+
+
+Modules that cannot be built:
+brite                     click                     mpi                       
+openflow                  visualizer                
+
+
+-- Configuring done (1.8s)
+-- Generating done (0.7s)
+-- Build files have been written to: /home/stheera/atlas-scenario-2/deps/ns-3/cmake-cache
+Finished executing the following commands:
+/usr/bin/cmake -S /home/stheera/atlas-scenario-2/deps/ns-3 -B /home/stheera/atlas-scenario-2/deps/ns-3/cmake-cache -DCMAKE_BUILD_TYPE=release -DNS3_ASSERT=OFF -DNS3_LOG=OFF -DNS3_WARNINGS_AS_ERRORS=OFF -DNS3_NATIVE_OPTIMIZATIONS=OFF --warn-uninitialized
+[0/2] Re-checking globbed directories...
+[1/25] Building NDNd Go simulation library (phase: twophase)
+==> Using clean ndnd at 76aeb89c (local worktree)
+Preparing worktree (detached HEAD 76aeb89)
+HEAD is now at 76aeb89 Merge pull request #179 from r2dev2/r2dev2/three-pipeline-forwarding
+==> Transforming ndnd source and applying overlay (phase: twophase)
+  overlay: cmd/traffic/main.go
+  overlay: dv/table/prefix_event.go
+  overlay: dv/table/router_event.go
+  overlay: sim/cgo_export.go
+  overlay: sim/clock.go
+  overlay: sim/clock_test.go
+  overlay: sim/cmd/main.go
+  overlay: sim/consumer.go
+  overlay: sim/consumer_test.go
+  overlay: sim/doc.go
+  overlay: sim/dv.go
+  overlay: sim/dv_integration_test.go
+  overlay: sim/engine.go
+  overlay: sim/engine_test.go
+  overlay: sim/face.go
+  overlay: sim/fib_debug_test.go
+  overlay: sim/forwarder.go
+  overlay: sim/fw_face.go
+  overlay: sim/ndndsim_sim.h
+  overlay: sim/node.go
+  overlay: sim/runtime.go
+  overlay: sim/timer.go
+  overlay: sim/trust.go
+  overlay: sim/util.go
+  overlay: std/security/trust_schema/null_schema_test.go
+  overlay: tools/traffic.go
+transformed ndnd written to /home/stheera/atlas-scenario-2/deps/ns-3/contrib/ndndSIM/go/.transformed-ndnd-twophase
+==> Applying overlay-op patches for phase: twophase
+==> Generating go.work
+==> Building simulation library
+==> Running sim tests
+ok  	github.com/named-data/ndnd/sim	18.098s
+==> Done: /home/stheera/atlas-scenario-2/deps/ns-3/contrib/ndndSIM/go/libndndsim-twophase.a
+[2/25] Linking CXX shared library /home/stheera/atlas-scenario-2/deps/ns-3/build/lib/libns3.47-ndndSIM.so
+[3/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-tree
+[4/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-tree-tracers
+[5/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-atlas-routing-scenario
+[6/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-atlas-churn-scenario
+[7/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-sprint-churn
+[8/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-csma
+[9/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-dv-convergence
+[10/25] Linking CXX shared library /home/stheera/atlas-scenario-2/deps/ns-3/build/lib/libns3.47-ndndSIM-test.so
+[11/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-custom-app
+[12/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-zipf
+[13/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-grid
+[14/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-dv-multipath
+[15/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-atlas-multihop-scenario
+[16/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-simple
+[17/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-atlas-scenario
+[18/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-link-failure
+[19/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-topo-reader
+[20/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-grid-dv
+[21/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-wifi
+[22/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/scratch/subdir/ns3.47-scratch-subdir
+[23/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/utils/ns3.47-print-introspected-doxygen
+[24/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/scratch/ns3.47-scratch-simulator
+[25/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/utils/ns3.47-test-runner
+Finished executing the following commands:
+/usr/bin/cmake --build /home/stheera/atlas-scenario-2/deps/ns-3/cmake-cache -j 127
+Warn about uninitialized values.
+-- Using default output directory /home/stheera/atlas-scenario-2/deps/ns-3/build
+-- [33mProceeding without cmake-format[0m
+-- [33mPython: development libraries were not found[0m
+-- [33mdocs: doxygen documentation not enabled due to missing dependencies: dia[0m
+-- Failed to locate sphinx-build executable (missing: SPHINX_EXECUTABLE) 
+-- [33mdocs: sphinx documentation not enabled due to missing dependencies: Sphinx dia[0m
+-- Precompiled headers were enabled
+-- Processing contrib/ndndSIM
+-- ndndSIM: PointToPointNetDevice already has NDN EtherType — no patch needed
+CMake Warning (dev) at contrib/ndndSIM/CMakeLists.txt:49 (set):
+  uninitialized variable 'GOPATH'
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+-- ndndSIM: using Go: /home/stheera/atlas-scenario-2/deps/ns-3/contrib/ndndSIM/../../../gopath/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.3.linux-amd64/bin/go
+-- ndndSIM: phase = twophase
+-- Processing src/antenna
+-- Standard library Bessel function has been found
+-- Processing src/aodv
+-- Processing src/applications
+-- Processing src/bridge
+-- Processing src/brite
+-- [33mSkipping src/brite[0m
+-- Processing src/buildings
+-- Processing src/click
+-- [33mSkipping src/click[0m
+-- Processing src/config-store
+-- Processing src/core
+-- Boost Units have been found.
+-- Processing src/csma
+-- Processing src/csma-layout
+-- Processing src/dsdv
+-- Processing src/dsr
+-- Processing src/energy
+-- Processing src/fd-net-device
+-- Checking for module 'libdpdk'
+--   No package 'libdpdk' found
+-- Processing src/flow-monitor
+-- Processing src/internet
+-- Processing src/internet-apps
+-- Processing src/lr-wpan
+-- Processing src/lte
+-- Processing src/mesh
+-- Processing src/mobility
+-- Processing src/netanim
+-- Processing src/network
+-- Processing src/nix-vector-routing
+-- Processing src/olsr
+-- Processing src/openflow
+-- [33mSkipping src/openflow[0m
+-- Processing src/point-to-point
+-- Processing src/point-to-point-layout
+-- Processing src/propagation
+-- Processing src/sixlowpan
+-- Processing src/spectrum
+-- Processing src/stats
+-- Processing src/tap-bridge
+-- Processing src/test
+-- Processing src/topology-read
+-- Processing src/traffic-control
+-- Processing src/uan
+-- Processing src/virtual-net-device
+-- Processing src/wifi
+-- Processing src/zigbee
+-- ---- Summary of ns-3 settings:
+Build profile                 : release
+Build directory               : /home/stheera/atlas-scenario-2/deps/ns-3/build
+Build with runtime asserts    : OFF (not requested)
+Build with runtime logging    : OFF (not requested)
+Build version embedding       : OFF (not requested)
+BRITE Integration             : [31mOFF (Missing headers: "Brite.h" and missing libraries: "brite")[0m
+DES Metrics event collection  : OFF (not requested)
+DPDK NetDevice                : OFF (not requested)
+Emulation FdNetDevice         : [32mON[0m
+Examples                      : [32mON[0m
+File descriptor NetDevice     : [32mON[0m
+GNU Scientific Library (GSL)  : [31mOFF (GSL was not found)[0m
+GtkConfigStore                : [31mOFF (Harfbuzz is required by GTK3 and was not found)[0m
+LibXml2 support               : [32mON[0m
+MPI Support                   : OFF (not requested)
+ns-3 Click Integration        : [31mOFF (Missing headers: "simclick.h" and missing libraries: "nsclick click")[0m
+ns-3 OpenFlow Integration     : [31mOFF (Missing headers: "" and missing libraries: "openflow")[0m
+Netmap emulation FdNetDevice  : [31mOFF (missing dependency)[0m
+PyViz visualizer              : [31mOFF (Python Bindings are disabled)[0m
+Python Bindings               : OFF (not requested)
+SQLite support                : [32mON[0m
+Eigen3 support                : [31mOFF (Eigen was not found)[0m
+Tap Bridge                    : [32mON[0m
+Tap FdNetDevice               : [32mON[0m
+Tests                         : [32mON[0m
+
+
+Modules configured to be built:
+antenna                   aodv                      applications              
+bridge                    buildings                 config-store              
+core                      csma                      csma-layout               
+dsdv                      dsr                       energy                    
+fd-net-device             flow-monitor              internet                  
+internet-apps             lr-wpan                   lte                       
+mesh                      mobility                  ndndSIM                   
+netanim                   network                   nix-vector-routing        
+olsr                      point-to-point            point-to-point-layout     
+propagation               sixlowpan                 spectrum                  
+stats                     tap-bridge                test                      
+topology-read             traffic-control           uan                       
+virtual-net-device        wifi                      zigbee                    
+
+
+Modules that cannot be built:
+brite                     click                     mpi                       
+openflow                  visualizer                
+
+
+-- Configuring done (1.8s)
+-- Generating done (0.7s)
+-- Build files have been written to: /home/stheera/atlas-scenario-2/deps/ns-3/cmake-cache
+Finished executing the following commands:
+/usr/bin/cmake -S /home/stheera/atlas-scenario-2/deps/ns-3 -B /home/stheera/atlas-scenario-2/deps/ns-3/cmake-cache -DCMAKE_BUILD_TYPE=release -DNS3_ASSERT=OFF -DNS3_LOG=OFF -DNS3_WARNINGS_AS_ERRORS=OFF -DNS3_NATIVE_OPTIMIZATIONS=OFF --warn-uninitialized
+[0/2] Re-checking globbed directories...
+[1/25] Building NDNd Go simulation library (phase: twophase)
+==> Using clean ndnd at 76aeb89c (local worktree)
+Preparing worktree (detached HEAD 76aeb89)
+HEAD is now at 76aeb89 Merge pull request #179 from r2dev2/r2dev2/three-pipeline-forwarding
+==> Transforming ndnd source and applying overlay (phase: twophase)
+  overlay: cmd/traffic/main.go
+  overlay: dv/table/prefix_event.go
+  overlay: dv/table/router_event.go
+  overlay: sim/cgo_export.go
+  overlay: sim/clock.go
+  overlay: sim/clock_test.go
+  overlay: sim/cmd/main.go
+  overlay: sim/consumer.go
+  overlay: sim/consumer_test.go
+  overlay: sim/doc.go
+  overlay: sim/dv.go
+  overlay: sim/dv_integration_test.go
+  overlay: sim/engine.go
+  overlay: sim/engine_test.go
+  overlay: sim/face.go
+  overlay: sim/fib_debug_test.go
+  overlay: sim/forwarder.go
+  overlay: sim/fw_face.go
+  overlay: sim/ndndsim_sim.h
+  overlay: sim/node.go
+  overlay: sim/runtime.go
+  overlay: sim/timer.go
+  overlay: sim/trust.go
+  overlay: sim/util.go
+  overlay: std/security/trust_schema/null_schema_test.go
+  overlay: tools/traffic.go
+transformed ndnd written to /home/stheera/atlas-scenario-2/deps/ns-3/contrib/ndndSIM/go/.transformed-ndnd-twophase
+==> Applying overlay-op patches for phase: twophase
+==> Generating go.work
+==> Building simulation library
+==> Running sim tests
+ok  	github.com/named-data/ndnd/sim	18.361s
+==> Done: /home/stheera/atlas-scenario-2/deps/ns-3/contrib/ndndSIM/go/libndndsim-twophase.a
+[2/25] Linking CXX shared library /home/stheera/atlas-scenario-2/deps/ns-3/build/lib/libns3.47-ndndSIM.so
+[3/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-simple
+[4/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-grid
+[5/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-dv-convergence
+[6/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-atlas-churn-scenario
+[7/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-tree-tracers
+[8/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-topo-reader
+[9/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-sprint-churn
+[10/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-atlas-scenario
+[11/25] Linking CXX shared library /home/stheera/atlas-scenario-2/deps/ns-3/build/lib/libns3.47-ndndSIM-test.so
+[12/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-dv-multipath
+[13/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-csma
+[14/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-atlas-routing-scenario
+[15/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-tree
+[16/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-link-failure
+[17/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-zipf
+[18/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-atlas-multihop-scenario
+[19/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-grid-dv
+[20/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-custom-app
+[21/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-wifi
+[22/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/scratch/subdir/ns3.47-scratch-subdir
+[23/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/utils/ns3.47-print-introspected-doxygen
+[24/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/scratch/ns3.47-scratch-simulator
+[25/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/utils/ns3.47-test-runner
+Finished executing the following commands:
+/usr/bin/cmake --build /home/stheera/atlas-scenario-2/deps/ns-3/cmake-cache -j 127
+Warn about uninitialized values.
+-- Using default output directory /home/stheera/atlas-scenario-2/deps/ns-3/build
+-- [33mProceeding without cmake-format[0m
+-- [33mPython: development libraries were not found[0m
+-- [33mdocs: doxygen documentation not enabled due to missing dependencies: dia[0m
+-- Failed to locate sphinx-build executable (missing: SPHINX_EXECUTABLE) 
+-- [33mdocs: sphinx documentation not enabled due to missing dependencies: Sphinx dia[0m
+-- Precompiled headers were enabled
+-- Processing contrib/ndndSIM
+-- ndndSIM: PointToPointNetDevice already has NDN EtherType — no patch needed
+CMake Warning (dev) at contrib/ndndSIM/CMakeLists.txt:49 (set):
+  uninitialized variable 'GOPATH'
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+-- ndndSIM: using Go: /home/stheera/atlas-scenario-2/deps/ns-3/contrib/ndndSIM/../../../gopath/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.3.linux-amd64/bin/go
+-- ndndSIM: phase = twophase
+-- Processing src/antenna
+-- Standard library Bessel function has been found
+-- Processing src/aodv
+-- Processing src/applications
+-- Processing src/bridge
+-- Processing src/brite
+-- [33mSkipping src/brite[0m
+-- Processing src/buildings
+-- Processing src/click
+-- [33mSkipping src/click[0m
+-- Processing src/config-store
+-- Processing src/core
+-- Boost Units have been found.
+-- Processing src/csma
+-- Processing src/csma-layout
+-- Processing src/dsdv
+-- Processing src/dsr
+-- Processing src/energy
+-- Processing src/fd-net-device
+-- Checking for module 'libdpdk'
+--   No package 'libdpdk' found
+-- Processing src/flow-monitor
+-- Processing src/internet
+-- Processing src/internet-apps
+-- Processing src/lr-wpan
+-- Processing src/lte
+-- Processing src/mesh
+-- Processing src/mobility
+-- Processing src/netanim
+-- Processing src/network
+-- Processing src/nix-vector-routing
+-- Processing src/olsr
+-- Processing src/openflow
+-- [33mSkipping src/openflow[0m
+-- Processing src/point-to-point
+-- Processing src/point-to-point-layout
+-- Processing src/propagation
+-- Processing src/sixlowpan
+-- Processing src/spectrum
+-- Processing src/stats
+-- Processing src/tap-bridge
+-- Processing src/test
+-- Processing src/topology-read
+-- Processing src/traffic-control
+-- Processing src/uan
+-- Processing src/virtual-net-device
+-- Processing src/wifi
+-- Processing src/zigbee
+-- ---- Summary of ns-3 settings:
+Build profile                 : release
+Build directory               : /home/stheera/atlas-scenario-2/deps/ns-3/build
+Build with runtime asserts    : OFF (not requested)
+Build with runtime logging    : OFF (not requested)
+Build version embedding       : OFF (not requested)
+BRITE Integration             : [31mOFF (Missing headers: "Brite.h" and missing libraries: "brite")[0m
+DES Metrics event collection  : OFF (not requested)
+DPDK NetDevice                : OFF (not requested)
+Emulation FdNetDevice         : [32mON[0m
+Examples                      : [32mON[0m
+File descriptor NetDevice     : [32mON[0m
+GNU Scientific Library (GSL)  : [31mOFF (GSL was not found)[0m
+GtkConfigStore                : [31mOFF (Harfbuzz is required by GTK3 and was not found)[0m
+LibXml2 support               : [32mON[0m
+MPI Support                   : OFF (not requested)
+ns-3 Click Integration        : [31mOFF (Missing headers: "simclick.h" and missing libraries: "nsclick click")[0m
+ns-3 OpenFlow Integration     : [31mOFF (Missing headers: "" and missing libraries: "openflow")[0m
+Netmap emulation FdNetDevice  : [31mOFF (missing dependency)[0m
+PyViz visualizer              : [31mOFF (Python Bindings are disabled)[0m
+Python Bindings               : OFF (not requested)
+SQLite support                : [32mON[0m
+Eigen3 support                : [31mOFF (Eigen was not found)[0m
+Tap Bridge                    : [32mON[0m
+Tap FdNetDevice               : [32mON[0m
+Tests                         : [32mON[0m
+
+
+Modules configured to be built:
+antenna                   aodv                      applications              
+bridge                    buildings                 config-store              
+core                      csma                      csma-layout               
+dsdv                      dsr                       energy                    
+fd-net-device             flow-monitor              internet                  
+internet-apps             lr-wpan                   lte                       
+mesh                      mobility                  ndndSIM                   
+netanim                   network                   nix-vector-routing        
+olsr                      point-to-point            point-to-point-layout     
+propagation               sixlowpan                 spectrum                  
+stats                     tap-bridge                test                      
+topology-read             traffic-control           uan                       
+virtual-net-device        wifi                      zigbee                    
+
+
+Modules that cannot be built:
+brite                     click                     mpi                       
+openflow                  visualizer                
+
+
+-- Configuring done (1.7s)
+-- Generating done (0.7s)
+-- Build files have been written to: /home/stheera/atlas-scenario-2/deps/ns-3/cmake-cache
+Finished executing the following commands:
+/usr/bin/cmake -S /home/stheera/atlas-scenario-2/deps/ns-3 -B /home/stheera/atlas-scenario-2/deps/ns-3/cmake-cache -DCMAKE_BUILD_TYPE=release -DNS3_ASSERT=OFF -DNS3_LOG=OFF -DNS3_WARNINGS_AS_ERRORS=OFF -DNS3_NATIVE_OPTIMIZATIONS=OFF --warn-uninitialized
+[0/2] Re-checking globbed directories...
+[1/25] Building NDNd Go simulation library (phase: twophase)
+==> Using clean ndnd at 76aeb89c (local worktree)
+Preparing worktree (detached HEAD 76aeb89)
+HEAD is now at 76aeb89 Merge pull request #179 from r2dev2/r2dev2/three-pipeline-forwarding
+==> Transforming ndnd source and applying overlay (phase: twophase)
+  overlay: cmd/traffic/main.go
+  overlay: dv/table/prefix_event.go
+  overlay: dv/table/router_event.go
+  overlay: sim/cgo_export.go
+  overlay: sim/clock.go
+  overlay: sim/clock_test.go
+  overlay: sim/cmd/main.go
+  overlay: sim/consumer.go
+  overlay: sim/consumer_test.go
+  overlay: sim/doc.go
+  overlay: sim/dv.go
+  overlay: sim/dv_integration_test.go
+  overlay: sim/engine.go
+  overlay: sim/engine_test.go
+  overlay: sim/face.go
+  overlay: sim/fib_debug_test.go
+  overlay: sim/forwarder.go
+  overlay: sim/fw_face.go
+  overlay: sim/ndndsim_sim.h
+  overlay: sim/node.go
+  overlay: sim/runtime.go
+  overlay: sim/timer.go
+  overlay: sim/trust.go
+  overlay: sim/util.go
+  overlay: std/security/trust_schema/null_schema_test.go
+  overlay: tools/traffic.go
+transformed ndnd written to /home/stheera/atlas-scenario-2/deps/ns-3/contrib/ndndSIM/go/.transformed-ndnd-twophase
+==> Applying overlay-op patches for phase: twophase
+==> Generating go.work
+==> Building simulation library
+==> Running sim tests
+ok  	github.com/named-data/ndnd/sim	18.654s
+==> Done: /home/stheera/atlas-scenario-2/deps/ns-3/contrib/ndndSIM/go/libndndsim-twophase.a
+[2/25] Linking CXX shared library /home/stheera/atlas-scenario-2/deps/ns-3/build/lib/libns3.47-ndndSIM.so
+[3/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-atlas-scenario
+[4/25] Linking CXX shared library /home/stheera/atlas-scenario-2/deps/ns-3/build/lib/libns3.47-ndndSIM-test.so
+[5/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-atlas-multihop-scenario
+[6/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-dv-multipath
+[7/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-custom-app
+[8/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-zipf
+[9/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-sprint-churn
+[10/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-atlas-routing-scenario
+[11/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-tree-tracers
+[12/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-atlas-churn-scenario
+[13/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-csma
+[14/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-dv-convergence
+[15/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-tree
+[16/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-grid
+[17/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-link-failure
+[18/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-topo-reader
+[19/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-simple
+[20/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-grid-dv
+[21/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-wifi
+[22/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/utils/ns3.47-print-introspected-doxygen
+[23/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/scratch/ns3.47-scratch-simulator
+[24/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/scratch/subdir/ns3.47-scratch-subdir
+[25/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/utils/ns3.47-test-runner
+Finished executing the following commands:
+/usr/bin/cmake --build /home/stheera/atlas-scenario-2/deps/ns-3/cmake-cache -j 127
+Warn about uninitialized values.
+-- Using default output directory /home/stheera/atlas-scenario-2/deps/ns-3/build
+-- [33mProceeding without cmake-format[0m
+-- [33mPython: development libraries were not found[0m
+-- [33mdocs: doxygen documentation not enabled due to missing dependencies: dia[0m
+-- Failed to locate sphinx-build executable (missing: SPHINX_EXECUTABLE) 
+-- [33mdocs: sphinx documentation not enabled due to missing dependencies: Sphinx dia[0m
+-- Precompiled headers were enabled
+-- Processing contrib/ndndSIM
+-- ndndSIM: PointToPointNetDevice already has NDN EtherType — no patch needed
+CMake Warning (dev) at contrib/ndndSIM/CMakeLists.txt:49 (set):
+  uninitialized variable 'GOPATH'
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+-- ndndSIM: using Go: /home/stheera/atlas-scenario-2/deps/ns-3/contrib/ndndSIM/../../../gopath/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.3.linux-amd64/bin/go
+-- ndndSIM: phase = twophase
+-- Processing src/antenna
+-- Standard library Bessel function has been found
+-- Processing src/aodv
+-- Processing src/applications
+-- Processing src/bridge
+-- Processing src/brite
+-- [33mSkipping src/brite[0m
+-- Processing src/buildings
+-- Processing src/click
+-- [33mSkipping src/click[0m
+-- Processing src/config-store
+-- Processing src/core
+-- Boost Units have been found.
+-- Processing src/csma
+-- Processing src/csma-layout
+-- Processing src/dsdv
+-- Processing src/dsr
+-- Processing src/energy
+-- Processing src/fd-net-device
+-- Checking for module 'libdpdk'
+--   No package 'libdpdk' found
+-- Processing src/flow-monitor
+-- Processing src/internet
+-- Processing src/internet-apps
+-- Processing src/lr-wpan
+-- Processing src/lte
+-- Processing src/mesh
+-- Processing src/mobility
+-- Processing src/netanim
+-- Processing src/network
+-- Processing src/nix-vector-routing
+-- Processing src/olsr
+-- Processing src/openflow
+-- [33mSkipping src/openflow[0m
+-- Processing src/point-to-point
+-- Processing src/point-to-point-layout
+-- Processing src/propagation
+-- Processing src/sixlowpan
+-- Processing src/spectrum
+-- Processing src/stats
+-- Processing src/tap-bridge
+-- Processing src/test
+-- Processing src/topology-read
+-- Processing src/traffic-control
+-- Processing src/uan
+-- Processing src/virtual-net-device
+-- Processing src/wifi
+-- Processing src/zigbee
+-- ---- Summary of ns-3 settings:
+Build profile                 : release
+Build directory               : /home/stheera/atlas-scenario-2/deps/ns-3/build
+Build with runtime asserts    : OFF (not requested)
+Build with runtime logging    : OFF (not requested)
+Build version embedding       : OFF (not requested)
+BRITE Integration             : [31mOFF (Missing headers: "Brite.h" and missing libraries: "brite")[0m
+DES Metrics event collection  : OFF (not requested)
+DPDK NetDevice                : OFF (not requested)
+Emulation FdNetDevice         : [32mON[0m
+Examples                      : [32mON[0m
+File descriptor NetDevice     : [32mON[0m
+GNU Scientific Library (GSL)  : [31mOFF (GSL was not found)[0m
+GtkConfigStore                : [31mOFF (Harfbuzz is required by GTK3 and was not found)[0m
+LibXml2 support               : [32mON[0m
+MPI Support                   : OFF (not requested)
+ns-3 Click Integration        : [31mOFF (Missing headers: "simclick.h" and missing libraries: "nsclick click")[0m
+ns-3 OpenFlow Integration     : [31mOFF (Missing headers: "" and missing libraries: "openflow")[0m
+Netmap emulation FdNetDevice  : [31mOFF (missing dependency)[0m
+PyViz visualizer              : [31mOFF (Python Bindings are disabled)[0m
+Python Bindings               : OFF (not requested)
+SQLite support                : [32mON[0m
+Eigen3 support                : [31mOFF (Eigen was not found)[0m
+Tap Bridge                    : [32mON[0m
+Tap FdNetDevice               : [32mON[0m
+Tests                         : [32mON[0m
+
+
+Modules configured to be built:
+antenna                   aodv                      applications              
+bridge                    buildings                 config-store              
+core                      csma                      csma-layout               
+dsdv                      dsr                       energy                    
+fd-net-device             flow-monitor              internet                  
+internet-apps             lr-wpan                   lte                       
+mesh                      mobility                  ndndSIM                   
+netanim                   network                   nix-vector-routing        
+olsr                      point-to-point            point-to-point-layout     
+propagation               sixlowpan                 spectrum                  
+stats                     tap-bridge                test                      
+topology-read             traffic-control           uan                       
+virtual-net-device        wifi                      zigbee                    
+
+
+Modules that cannot be built:
+brite                     click                     mpi                       
+openflow                  visualizer                
+
+
+-- Configuring done (1.8s)
+-- Generating done (0.7s)
+-- Build files have been written to: /home/stheera/atlas-scenario-2/deps/ns-3/cmake-cache
+Finished executing the following commands:
+/usr/bin/cmake -S /home/stheera/atlas-scenario-2/deps/ns-3 -B /home/stheera/atlas-scenario-2/deps/ns-3/cmake-cache -DCMAKE_BUILD_TYPE=release -DNS3_ASSERT=OFF -DNS3_LOG=OFF -DNS3_WARNINGS_AS_ERRORS=OFF -DNS3_NATIVE_OPTIMIZATIONS=OFF --warn-uninitialized
+[0/2] Re-checking globbed directories...
+[1/25] Building NDNd Go simulation library (phase: twophase)
+==> Using clean ndnd at 76aeb89c (local worktree)
+Preparing worktree (detached HEAD 76aeb89)
+HEAD is now at 76aeb89 Merge pull request #179 from r2dev2/r2dev2/three-pipeline-forwarding
+==> Transforming ndnd source and applying overlay (phase: twophase)
+  overlay: cmd/traffic/main.go
+  overlay: dv/table/prefix_event.go
+  overlay: dv/table/router_event.go
+  overlay: sim/cgo_export.go
+  overlay: sim/clock.go
+  overlay: sim/clock_test.go
+  overlay: sim/cmd/main.go
+  overlay: sim/consumer.go
+  overlay: sim/consumer_test.go
+  overlay: sim/doc.go
+  overlay: sim/dv.go
+  overlay: sim/dv_integration_test.go
+  overlay: sim/engine.go
+  overlay: sim/engine_test.go
+  overlay: sim/face.go
+  overlay: sim/fib_debug_test.go
+  overlay: sim/forwarder.go
+  overlay: sim/fw_face.go
+  overlay: sim/ndndsim_sim.h
+  overlay: sim/node.go
+  overlay: sim/runtime.go
+  overlay: sim/timer.go
+  overlay: sim/trust.go
+  overlay: sim/util.go
+  overlay: std/security/trust_schema/null_schema_test.go
+  overlay: tools/traffic.go
+transformed ndnd written to /home/stheera/atlas-scenario-2/deps/ns-3/contrib/ndndSIM/go/.transformed-ndnd-twophase
+==> Applying overlay-op patches for phase: twophase
+==> Generating go.work
+==> Building simulation library
+==> Running sim tests
+ok  	github.com/named-data/ndnd/sim	18.357s
+==> Done: /home/stheera/atlas-scenario-2/deps/ns-3/contrib/ndndSIM/go/libndndsim-twophase.a
+[2/25] Linking CXX shared library /home/stheera/atlas-scenario-2/deps/ns-3/build/lib/libns3.47-ndndSIM.so
+[3/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-atlas-routing-scenario
+[4/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-dv-multipath
+[5/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-tree-tracers
+[6/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-grid-dv
+[7/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-csma
+[8/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-atlas-scenario
+[9/25] Linking CXX shared library /home/stheera/atlas-scenario-2/deps/ns-3/build/lib/libns3.47-ndndSIM-test.so
+[10/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-topo-reader
+[11/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-custom-app
+[12/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-simple
+[13/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-link-failure
+[14/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-atlas-multihop-scenario
+[15/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-dv-convergence
+[16/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-sprint-churn
+[17/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-atlas-churn-scenario
+[18/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-grid
+[19/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-zipf
+[20/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-tree
+[21/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-wifi
+[22/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/scratch/ns3.47-scratch-simulator
+[23/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/scratch/subdir/ns3.47-scratch-subdir
+[24/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/utils/ns3.47-print-introspected-doxygen
+[25/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/utils/ns3.47-test-runner
+Finished executing the following commands:
+/usr/bin/cmake --build /home/stheera/atlas-scenario-2/deps/ns-3/cmake-cache -j 127
+Warn about uninitialized values.
+-- Using default output directory /home/stheera/atlas-scenario-2/deps/ns-3/build
+-- [33mProceeding without cmake-format[0m
+-- [33mPython: development libraries were not found[0m
+-- [33mdocs: doxygen documentation not enabled due to missing dependencies: dia[0m
+-- Failed to locate sphinx-build executable (missing: SPHINX_EXECUTABLE) 
+-- [33mdocs: sphinx documentation not enabled due to missing dependencies: Sphinx dia[0m
+-- Precompiled headers were enabled
+-- Processing contrib/ndndSIM
+-- ndndSIM: PointToPointNetDevice already has NDN EtherType — no patch needed
+CMake Warning (dev) at contrib/ndndSIM/CMakeLists.txt:49 (set):
+  uninitialized variable 'GOPATH'
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+-- ndndSIM: using Go: /home/stheera/atlas-scenario-2/deps/ns-3/contrib/ndndSIM/../../../gopath/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.3.linux-amd64/bin/go
+-- ndndSIM: phase = twophase
+-- Processing src/antenna
+-- Standard library Bessel function has been found
+-- Processing src/aodv
+-- Processing src/applications
+-- Processing src/bridge
+-- Processing src/brite
+-- [33mSkipping src/brite[0m
+-- Processing src/buildings
+-- Processing src/click
+-- [33mSkipping src/click[0m
+-- Processing src/config-store
+-- Processing src/core
+-- Boost Units have been found.
+-- Processing src/csma
+-- Processing src/csma-layout
+-- Processing src/dsdv
+-- Processing src/dsr
+-- Processing src/energy
+-- Processing src/fd-net-device
+-- Checking for module 'libdpdk'
+--   No package 'libdpdk' found
+-- Processing src/flow-monitor
+-- Processing src/internet
+-- Processing src/internet-apps
+-- Processing src/lr-wpan
+-- Processing src/lte
+-- Processing src/mesh
+-- Processing src/mobility
+-- Processing src/netanim
+-- Processing src/network
+-- Processing src/nix-vector-routing
+-- Processing src/olsr
+-- Processing src/openflow
+-- [33mSkipping src/openflow[0m
+-- Processing src/point-to-point
+-- Processing src/point-to-point-layout
+-- Processing src/propagation
+-- Processing src/sixlowpan
+-- Processing src/spectrum
+-- Processing src/stats
+-- Processing src/tap-bridge
+-- Processing src/test
+-- Processing src/topology-read
+-- Processing src/traffic-control
+-- Processing src/uan
+-- Processing src/virtual-net-device
+-- Processing src/wifi
+-- Processing src/zigbee
+-- ---- Summary of ns-3 settings:
+Build profile                 : release
+Build directory               : /home/stheera/atlas-scenario-2/deps/ns-3/build
+Build with runtime asserts    : OFF (not requested)
+Build with runtime logging    : OFF (not requested)
+Build version embedding       : OFF (not requested)
+BRITE Integration             : [31mOFF (Missing headers: "Brite.h" and missing libraries: "brite")[0m
+DES Metrics event collection  : OFF (not requested)
+DPDK NetDevice                : OFF (not requested)
+Emulation FdNetDevice         : [32mON[0m
+Examples                      : [32mON[0m
+File descriptor NetDevice     : [32mON[0m
+GNU Scientific Library (GSL)  : [31mOFF (GSL was not found)[0m
+GtkConfigStore                : [31mOFF (Harfbuzz is required by GTK3 and was not found)[0m
+LibXml2 support               : [32mON[0m
+MPI Support                   : OFF (not requested)
+ns-3 Click Integration        : [31mOFF (Missing headers: "simclick.h" and missing libraries: "nsclick click")[0m
+ns-3 OpenFlow Integration     : [31mOFF (Missing headers: "" and missing libraries: "openflow")[0m
+Netmap emulation FdNetDevice  : [31mOFF (missing dependency)[0m
+PyViz visualizer              : [31mOFF (Python Bindings are disabled)[0m
+Python Bindings               : OFF (not requested)
+SQLite support                : [32mON[0m
+Eigen3 support                : [31mOFF (Eigen was not found)[0m
+Tap Bridge                    : [32mON[0m
+Tap FdNetDevice               : [32mON[0m
+Tests                         : [32mON[0m
+
+
+Modules configured to be built:
+antenna                   aodv                      applications              
+bridge                    buildings                 config-store              
+core                      csma                      csma-layout               
+dsdv                      dsr                       energy                    
+fd-net-device             flow-monitor              internet                  
+internet-apps             lr-wpan                   lte                       
+mesh                      mobility                  ndndSIM                   
+netanim                   network                   nix-vector-routing        
+olsr                      point-to-point            point-to-point-layout     
+propagation               sixlowpan                 spectrum                  
+stats                     tap-bridge                test                      
+topology-read             traffic-control           uan                       
+virtual-net-device        wifi                      zigbee                    
+
+
+Modules that cannot be built:
+brite                     click                     mpi                       
+openflow                  visualizer                
+
+
+-- Configuring done (1.8s)
+-- Generating done (0.7s)
+-- Build files have been written to: /home/stheera/atlas-scenario-2/deps/ns-3/cmake-cache
+Finished executing the following commands:
+/usr/bin/cmake -S /home/stheera/atlas-scenario-2/deps/ns-3 -B /home/stheera/atlas-scenario-2/deps/ns-3/cmake-cache -DCMAKE_BUILD_TYPE=release -DNS3_ASSERT=OFF -DNS3_LOG=OFF -DNS3_WARNINGS_AS_ERRORS=OFF -DNS3_NATIVE_OPTIMIZATIONS=OFF --warn-uninitialized
+[0/2] Re-checking globbed directories...
+[1/25] Building NDNd Go simulation library (phase: twophase)
+==> Using clean ndnd at 76aeb89c (local worktree)
+Preparing worktree (detached HEAD 76aeb89)
+HEAD is now at 76aeb89 Merge pull request #179 from r2dev2/r2dev2/three-pipeline-forwarding
+==> Transforming ndnd source and applying overlay (phase: twophase)
+  overlay: cmd/traffic/main.go
+  overlay: dv/table/prefix_event.go
+  overlay: dv/table/router_event.go
+  overlay: sim/cgo_export.go
+  overlay: sim/clock.go
+  overlay: sim/clock_test.go
+  overlay: sim/cmd/main.go
+  overlay: sim/consumer.go
+  overlay: sim/consumer_test.go
+  overlay: sim/doc.go
+  overlay: sim/dv.go
+  overlay: sim/dv_integration_test.go
+  overlay: sim/engine.go
+  overlay: sim/engine_test.go
+  overlay: sim/face.go
+  overlay: sim/fib_debug_test.go
+  overlay: sim/forwarder.go
+  overlay: sim/fw_face.go
+  overlay: sim/ndndsim_sim.h
+  overlay: sim/node.go
+  overlay: sim/runtime.go
+  overlay: sim/timer.go
+  overlay: sim/trust.go
+  overlay: sim/util.go
+  overlay: std/security/trust_schema/null_schema_test.go
+  overlay: tools/traffic.go
+transformed ndnd written to /home/stheera/atlas-scenario-2/deps/ns-3/contrib/ndndSIM/go/.transformed-ndnd-twophase
+==> Applying overlay-op patches for phase: twophase
+==> Generating go.work
+==> Building simulation library
+==> Running sim tests
+ok  	github.com/named-data/ndnd/sim	18.286s
+==> Done: /home/stheera/atlas-scenario-2/deps/ns-3/contrib/ndndSIM/go/libndndsim-twophase.a
+[2/25] Linking CXX shared library /home/stheera/atlas-scenario-2/deps/ns-3/build/lib/libns3.47-ndndSIM.so
+[3/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-grid
+[4/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-atlas-multihop-scenario
+[5/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-dv-multipath
+[6/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-atlas-churn-scenario
+[7/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-tree-tracers
+[8/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-topo-reader
+[9/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-dv-convergence
+[10/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-grid-dv
+[11/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-custom-app
+[12/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-sprint-churn
+[13/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-zipf
+[14/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-atlas-scenario
+[15/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-atlas-routing-scenario
+[16/25] Linking CXX shared library /home/stheera/atlas-scenario-2/deps/ns-3/build/lib/libns3.47-ndndSIM-test.so
+[17/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-link-failure
+[18/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-csma
+[19/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-tree
+[20/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-simple
+[21/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-wifi
+[22/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/scratch/ns3.47-scratch-simulator
+[23/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/scratch/subdir/ns3.47-scratch-subdir
+[24/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/utils/ns3.47-print-introspected-doxygen
+[25/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/utils/ns3.47-test-runner
+Finished executing the following commands:
+/usr/bin/cmake --build /home/stheera/atlas-scenario-2/deps/ns-3/cmake-cache -j 127
+Warn about uninitialized values.
+-- Using default output directory /home/stheera/atlas-scenario-2/deps/ns-3/build
+-- [33mProceeding without cmake-format[0m
+-- [33mPython: development libraries were not found[0m
+-- [33mdocs: doxygen documentation not enabled due to missing dependencies: dia[0m
+-- Failed to locate sphinx-build executable (missing: SPHINX_EXECUTABLE) 
+-- [33mdocs: sphinx documentation not enabled due to missing dependencies: Sphinx dia[0m
+-- Precompiled headers were enabled
+-- Processing contrib/ndndSIM
+-- ndndSIM: PointToPointNetDevice already has NDN EtherType — no patch needed
+CMake Warning (dev) at contrib/ndndSIM/CMakeLists.txt:49 (set):
+  uninitialized variable 'GOPATH'
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+-- ndndSIM: using Go: /home/stheera/atlas-scenario-2/deps/ns-3/contrib/ndndSIM/../../../gopath/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.3.linux-amd64/bin/go
+-- ndndSIM: phase = twophase
+-- Processing src/antenna
+-- Standard library Bessel function has been found
+-- Processing src/aodv
+-- Processing src/applications
+-- Processing src/bridge
+-- Processing src/brite
+-- [33mSkipping src/brite[0m
+-- Processing src/buildings
+-- Processing src/click
+-- [33mSkipping src/click[0m
+-- Processing src/config-store
+-- Processing src/core
+-- Boost Units have been found.
+-- Processing src/csma
+-- Processing src/csma-layout
+-- Processing src/dsdv
+-- Processing src/dsr
+-- Processing src/energy
+-- Processing src/fd-net-device
+-- Checking for module 'libdpdk'
+--   No package 'libdpdk' found
+-- Processing src/flow-monitor
+-- Processing src/internet
+-- Processing src/internet-apps
+-- Processing src/lr-wpan
+-- Processing src/lte
+-- Processing src/mesh
+-- Processing src/mobility
+-- Processing src/netanim
+-- Processing src/network
+-- Processing src/nix-vector-routing
+-- Processing src/olsr
+-- Processing src/openflow
+-- [33mSkipping src/openflow[0m
+-- Processing src/point-to-point
+-- Processing src/point-to-point-layout
+-- Processing src/propagation
+-- Processing src/sixlowpan
+-- Processing src/spectrum
+-- Processing src/stats
+-- Processing src/tap-bridge
+-- Processing src/test
+-- Processing src/topology-read
+-- Processing src/traffic-control
+-- Processing src/uan
+-- Processing src/virtual-net-device
+-- Processing src/wifi
+-- Processing src/zigbee
+-- ---- Summary of ns-3 settings:
+Build profile                 : release
+Build directory               : /home/stheera/atlas-scenario-2/deps/ns-3/build
+Build with runtime asserts    : OFF (not requested)
+Build with runtime logging    : OFF (not requested)
+Build version embedding       : OFF (not requested)
+BRITE Integration             : [31mOFF (Missing headers: "Brite.h" and missing libraries: "brite")[0m
+DES Metrics event collection  : OFF (not requested)
+DPDK NetDevice                : OFF (not requested)
+Emulation FdNetDevice         : [32mON[0m
+Examples                      : [32mON[0m
+File descriptor NetDevice     : [32mON[0m
+GNU Scientific Library (GSL)  : [31mOFF (GSL was not found)[0m
+GtkConfigStore                : [31mOFF (Harfbuzz is required by GTK3 and was not found)[0m
+LibXml2 support               : [32mON[0m
+MPI Support                   : OFF (not requested)
+ns-3 Click Integration        : [31mOFF (Missing headers: "simclick.h" and missing libraries: "nsclick click")[0m
+ns-3 OpenFlow Integration     : [31mOFF (Missing headers: "" and missing libraries: "openflow")[0m
+Netmap emulation FdNetDevice  : [31mOFF (missing dependency)[0m
+PyViz visualizer              : [31mOFF (Python Bindings are disabled)[0m
+Python Bindings               : OFF (not requested)
+SQLite support                : [32mON[0m
+Eigen3 support                : [31mOFF (Eigen was not found)[0m
+Tap Bridge                    : [32mON[0m
+Tap FdNetDevice               : [32mON[0m
+Tests                         : [32mON[0m
+
+
+Modules configured to be built:
+antenna                   aodv                      applications              
+bridge                    buildings                 config-store              
+core                      csma                      csma-layout               
+dsdv                      dsr                       energy                    
+fd-net-device             flow-monitor              internet                  
+internet-apps             lr-wpan                   lte                       
+mesh                      mobility                  ndndSIM                   
+netanim                   network                   nix-vector-routing        
+olsr                      point-to-point            point-to-point-layout     
+propagation               sixlowpan                 spectrum                  
+stats                     tap-bridge                test                      
+topology-read             traffic-control           uan                       
+virtual-net-device        wifi                      zigbee                    
+
+
+Modules that cannot be built:
+brite                     click                     mpi                       
+openflow                  visualizer                
+
+
+-- Configuring done (1.8s)
+-- Generating done (0.7s)
+-- Build files have been written to: /home/stheera/atlas-scenario-2/deps/ns-3/cmake-cache
+Finished executing the following commands:
+/usr/bin/cmake -S /home/stheera/atlas-scenario-2/deps/ns-3 -B /home/stheera/atlas-scenario-2/deps/ns-3/cmake-cache -DCMAKE_BUILD_TYPE=release -DNS3_ASSERT=OFF -DNS3_LOG=OFF -DNS3_WARNINGS_AS_ERRORS=OFF -DNS3_NATIVE_OPTIMIZATIONS=OFF --warn-uninitialized
+[0/2] Re-checking globbed directories...
+[1/25] Building NDNd Go simulation library (phase: twophase)
+==> Using clean ndnd at 76aeb89c (local worktree)
+Preparing worktree (detached HEAD 76aeb89)
+HEAD is now at 76aeb89 Merge pull request #179 from r2dev2/r2dev2/three-pipeline-forwarding
+==> Transforming ndnd source and applying overlay (phase: twophase)
+  overlay: cmd/traffic/main.go
+  overlay: dv/table/prefix_event.go
+  overlay: dv/table/router_event.go
+  overlay: sim/cgo_export.go
+  overlay: sim/clock.go
+  overlay: sim/clock_test.go
+  overlay: sim/cmd/main.go
+  overlay: sim/consumer.go
+  overlay: sim/consumer_test.go
+  overlay: sim/doc.go
+  overlay: sim/dv.go
+  overlay: sim/dv_integration_test.go
+  overlay: sim/engine.go
+  overlay: sim/engine_test.go
+  overlay: sim/face.go
+  overlay: sim/fib_debug_test.go
+  overlay: sim/forwarder.go
+  overlay: sim/fw_face.go
+  overlay: sim/ndndsim_sim.h
+  overlay: sim/node.go
+  overlay: sim/runtime.go
+  overlay: sim/timer.go
+  overlay: sim/trust.go
+  overlay: sim/util.go
+  overlay: std/security/trust_schema/null_schema_test.go
+  overlay: tools/traffic.go
+transformed ndnd written to /home/stheera/atlas-scenario-2/deps/ns-3/contrib/ndndSIM/go/.transformed-ndnd-twophase
+==> Applying overlay-op patches for phase: twophase
+==> Generating go.work
+==> Building simulation library
+==> Running sim tests
+ok  	github.com/named-data/ndnd/sim	18.384s
+==> Done: /home/stheera/atlas-scenario-2/deps/ns-3/contrib/ndndSIM/go/libndndsim-twophase.a
+[2/25] Linking CXX shared library /home/stheera/atlas-scenario-2/deps/ns-3/build/lib/libns3.47-ndndSIM.so
+[3/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-tree-tracers
+[4/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-csma
+[5/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-atlas-scenario
+[6/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-atlas-churn-scenario
+[7/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-tree
+[8/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-dv-multipath
+[9/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-grid-dv
+[10/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-atlas-routing-scenario
+[11/25] Linking CXX shared library /home/stheera/atlas-scenario-2/deps/ns-3/build/lib/libns3.47-ndndSIM-test.so
+[12/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-grid
+[13/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-topo-reader
+[14/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-sprint-churn
+[15/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-custom-app
+[16/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-zipf
+[17/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-atlas-multihop-scenario
+[18/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-link-failure
+[19/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-dv-convergence
+[20/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-simple
+[21/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-wifi
+[22/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/utils/ns3.47-print-introspected-doxygen
+[23/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/scratch/subdir/ns3.47-scratch-subdir
+[24/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/scratch/ns3.47-scratch-simulator
+[25/25] Linking CXX executable /home/stheera/atlas-scenario-2/deps/ns-3/build/utils/ns3.47-test-runner
+Finished executing the following commands:
+/usr/bin/cmake --build /home/stheera/atlas-scenario-2/deps/ns-3/cmake-cache -j 127

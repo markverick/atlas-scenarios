@@ -1,0 +1,26 @@
+fatal error: sync: unlock of unlocked mutex
+
+goroutine 17 [running, locked to thread]:
+internal/sync.fatal({0x7fe798936d57?, 0xc000194e08?})
+	/home/stheera/atlas-scenario-2/deps/gopath/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.3.linux-amd64/src/runtime/panic.go:1068 +0x18
+internal/sync.(*Mutex).unlockSlow(0x7fe798f72fb0, 0xffffffff)
+	/home/stheera/atlas-scenario-2/deps/gopath/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.3.linux-amd64/src/internal/sync/mutex.go:204 +0x35
+internal/sync.(*Mutex).Unlock(...)
+	/home/stheera/atlas-scenario-2/deps/gopath/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.3.linux-amd64/src/internal/sync/mutex.go:198
+sync.(*Mutex).Unlock(...)
+	/home/stheera/atlas-scenario-2/deps/gopath/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.3.linux-amd64/src/sync/mutex.go:65
+github.com/named-data/ndnd/sim.NdndSimInit(0x0?, 0x7fe7983c0340, 0x7fe7983c0650, 0x7fe7983beac0, 0x7fe7983bec00, 0x7fe7983bf9b0, 0x7fe7983bede0)
+	/home/stheera/atlas-scenario-2/deps/ns-3/contrib/ndndSIM/go/.transformed-ndnd-twophase/sim/cgo_export.go:144 +0x11a
+=== Sim demo: 3-node linear (a -- b -- c) ===
+Traceback (most recent call last):
+  File "/home/stheera/atlas-scenario-2/sim/demo.py", line 91, in <module>
+    main()
+  File "/home/stheera/atlas-scenario-2/sim/demo.py", line 63, in main
+    run_scenario(
+  File "/home/stheera/atlas-scenario-2/sim/../sim/_helpers.py", line 149, in run_scenario
+    _run_exe(_find_scenario_exe(ns3_dir, "ndndsim-atlas-scenario"),
+  File "/home/stheera/atlas-scenario-2/sim/../sim/_helpers.py", line 317, in _run_exe
+    subprocess.run([exe] + run_args, check=True, capture_output=False)
+  File "/usr/lib/python3.10/subprocess.py", line 526, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/home/stheera/atlas-scenario-2/deps/ns-3/build/contrib/ndndSIM/examples/ns3.47-ndndsim-atlas-scenario', '--topo=/home/stheera/atlas-scenario-2/deps/ns-3/contrib/ndndSIM/examples/topologies/topo-linear-3-atlas.txt', '--rateTrace=/home/stheera/atlas-scenario-2/tests/integration/out-twophase/demo-rate-trace.csv', '--simTime=15.0', '--prefix=/ndn/c/test', '--frequency=10.0', '--network=/minindn', '--consumer=a', '--producer=c', '--convTrace=/home/stheera/atlas-scenario-2/tests/integration/out-twophase/demo-conv.txt', '--linkTrace=/home/stheera/atlas-scenario-2/tests/integration/out-twophase/demo-link-trace.csv']' died with <Signals.SIGABRT: 6>.

@@ -2,11 +2,11 @@
 # run.sh -- Unified runner for atlas-scenarios
 #
 # Usage:
-#   ./run.sh setup                           Install everything from source
-#   sudo ./run.sh emu demo                   3-node file transfer demo
-#   sudo ./run.sh emu scalability [opts]     NxN grid scalability test
-#   ./run.sh sim demo [opts]                 3-node ndndSIM demo
-#   ./run.sh sim scalability [opts]          NxN grid ndndSIM scalability test
+#   ./run.sh [--env twophase|onephase] setup                Install everything from source
+#   sudo ./run.sh [--env twophase|onephase] emu demo         3-node file transfer demo
+#   sudo ./run.sh [--env twophase|onephase] emu scalability  NxN grid scalability test
+#   ./run.sh [--env twophase|onephase] sim demo [opts]       3-node ndndSIM demo
+#   ./run.sh [--env twophase|onephase] sim scalability [opts] NxN grid ndndSIM scalability test
 set -eo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,23 +41,36 @@ NDND_SRC="$NS3_DIR/contrib/ndndSIM/ndnd"
 GOPATH_DIR="$DEPS_DIR/gopath"
 
 ensure_ns3_ready() {
+    local phase="${1:-twophase}"
     if [[ ! -x "$NS3_DIR/ns3" ]]; then
         echo "ERROR: ns-3 not found at $NS3_DIR"
         echo "Run ./setup.sh first"
         exit 1
     fi
 
-    # Reconfigure each run so newly-added Go files are picked up by cmake globs.
     local ns3_cmd=(./ns3)
     if [[ $EUID -eq 0 && -n "$ATLAS_USER" ]]; then
         ns3_cmd=(sudo -u "$ATLAS_USER" env "PATH=$PATH" ./ns3)
     fi
 
-    echo "[sim] Configuring ns-3"
-    (cd "$NS3_DIR" && "${ns3_cmd[@]}" configure -d release)
-
-    echo "[sim] Building ns-3"
-    (cd "$NS3_DIR" && "${ns3_cmd[@]}" build)
+    if [[ "$phase" == "onephase" ]]; then
+        local cmake_cache="$NS3_DIR/cmake-cache-op"
+        local build_out="$NS3_DIR/build-op"
+        echo "[sim] Configuring ns-3 (onephase)"
+        cmake -S "$NS3_DIR" -B "$cmake_cache" \
+            -DCMAKE_BUILD_TYPE=release \
+            -DNS3_EXAMPLES=ON -DNS3_TESTS=ON \
+            -DNDNDSIM_PHASE=onephase \
+            "-DNS3_OUTPUT_DIRECTORY=$build_out"
+        echo "[sim] Building ns-3 (onephase)"
+        cmake --build "$cmake_cache" -j$(nproc)
+    else
+        # Reconfigure each run so newly-added Go files are picked up by cmake globs.
+        echo "[sim] Configuring ns-3 (twophase)"
+        (cd "$NS3_DIR" && "${ns3_cmd[@]}" configure -d release)
+        echo "[sim] Building ns-3 (twophase)"
+        (cd "$NS3_DIR" && "${ns3_cmd[@]}" build)
+    fi
 }
 
 # Locate the Go 1.24 toolchain (downloaded by setup into GOPATH).
@@ -89,12 +102,13 @@ build_ndnd() {
     fi
 }
 
-# Build emu/ndnd-traffic from .transformed-ndnd (cmd/traffic/ is added by the
-# overlay and does not exist in pristine upstream ndnd).
+# Build emu/ndnd-traffic from .transformed-ndnd-<phase> (cmd/traffic/ is added
+# by the overlay and does not exist in pristine upstream ndnd).
 build_ndnd_traffic() {
+    local phase="${1:-twophase}"
     local go_bin
     go_bin="$(find_go_bin)"
-    local src="$NS3_DIR/contrib/ndndSIM/go/.transformed-ndnd"
+    local src="$NS3_DIR/contrib/ndndSIM/go/.transformed-ndnd-${phase}"
     local out="$REPO_DIR/emu/ndnd-traffic"
     echo "[emu] Building ndnd-traffic from $src (go: $go_bin)"
     (cd "$src" && GOWORK=off GOPATH="$GOPATH_DIR" GOFLAGS=-mod=mod "$go_bin" build -buildvcs=false -o "$out" ./cmd/traffic/)
@@ -150,16 +164,24 @@ cleanup_minindn() {
 
 [[ $# -lt 1 ]] && usage
 
+# Global flag: --env twophase|onephase  (default: twophase)
+ENV_PHASE="twophase"
+if [[ "$1" == "--env" ]]; then
+    ENV_PHASE="${2:?--env requires twophase or onephase}"
+    shift 2
+fi
+[[ $# -lt 1 ]] && usage
+
 case "$1" in
     setup)
         exec "$REPO_DIR/setup.sh"
         ;;
     build)
         shift
-        echo "[build] Building all binaries"
-        ensure_ns3_ready
+        echo "[build] Building all binaries (env: $ENV_PHASE)"
+        ensure_ns3_ready "$ENV_PHASE"
         build_ndnd
-        build_ndnd_traffic
+        build_ndnd_traffic "$ENV_PHASE"
         fix_results_owner
         echo "[build] Done"
         exit 0
@@ -174,7 +196,7 @@ case "$1" in
         cleanup_minindn
         if ! $no_build; then
             build_ndnd
-            build_ndnd_traffic
+            build_ndnd_traffic "$ENV_PHASE"
         fi
 
         rc=0
@@ -193,12 +215,17 @@ case "$1" in
 
         fix_results_owner
         if ! $no_build; then
-            ensure_ns3_ready
+            ensure_ns3_ready "$ENV_PHASE"
+        fi
+
+        if [[ "$ENV_PHASE" == "onephase" ]]; then
+            export NS3_CMAKE_CACHE="cmake-cache-op"
+            export NS3_BUILD_OUT="build-op"
         fi
 
         run_cmd=(python3)
         if [[ $EUID -eq 0 && -n "$ATLAS_USER" ]]; then
-            run_cmd=(sudo -u "$ATLAS_USER" env "PATH=$PATH" "PYTHONPATH=$PYTHONPATH" python3)
+            run_cmd=(sudo -u "$ATLAS_USER" env "PATH=$PATH" "PYTHONPATH=$PYTHONPATH" "NS3_CMAKE_CACHE=${NS3_CMAKE_CACHE:-}" "NS3_BUILD_OUT=${NS3_BUILD_OUT:-build}" python3)
         fi
 
         exec "${run_cmd[@]}" "$REPO_DIR/sim/$subcmd" --ns3-dir "$NS3_DIR" "$@"
@@ -222,14 +249,18 @@ case "$1" in
         echo "=== Running emulation ==="
         cleanup_minindn
         build_ndnd
-        build_ndnd_traffic
+        build_ndnd_traffic "$ENV_PHASE"
         rc=0
         python3 "$REPO_DIR/emu/$subcmd" "$@" || rc=$?
         fix_results_owner
         [[ $rc -ne 0 ]] && exit $rc
 
         echo "=== Running simulation ==="
-        ensure_ns3_ready
+        ensure_ns3_ready "$ENV_PHASE"
+        if [[ "$ENV_PHASE" == "onephase" ]]; then
+            export NS3_CMAKE_CACHE="cmake-cache-op"
+            export NS3_BUILD_OUT="build-op"
+        fi
         "${sim_cmd[@]}" "$REPO_DIR/sim/$subcmd" --ns3-dir "$NS3_DIR" "$@"
 
         ;;

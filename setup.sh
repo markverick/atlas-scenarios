@@ -129,7 +129,17 @@ CMAKE
 fi
 ./ns3 configure --enable-examples --enable-tests
 ./ns3 build
-ok "ns-3 + ndndSIM built -> $DEPS_DIR/ns-3"
+ok "ns-3 + ndndSIM built (twophase) -> $DEPS_DIR/ns-3"
+
+# -- 5b. ns-3 onephase build (separate cmake cache, reuses same C++ source) --
+info "Building ns-3 onephase cmake cache (named-data/ndnd@main@51774b8)"
+cmake -S "$DEPS_DIR/ns-3" -B "$DEPS_DIR/ns-3/cmake-cache-op" \
+    -DCMAKE_BUILD_TYPE=release \
+    -DNS3_EXAMPLES=ON -DNS3_TESTS=ON \
+    -DNDNDSIM_PHASE=onephase \
+    "-DNS3_OUTPUT_DIRECTORY=$DEPS_DIR/ns-3/build-op"
+cmake --build "$DEPS_DIR/ns-3/cmake-cache-op" -j$(nproc)
+ok "ns-3 + ndndSIM built (onephase) -> $DEPS_DIR/ns-3/build-op"
 
 # -- 6. NDNd binaries from local ndndSIM source --
 # The daemon is built from the pristine upstream ndnd submodule.
@@ -138,7 +148,7 @@ ok "ns-3 + ndndSIM built -> $DEPS_DIR/ns-3"
 # By the time this step runs ./ns3 build has already invoked go/build.sh, so
 # .transformed-ndnd is fully prepared and its go.work is in place.
 NDND_SRC="$DEPS_DIR/ns-3/contrib/ndndSIM/ndnd"
-TRANSFORMED_NDND="$DEPS_DIR/ns-3/contrib/ndndSIM/go/.transformed-ndnd"
+TRANSFORMED_NDND="$DEPS_DIR/ns-3/contrib/ndndSIM/go/.transformed-ndnd-twophase"
 info "Building NDNd from local source ($NDND_SRC)"
 
 # Find Go toolchain that satisfies go.mod (go 1.24 / toolchain go1.24.x).
