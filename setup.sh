@@ -106,8 +106,11 @@ if [[ ! -d contrib/ndndSIM ]]; then
     git submodule update --init
     cd ../..
 fi
-# Install atlas scenario into ndndSIM examples
-cp "$REPO_DIR/sim/atlas-scenario.cc" contrib/ndndSIM/examples/ndndsim-atlas-scenario.cc
+# Install atlas scenarios into ndndSIM examples
+cp "$REPO_DIR/sim/atlas-scenario.cc"         contrib/ndndSIM/examples/ndndsim-atlas-scenario.cc
+cp "$REPO_DIR/sim/atlas-churn-scenario.cc"   contrib/ndndSIM/examples/ndndsim-atlas-churn-scenario.cc
+cp "$REPO_DIR/sim/atlas-multihop-scenario.cc" contrib/ndndSIM/examples/ndndsim-atlas-multihop-scenario.cc
+cp "$REPO_DIR/sim/atlas-routing-scenario.cc" contrib/ndndSIM/examples/ndndsim-atlas-routing-scenario.cc
 if ! grep -q "ndndsim-atlas-scenario" contrib/ndndSIM/examples/CMakeLists.txt; then
     cat >> contrib/ndndSIM/examples/CMakeLists.txt <<'CMAKE'
 
@@ -129,25 +132,30 @@ fi
 ok "ns-3 + ndndSIM built -> $DEPS_DIR/ns-3"
 
 # -- 6. NDNd binaries from local ndndSIM source --
-# Build from the same Go source that the ns-3 sim links against,
-# so emu and sim use identical NDN library code.
+# The daemon is built from the pristine upstream ndnd submodule.
+# The traffic tool is built from .transformed-ndnd because cmd/traffic/ is
+# added by the overlay (it does not exist in pristine upstream ndnd).
+# By the time this step runs ./ns3 build has already invoked go/build.sh, so
+# .transformed-ndnd is fully prepared and its go.work is in place.
 NDND_SRC="$DEPS_DIR/ns-3/contrib/ndndSIM/ndnd"
+TRANSFORMED_NDND="$DEPS_DIR/ns-3/contrib/ndndSIM/go/.transformed-ndnd"
 info "Building NDNd from local source ($NDND_SRC)"
 
-# Find Go toolchain that satisfies go.mod (1.25+); auto-downloaded into GOPATH
-GO_BIN="$(ls "$GOPATH"/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.*.linux-amd64/bin/go 2>/dev/null | sort -V | tail -1)"
+# Find Go toolchain that satisfies go.mod (go 1.24 / toolchain go1.24.x).
+# The cmake step auto-downloads it into GOPATH via the go toolchain directive.
+GO_BIN="$(ls "$GOPATH"/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.*.linux-amd64/bin/go 2>/dev/null | sort -V | tail -1)"
 if [[ -z "$GO_BIN" || ! -x "$GO_BIN" ]]; then
-    # First run: let system Go trigger the toolchain download
     GO_BIN="$(command -v go)"
 fi
 
 (cd "$NDND_SRC" && GOPATH="$GOPATH" GOFLAGS=-mod=mod "$GO_BIN" build -o "$BIN_DIR/ndnd" ./cmd/ndnd/)
 sudo cp "$BIN_DIR/ndnd" /usr/local/bin/
-ok "NDNd daemon -> $BIN_DIR/ndnd (from ndndSIM source)"
+ok "NDNd daemon -> $BIN_DIR/ndnd (from pristine ndnd)"
 
-# Also build emu traffic tool (identical Go library as sim)
-(cd "$NDND_SRC" && GOPATH="$GOPATH" GOFLAGS=-mod=mod "$GO_BIN" build -o "$REPO_DIR/emu/ndnd-traffic" ./cmd/traffic/)
-ok "emu/ndnd-traffic -> $REPO_DIR/emu/ndnd-traffic"
+# The traffic tool lives in cmd/traffic/ which is added by the overlay.
+# Build from .transformed-ndnd with GOWORK=off so we use the module's own go.mod.
+(cd "$TRANSFORMED_NDND" && GOWORK=off GOPATH="$GOPATH" GOFLAGS=-mod=mod "$GO_BIN" build -o "$REPO_DIR/emu/ndnd-traffic" ./cmd/traffic/)
+ok "emu/ndnd-traffic -> $REPO_DIR/emu/ndnd-traffic (from transformed ndnd)"
 
 # -- Done --
 info "Setup complete!"
