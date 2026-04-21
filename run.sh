@@ -60,10 +60,10 @@ ensure_ns3_ready() {
     (cd "$NS3_DIR" && "${ns3_cmd[@]}" build)
 }
 
-# Locate the Go 1.25 toolchain (downloaded by setup into GOPATH).
+# Locate the Go 1.24 toolchain (downloaded by setup into GOPATH).
 find_go_bin() {
     local go_bin
-    go_bin="$(ls "$GOPATH_DIR"/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.*.linux-amd64/bin/go 2>/dev/null | sort -V | tail -1)"
+    go_bin="$(ls "$GOPATH_DIR"/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.*.linux-amd64/bin/go 2>/dev/null | sort -V | tail -1)"
     if [[ -z "$go_bin" || ! -x "$go_bin" ]]; then
         go_bin="$(command -v go)"   # fallback to system Go
     fi
@@ -89,13 +89,15 @@ build_ndnd() {
     fi
 }
 
-# Build emu/ndnd-traffic from the same ndnd source that sim uses.
+# Build emu/ndnd-traffic from .transformed-ndnd (cmd/traffic/ is added by the
+# overlay and does not exist in pristine upstream ndnd).
 build_ndnd_traffic() {
     local go_bin
     go_bin="$(find_go_bin)"
+    local src="$NS3_DIR/contrib/ndndSIM/go/.transformed-ndnd"
     local out="$REPO_DIR/emu/ndnd-traffic"
-    echo "[emu] Building ndnd-traffic from $NDND_SRC (go: $go_bin)"
-    (cd "$NDND_SRC" && GOPATH="$GOPATH_DIR" GOFLAGS=-mod=mod "$go_bin" build -buildvcs=false -o "$out" ./cmd/traffic/)
+    echo "[emu] Building ndnd-traffic from $src (go: $go_bin)"
+    (cd "$src" && GOWORK=off GOPATH="$GOPATH_DIR" GOFLAGS=-mod=mod "$go_bin" build -buildvcs=false -o "$out" ./cmd/traffic/)
 }
 
 usage() {
