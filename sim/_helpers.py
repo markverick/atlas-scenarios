@@ -280,7 +280,7 @@ def _find_scenario_exe(ns3_dir, target_substr):
     build_dir = os.path.join(ns3_dir, build_out)
     # ns-3 cmake produces executables named "ns3.<ver>-<name>" with no suffix.
     # Exclude the "-default" suffix variant which is a stale artifact from
-    # pre-phase-rename builds (before libndndsim.a became libndndsim-twophase.a).
+    # pre-phase-split builds.
     candidates = []
     for root, _dirs, files in os.walk(os.path.join(build_dir, "contrib/ndndSIM")):
         for f in files:
