@@ -26,6 +26,7 @@ def _prepare_outputs(tmp_path):
 def _stub_run(monkeypatch):
     monkeypatch.setattr(_helpers, "sync_scenario", lambda ns3_dir: None)
     monkeypatch.setattr(_helpers, "sync_routing_scenario", lambda ns3_dir: None)
+    monkeypatch.setattr(_helpers, "sync_prefix_scale_scenario", lambda ns3_dir: None)
     monkeypatch.setattr(_helpers, "_build_ns3", lambda ns3_dir, cores: None)
     monkeypatch.setattr(_helpers, "_find_scenario_exe", lambda ns3_dir, target: "/bin/true")
     monkeypatch.setattr(_helpers, "_run_exe", lambda exe, run_args, run_log: None)
@@ -82,3 +83,42 @@ def test_run_routing_scenario_requires_valid_convergence_trace(monkeypatch, tmp_
             conv_trace=str(conv_file),
             link_trace=str(link_csv),
         )
+
+
+def test_run_prefix_scale_scenario_requires_table_trace(monkeypatch, tmp_path):
+    ns3_dir, topo, _rate_csv, conv_file, link_csv = _prepare_outputs(tmp_path)
+    table_csv = tmp_path / "tables.csv"
+    _stub_run(monkeypatch)
+
+    conv_file.write_text("0.123\n")
+
+    with pytest.raises(RuntimeError, match="table_trace '.*tables.csv' was not created"):
+        _helpers.run_prefix_scale_scenario(
+            str(ns3_dir),
+            topo=str(topo),
+            edge_nodes=["e0", "e1"],
+            conv_trace=str(conv_file),
+            link_trace=str(link_csv),
+            table_trace=str(table_csv),
+        )
+
+
+def test_run_prefix_scale_scenario_accepts_valid_outputs(monkeypatch, tmp_path):
+    ns3_dir, topo, _rate_csv, conv_file, link_csv = _prepare_outputs(tmp_path)
+    table_csv = tmp_path / "tables.csv"
+    _stub_run(monkeypatch)
+
+    conv_file.write_text("0.123\n")
+    table_csv.write_text(
+        "node,role,table_category,table_name,entry_count\n"
+        "c0,core,common,forwarder_rib,10\n"
+    )
+
+    _helpers.run_prefix_scale_scenario(
+        str(ns3_dir),
+        topo=str(topo),
+        edge_nodes=["e0", "e1"],
+        conv_trace=str(conv_file),
+        link_trace=str(link_csv),
+        table_trace=str(table_csv),
+    )

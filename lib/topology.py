@@ -62,6 +62,76 @@ def linear_stats(n):
     return n, n - 1
 
 
+def core_edge_roles():
+    """Return node-role lists for the fixed 10-node core/edge topology."""
+    return {
+        "core": [f"c{i}" for i in range(6)],
+        "edge": [f"e{i}" for i in range(4)],
+    }
+
+
+def core_edge_nodes():
+    """Return the ordered node list for the fixed 10-node core/edge topology."""
+    roles = core_edge_roles()
+    return roles["core"] + roles["edge"]
+
+
+def core_edge_links():
+    """Return link pairs for the fixed 10-node core/edge topology."""
+    return [
+        ("c0", "c1"),
+        ("c1", "c2"),
+        ("c2", "c3"),
+        ("c3", "c4"),
+        ("c4", "c5"),
+        ("c5", "c0"),
+        ("c0", "c3"),
+        ("c1", "c4"),
+        ("e0", "c0"),
+        ("e1", "c2"),
+        ("e2", "c3"),
+        ("e3", "c5"),
+    ]
+
+
+def core_edge_stats():
+    """Return (num_nodes, num_links) for the fixed 10-node core/edge topology."""
+    return len(core_edge_nodes()), len(core_edge_links())
+
+
+def generate_ndnsim_core_edge_topo(bw="10Mbps", delay_ms=10, path=None, queue_size=100):
+    """Write an ndnSIM topology file for the fixed 10-node core/edge topology."""
+    positions = {
+        "c0": (0, 1),
+        "c1": (0, 3),
+        "c2": (1, 4),
+        "c3": (2, 3),
+        "c4": (2, 1),
+        "c5": (1, 0),
+        "e0": (-1, 1),
+        "e1": (1, 5),
+        "e2": (3, 3),
+        "e3": (1, -1),
+    }
+
+    lines = [
+        "# Auto-generated 10-node core/edge topology",
+        "router",
+        "# node  comment  yPos  xPos",
+    ]
+    for name in core_edge_nodes():
+        y_pos, x_pos = positions[name]
+        lines.append(f"{name}  NA  {y_pos}  {x_pos}")
+
+    lines.append("")
+    lines.append("link")
+    lines.append("# srcNode  dstNode  bandwidth  metric  delay  queue")
+    for src, dst in core_edge_links():
+        lines.append(f"{src}  {dst}  {bw}  1  {delay_ms}ms  {queue_size}")
+
+    return _write_topo(lines, path)
+
+
 def _write_topo(lines, path=None):
     """Join lines into topology content and optionally write to disk."""
     content = "\n".join(lines) + "\n"

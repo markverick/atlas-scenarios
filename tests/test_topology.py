@@ -1,8 +1,10 @@
-"""Tests for lib/topology.py -- grid helpers and conf parsing."""
+"""Tests for lib/topology.py helpers."""
 import os
 import pytest
 
-from lib.topology import grid_stats, grid_links, grid_nodes, conf_stats
+from lib.topology import (conf_stats, core_edge_links, core_edge_roles,
+                          core_edge_stats, generate_ndnsim_core_edge_topo,
+                          grid_links, grid_nodes, grid_stats)
 
 
 def test_grid_stats_2x2():
@@ -41,3 +43,27 @@ def test_conf_stats_sprint():
     nodes, links = conf_stats(conf)
     assert nodes == 52
     assert links == 84
+
+
+def test_core_edge_stats():
+    nodes, links = core_edge_stats()
+    assert nodes == 10
+    assert links == 12
+
+
+def test_core_edge_roles_and_links():
+    roles = core_edge_roles()
+    assert roles["core"] == ["c0", "c1", "c2", "c3", "c4", "c5"]
+    assert roles["edge"] == ["e0", "e1", "e2", "e3"]
+
+    links = core_edge_links()
+    assert ("e0", "c0") in links
+    assert ("c0", "c3") in links
+
+
+def test_generate_ndnsim_core_edge_topo(tmp_path):
+    topo_path = tmp_path / "core-edge.txt"
+    content = generate_ndnsim_core_edge_topo(path=str(topo_path))
+    assert topo_path.read_text() == content
+    assert "c0  NA" in content
+    assert "e3  c5  10Mbps  1  10ms  100" in content

@@ -1,0 +1,240 @@
+#!/usr/bin/env python3
+"""ndndSIM core/edge prefix-scale table study."""
+
+import argparse
+import csv
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from lib.result_adapter import parse_conv_trace, parse_link_trace
+from lib.topology import (core_edge_roles, core_edge_stats,
+                          generate_ndnsim_core_edge_topo)
+from sim._helpers import resolve_ns3_dir, run_prefix_scale_scenario
+
+
+RUN_FIELDNAMES = [
+    "phase",
+    "trial",
+    "prefix_count",
+    "num_nodes",
+    "num_links",
+    "router_reachability_s",
+    "control_packets",
+    "control_bytes",
+    "total_packets",
+    "total_bytes",
+]
+
+NODE_FIELDNAMES = [
+    "phase",
+    "trial",
+    "prefix_count",
+    "node",
+    "role",
+    "table_category",
+    "table_name",
+    "entry_count",
+]
+
+ROLE_FIELDNAMES = [
+    "phase",
+    "trial",
+    "prefix_count",
+    "role",
+    "table_category",
+    "table_name",
+    "node_count",
+    "total_entries",
+    "avg_entries",
+    "max_entries",
+]
+
+
+def current_phase_label():
+    phase = os.environ.get("NDND_PHASE")
+    if phase in {"onephase", "twophase"}:
+        return phase
+
+    build_out = os.environ.get("NS3_BUILD_OUT", "build")
+    return "onephase" if build_out.endswith("-op") else "twophase"
+
+
+def cli_dv_config(args):
+    dv_config = {}
+    if args.adv_interval:
+        dv_config["advertise_interval"] = args.adv_interval
+    if args.dead_interval:
+        dv_config["router_dead_interval"] = args.dead_interval
+    return dv_config or None
+
+
+def parse_table_trace(path):
+    rows = []
+    with open(path, newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            rows.append({
+                "node": row["node"],
+                "role": row["role"],
+                "table_category": row["table_category"],
+                "table_name": row["table_name"],
+                "entry_count": int(row["entry_count"]),
+            })
+    return rows
+
+
+def summarize_role_table_metrics(rows):
+    grouped = {}
+    for row in rows:
+        key = (row["role"], row["table_category"], row["table_name"])
+        agg = grouped.setdefault(key, {
+            "node_count": 0,
+            "total_entries": 0,
+            "max_entries": 0,
+        })
+        agg["node_count"] += 1
+        agg["total_entries"] += row["entry_count"]
+        agg["max_entries"] = max(agg["max_entries"], row["entry_count"])
+
+    summaries = []
+    for (role, table_category, table_name), agg in sorted(grouped.items()):
+        node_count = agg["node_count"]
+        summaries.append({
+            "role": role,
+            "table_category": table_category,
+            "table_name": table_name,
+            "node_count": node_count,
+            "total_entries": agg["total_entries"],
+            "avg_entries": agg["total_entries"] / node_count,
+            "max_entries": agg["max_entries"],
+        })
+    return summaries
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description="ndndSIM core/edge prefix-scale table measurement"
+    )
+    parser.add_argument("--ns3-dir", default=None,
+                        help="Path to ns-3 root (default: deps/ns-3 or NS3_DIR env)")
+    parser.add_argument("--prefix-counts", nargs="+", type=int,
+                        default=[0, 1, 2, 3, 4, 5],
+                        help="Total prefixes to sweep across edge routers")
+    parser.add_argument("--delay", type=int, default=10,
+                        help="Per-link delay in ms (default: 10)")
+    parser.add_argument("--bw", type=int, default=10,
+                        help="Per-link bandwidth in Mbps (default: 10)")
+    parser.add_argument("--window", type=float, default=40.0,
+                        help="Simulation duration in seconds (default: 40)")
+    parser.add_argument("--out", default="results/sim_prefix_scale",
+                        help="Output directory (default: results/sim_prefix_scale)")
+    parser.add_argument("--cores", type=int, default=0,
+                        help="Parallel build / CPU cores (0 = all)")
+    parser.add_argument("--trials", type=int, default=1,
+                        help="Repetitions per prefix count (default: 1)")
+    parser.add_argument("--adv-interval", type=int, default=0,
+                        help="DV advertisement interval in ms (0 = default)")
+    parser.add_argument("--dead-interval", type=int, default=0,
+                        help="DV router dead interval in ms (0 = default)")
+    args = parser.parse_args(sys.argv[1:] if argv is None else argv)
+
+    phase = current_phase_label()
+    dv_config = cli_dv_config(args)
+    ns3_dir = resolve_ns3_dir(args.ns3_dir)
+    topo_dir = os.path.join(ns3_dir, "contrib", "ndndSIM", "examples", "topologies")
+    os.makedirs(args.out, exist_ok=True)
+    os.makedirs(topo_dir, exist_ok=True)
+
+    topo_path = os.path.join(topo_dir, "topo-core-edge-atlas.txt")
+    generate_ndnsim_core_edge_topo(
+        bw=f"{args.bw}Mbps",
+        delay_ms=args.delay,
+        path=topo_path,
+    )
+    topo_rel = os.path.relpath(topo_path, ns3_dir)
+    roles = core_edge_roles()
+    num_nodes, num_links = core_edge_stats()
+
+    runs_path = os.path.join(args.out, "runs.csv")
+    node_path = os.path.join(args.out, "node_table_metrics.csv")
+    role_path = os.path.join(args.out, "role_table_summary.csv")
+
+    with open(runs_path, "w", newline="") as runs_handle, \
+            open(node_path, "w", newline="") as node_handle, \
+            open(role_path, "w", newline="") as role_handle:
+        runs_writer = csv.DictWriter(runs_handle, fieldnames=RUN_FIELDNAMES)
+        node_writer = csv.DictWriter(node_handle, fieldnames=NODE_FIELDNAMES)
+        role_writer = csv.DictWriter(role_handle, fieldnames=ROLE_FIELDNAMES)
+        runs_writer.writeheader()
+        node_writer.writeheader()
+        role_writer.writeheader()
+
+        for prefix_count in args.prefix_counts:
+            for trial in range(1, args.trials + 1):
+                tag = f"{phase}-p{prefix_count}-t{trial}"
+                conv_file = os.path.abspath(os.path.join(args.out, f"conv-{tag}.txt"))
+                link_csv = os.path.abspath(os.path.join(args.out, f"link-trace-{tag}.csv"))
+                table_csv = os.path.abspath(os.path.join(args.out, f"tables-{tag}.csv"))
+                run_log = os.path.abspath(os.path.join(args.out, f"run-{tag}.log"))
+
+                print(f"\n=== Prefix scale: phase {phase}, prefixes {prefix_count}, trial {trial} ===")
+                run_prefix_scale_scenario(
+                    ns3_dir,
+                    topo=topo_rel,
+                    edge_nodes=roles["edge"],
+                    sim_time=args.window,
+                    cores=args.cores,
+                    conv_trace=conv_file,
+                    link_trace=link_csv,
+                    table_trace=table_csv,
+                    dv_config=dv_config,
+                    num_prefixes=prefix_count,
+                    run_log=run_log,
+                )
+
+                conv = parse_conv_trace(conv_file)
+                link_stats = parse_link_trace(link_csv)
+                table_rows = parse_table_trace(table_csv)
+                role_rows = summarize_role_table_metrics(table_rows)
+
+                runs_writer.writerow({
+                    "phase": phase,
+                    "trial": trial,
+                    "prefix_count": prefix_count,
+                    "num_nodes": num_nodes,
+                    "num_links": num_links,
+                    "router_reachability_s": conv,
+                    "control_packets": link_stats["control_packets"],
+                    "control_bytes": link_stats["control_bytes"],
+                    "total_packets": link_stats["total_packets"],
+                    "total_bytes": link_stats["total_bytes"],
+                })
+
+                for row in table_rows:
+                    node_writer.writerow({
+                        "phase": phase,
+                        "trial": trial,
+                        "prefix_count": prefix_count,
+                        **row,
+                    })
+
+                for row in role_rows:
+                    role_writer.writerow({
+                        "phase": phase,
+                        "trial": trial,
+                        "prefix_count": prefix_count,
+                        **row,
+                    })
+
+                print(f"  routing_convergence={conv}s"
+                      f"  control_pkts={link_stats['control_packets']}"
+                      f"  control_bytes={link_stats['control_bytes']}")
+
+    print(f"\nResults written to {args.out}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

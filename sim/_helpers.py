@@ -27,6 +27,9 @@ MULTIHOP_CC_FILENAME = f"{MULTIHOP_TARGET_NAME}.cc"
 ROUTING_TARGET_NAME = "ndndsim-atlas-routing-scenario"
 ROUTING_CC_FILENAME = f"{ROUTING_TARGET_NAME}.cc"
 
+PREFIX_SCALE_TARGET_NAME = "ndndsim-atlas-prefix-scale-scenario"
+PREFIX_SCALE_CC_FILENAME = f"{PREFIX_SCALE_TARGET_NAME}.cc"
+
 CHURN_TARGET_NAME = "ndndsim-atlas-churn-scenario"
 CHURN_CC_FILENAME = f"{CHURN_TARGET_NAME}.cc"
 
@@ -391,6 +394,13 @@ def sync_routing_scenario(ns3_dir):
                  "Atlas routing-only scenario (no app traffic)")
 
 
+def sync_prefix_scale_scenario(ns3_dir):
+    """Ensure atlas-prefix-scale-scenario.cc is installed and registered in ns-3."""
+    _sync_target(ns3_dir, "atlas-prefix-scale-scenario.cc",
+                 PREFIX_SCALE_TARGET_NAME, PREFIX_SCALE_CC_FILENAME,
+                 "Atlas core-edge prefix-scale scenario")
+
+
 def run_routing_scenario(ns3_dir, *, topo, sim_time=30.0, cores=0,
                          conv_trace=None, link_trace=None, packet_trace=None,
                          dv_config=None, network="/minindn",
@@ -455,6 +465,88 @@ def run_routing_scenario(ns3_dir, *, topo, sim_time=30.0, cores=0,
     if errors:
         raise RuntimeError(
             "Routing simulation completed but produced invalid output:\n"
+            + "\n".join(f"  - {error}" for error in errors)
+        )
+
+
+def run_prefix_scale_scenario(ns3_dir, *, topo, edge_nodes, sim_time=40.0,
+                              cores=0, conv_trace=None, link_trace=None,
+                              table_trace=None, dv_config=None,
+                              network="/minindn", num_prefixes=0,
+                              run_log=None):
+    """Build ns-3 and run the core-edge prefix-scale scenario."""
+    if not edge_nodes:
+        raise ValueError("edge_nodes must not be empty")
+
+    sync_prefix_scale_scenario(ns3_dir)
+    _build_ns3(ns3_dir, cores)
+
+    if not os.path.isabs(topo):
+        topo = os.path.join(ns3_dir, topo)
+    topo = os.path.abspath(topo)
+
+    run_args = [
+        f"--topo={topo}",
+        f"--simTime={sim_time}",
+        f"--network={network}",
+        f"--edgeNodes={','.join(edge_nodes)}",
+        f"--numPrefixes={num_prefixes}",
+    ]
+    if conv_trace:
+        run_args.append(f"--convTrace={conv_trace}")
+    if link_trace:
+        run_args.append(f"--linkTrace={link_trace}")
+    if table_trace:
+        run_args.append(f"--tableTrace={table_trace}")
+    if dv_config:
+        run_args.append(f"--dvConfig={json.dumps(dv_config, separators=(',', ':'))}")
+
+    _run_exe(_find_scenario_exe(ns3_dir, PREFIX_SCALE_TARGET_NAME),
+             run_args, run_log)
+
+    errors = []
+
+    if conv_trace:
+        if not os.path.isfile(conv_trace):
+            errors.append(f"conv_trace '{conv_trace}' was not created by the simulation")
+        else:
+            try:
+                val = parse_conv_trace(conv_trace)
+                if val < 0:
+                    errors.append(
+                        f"conv_trace '{conv_trace}' reports convergence=-1 -- "
+                        "DV routing never converged during the simulation"
+                    )
+            except (ValueError, OSError) as exc:
+                errors.append(f"conv_trace '{conv_trace}' is unreadable: {exc}")
+
+    if link_trace:
+        if not os.path.isfile(link_trace):
+            errors.append(f"link_trace '{link_trace}' was not created by the simulation")
+        else:
+            with open(link_trace) as f:
+                lines = [l for l in f if l.strip()]
+            if len(lines) <= 1:
+                errors.append(
+                    f"link_trace '{link_trace}' has no data rows -- "
+                    "no packets were traced on any link"
+                )
+
+    if table_trace:
+        if not os.path.isfile(table_trace):
+            errors.append(f"table_trace '{table_trace}' was not created by the simulation")
+        else:
+            with open(table_trace) as f:
+                lines = [l for l in f if l.strip()]
+            if len(lines) <= 1:
+                errors.append(
+                    f"table_trace '{table_trace}' has no data rows -- "
+                    "per-node table metrics were not recorded"
+                )
+
+    if errors:
+        raise RuntimeError(
+            "Prefix-scale simulation completed but produced invalid output:\n"
             + "\n".join(f"  - {error}" for error in errors)
         )
 
