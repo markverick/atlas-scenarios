@@ -74,6 +74,15 @@ sudo ./jobs.sh start --fresh prefix_scale/core_edge_bothphase_0to5_tables
 
 That queue now renders the plot set and `summary.md` automatically after both sim phases finish.
 
+Wider-step core/edge table-study queue:
+
+```bash
+sudo ./jobs.sh start --fresh prefix_scale/core_edge_bothphase_0to50_by10_tables
+```
+
+This variant runs the same core/edge twophase-versus-onephase table study, but
+at prefix counts `0 10 20 30 40 50`.
+
 Large Rocketfuel queue:
 
 ```bash

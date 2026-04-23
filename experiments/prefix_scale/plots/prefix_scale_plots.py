@@ -33,6 +33,7 @@ CORE_EDGE_PLOT_FILES = {
     "control_breakdown": "core_edge_control_breakdown.png",
     "prefix_state": "core_edge_prefix_state_by_role.png",
     "forwarder_growth": "core_edge_forwarding_delta_by_role.png",
+    "table_role_average": "core_edge_table_average_by_role.png",
     "table_stack": "core_edge_table_stack_comparison.png",
 }
 
@@ -42,6 +43,7 @@ ROCKETFUEL_4755_PLOT_FILES = {
     "control_breakdown": "rocketfuel_4755_control_breakdown.png",
     "prefix_state": "rocketfuel_4755_prefix_state_by_role.png",
     "forwarder_growth": "rocketfuel_4755_forwarding_delta_by_role.png",
+    "table_role_average": "rocketfuel_4755_table_average_by_role.png",
     "table_stack": "rocketfuel_4755_table_stack_comparison.png",
 }
 
@@ -51,6 +53,7 @@ ROCKETFUEL_2914_PLOT_FILES = {
     "control_breakdown": "rocketfuel_2914_control_breakdown.png",
     "prefix_state": "rocketfuel_2914_prefix_state_by_role.png",
     "forwarder_growth": "rocketfuel_2914_forwarding_delta_by_role.png",
+    "table_role_average": "rocketfuel_2914_table_average_by_role.png",
     "table_stack": "rocketfuel_2914_table_stack_comparison.png",
 }
 
@@ -104,6 +107,26 @@ TOPOLOGY_PLOT_PROFILES = {
         "link_width": 0.35,
         "summary_note": "This topology uses the largest connected `r0` component from the public Rocketfuel AS 2914 cch map, so disconnected fragments are intentionally excluded.",
     },
+}
+
+TABLE_ORDER = [
+    ("common", "dv_neighbors"),
+    ("common", "dv_rib"),
+    ("common", "forwarder_fib"),
+    ("onephase", "dv_prefix_table"),
+    ("twophase", "forwarder_pet"),
+    ("twophase", "forwarder_multicast_fib"),
+    ("twophase", "dv_prefix_egress_state"),
+]
+
+TABLE_STYLES = {
+    ("common", "dv_neighbors"): ("DV neighbors", "#7A7A7A"),
+    ("common", "dv_rib"): ("DV RIB", "#4C72B0"),
+    ("common", "forwarder_fib"): ("Forwarder FIB", "#2E8B57"),
+    ("onephase", "dv_prefix_table"): ("One-phase DV prefix table", "#8172B2"),
+    ("twophase", "forwarder_pet"): ("Two-phase forwarder PET", "#DD8452"),
+    ("twophase", "forwarder_multicast_fib"): ("Two-phase multicast FIB", "#CCB974"),
+    ("twophase", "dv_prefix_egress_state"): ("Two-phase DV prefix egress state", "#C44E52"),
 }
 
 
@@ -171,10 +194,36 @@ def _aggregate_total_entries_by_prefix_and_table(rows):
     grouped = {}
     for row in rows:
         prefix_count = int(row["prefix_count"])
+        trial = int(row["trial"])
         key = (row["table_category"], row["table_name"])
         grouped.setdefault(key, {})
-        grouped[key][prefix_count] = grouped[key].get(prefix_count, 0.0) + float(row["total_entries"])
-    return grouped
+        grouped[key].setdefault(prefix_count, {})
+        grouped[key][prefix_count][trial] = grouped[key][prefix_count].get(trial, 0.0) + float(row["total_entries"])
+    return {
+        key: {
+            prefix_count: _mean(list(trial_totals.values()))
+            for prefix_count, trial_totals in prefix_to_trials.items()
+        }
+        for key, prefix_to_trials in grouped.items()
+    }
+
+
+def _aggregate_avg_entries_by_prefix_and_table(rows, *, role):
+    grouped = {}
+    for row in rows:
+        if row.get("role") != role:
+            continue
+        prefix_count = int(row["prefix_count"])
+        key = (row["table_category"], row["table_name"])
+        grouped.setdefault(key, {})
+        grouped[key].setdefault(prefix_count, []).append(float(row["avg_entries"]))
+    return {
+        key: {
+            prefix_count: _mean(values)
+            for prefix_count, values in prefix_to_values.items()
+        }
+        for key, prefix_to_values in grouped.items()
+    }
 
 
 def plot_core_edge_topology(out_dir, topology_key="core_edge"):
@@ -252,27 +301,6 @@ def plot_core_edge_topology(out_dir, topology_key="core_edge"):
 
 def plot_core_edge_table_stack_comparison(results_by_phase, out_dir, source_label,
                                           topology_key="core_edge"):
-    table_order = [
-        ("common", "dv_neighbors"),
-        ("common", "dv_rib"),
-        ("common", "forwarder_rib"),
-        ("common", "forwarder_fib"),
-        ("onephase", "dv_prefix_table"),
-        ("twophase", "forwarder_pet"),
-        ("twophase", "forwarder_multicast_fib"),
-        ("twophase", "dv_prefix_egress_state"),
-    ]
-    table_styles = {
-        ("common", "dv_neighbors"): ("DV neighbors", "#7A7A7A"),
-        ("common", "dv_rib"): ("DV RIB", "#4C72B0"),
-        ("common", "forwarder_rib"): ("Forwarder RIB", "#55A868"),
-        ("common", "forwarder_fib"): ("Forwarder FIB", "#2E8B57"),
-        ("onephase", "dv_prefix_table"): ("One-phase DV prefix table", "#8172B2"),
-        ("twophase", "forwarder_pet"): ("Two-phase forwarder PET", "#DD8452"),
-        ("twophase", "forwarder_multicast_fib"): ("Two-phase multicast FIB", "#CCB974"),
-        ("twophase", "dv_prefix_egress_state"): ("Two-phase DV prefix egress state", "#C44E52"),
-    }
-
     aggregated = {
         phase: _aggregate_total_entries_by_prefix_and_table(results_by_phase[phase]["role_table_summary"])
         for phase in ("onephase", "twophase")
@@ -296,11 +324,11 @@ def plot_core_edge_table_stack_comparison(results_by_phase, out_dir, source_labe
 
         for offset, phase in ((-width / 2, "onephase"), (width / 2, "twophase")):
             bottoms = np.zeros(len(prefix_counts))
-            for key in table_order:
+            for key in TABLE_ORDER:
                 prefix_to_value = aggregated[phase].get(key)
                 if not prefix_to_value:
                     continue
-                label, color = table_styles[key]
+                label, color = TABLE_STYLES[key]
                 heights = np.array([prefix_to_value.get(prefix_count, 0.0) for prefix_count in prefix_counts])
                 bars = axis.bar(
                     x_values + offset,
@@ -336,6 +364,87 @@ def plot_core_edge_table_stack_comparison(results_by_phase, out_dir, source_labe
         fig.suptitle(f"{_topology_profile(topology_key)['study_label']}: Total Table Entries by Phase and Table", y=1.02)
         fig.tight_layout()
         path = os.path.join(out_dir, _plot_files(topology_key)["table_stack"])
+        fig.savefig(path, dpi=180, bbox_inches="tight")
+        plt.close(fig)
+        print(f"  Saved {path}")
+
+
+def plot_core_edge_table_average_by_role(results_by_phase, out_dir, source_label,
+                                         topology_key="core_edge"):
+    aggregated = {
+        phase: {
+            role: _aggregate_avg_entries_by_prefix_and_table(
+                results_by_phase[phase]["role_table_summary"],
+                role=role,
+            )
+            for role in ("core", "edge")
+        }
+        for phase in ("onephase", "twophase")
+    }
+    prefix_counts = sorted(
+        {
+            prefix_count
+            for phase_data in aggregated.values()
+            for role_data in phase_data.values()
+            for prefix_to_value in role_data.values()
+            for prefix_count in prefix_to_value
+        }
+    )
+    if not prefix_counts:
+        return
+
+    with plt.rc_context(CORE_EDGE_RC):
+        fig, axes = plt.subplots(1, 2, figsize=(14.5, 6.0), sharey=True)
+        x_values = np.arange(len(prefix_counts))
+        width = 0.38
+        legend_handles = {}
+        role_specs = (("core", "Core routers"), ("edge", "Edge routers"))
+
+        for axis, (role, title) in zip(axes, role_specs):
+            for offset, phase in ((-width / 2, "onephase"), (width / 2, "twophase")):
+                bottoms = np.zeros(len(prefix_counts))
+                for key in TABLE_ORDER:
+                    prefix_to_value = aggregated[phase][role].get(key)
+                    if not prefix_to_value:
+                        continue
+                    label, color = TABLE_STYLES[key]
+                    heights = np.array([prefix_to_value.get(prefix_count, 0.0) for prefix_count in prefix_counts])
+                    bars = axis.bar(
+                        x_values + offset,
+                        heights,
+                        width,
+                        bottom=bottoms,
+                        color=color,
+                        edgecolor="white",
+                        linewidth=0.5,
+                        label=label,
+                    )
+                    legend_handles.setdefault(label, bars[0])
+                    bottoms = bottoms + heights
+
+            axis.set_title(title)
+            axis.set_xticks(x_values)
+            axis.set_xticklabels([str(prefix_count) for prefix_count in prefix_counts])
+            axis.set_xlabel("Total announced prefixes")
+            axis.grid(True, axis="y", alpha=0.25)
+            axis.set_axisbelow(True)
+
+        axes[0].set_ylabel("Average table entries per node")
+
+        phase_handles = [
+            plt.Line2D([0], [0], color=PHASE_STYLES["onephase"]["color"], linewidth=8, label="One-phase bar"),
+            plt.Line2D([0], [0], color=PHASE_STYLES["twophase"]["color"], linewidth=8, label="Two-phase bar"),
+        ]
+        phase_legend = axes[0].legend(handles=phase_handles, loc="upper left")
+        axes[0].add_artist(phase_legend)
+
+        table_handle_list = [legend_handles[label] for label in legend_handles]
+        table_label_list = list(legend_handles.keys())
+        fig.legend(table_handle_list, table_label_list, loc="upper center", bbox_to_anchor=(0.5, -0.02), ncol=2)
+
+        fig.suptitle(f"{_topology_profile(topology_key)['study_label']}: Average Table Entries per Node by Role and Table", y=1.02)
+        fig.tight_layout(rect=(0, 0.06, 1, 1))
+        path = os.path.join(out_dir, _plot_files(topology_key)["table_role_average"])
         fig.savefig(path, dpi=180, bbox_inches="tight")
         plt.close(fig)
         print(f"  Saved {path}")
@@ -427,17 +536,9 @@ def plot_core_edge_forwarding_delta_by_role(results_by_phase, out_dir, source_la
         {
             "phase": "onephase",
             "table_category": "common",
-            "table_name": "forwarder_rib",
-            "label": "One-phase forwarder RIB",
-            "color": "#4C72B0",
-            "linestyle": "-",
-        },
-        {
-            "phase": "onephase",
-            "table_category": "common",
             "table_name": "forwarder_fib",
             "label": "One-phase forwarder FIB",
-            "color": "#55A868",
+            "color": "#2E8B57",
             "linestyle": "-",
         },
         {
@@ -581,8 +682,6 @@ def write_core_edge_summary(results_by_phase, data_dir, out_dir,
 
     onephase_fib_core = role_series("onephase", "core", "common", "forwarder_fib")
     onephase_fib_edge = role_series("onephase", "edge", "common", "forwarder_fib")
-    onephase_rib_core = role_series("onephase", "core", "common", "forwarder_rib")
-    onephase_rib_edge = role_series("onephase", "edge", "common", "forwarder_rib")
     twophase_pet_core = role_series("twophase", "core", "twophase", "forwarder_pet")
     twophase_pet_edge = role_series("twophase", "edge", "twophase", "forwarder_pet")
 
@@ -620,6 +719,9 @@ def write_core_edge_summary(results_by_phase, data_dir, out_dir,
         "",
         "### Prefix-driven forwarder state growth",
         f"![Prefix-driven forwarder state growth]({rel_plot(plot_files['forwarder_growth'])})",
+        "",
+        "### Average table entries per core and edge node",
+        f"![Average table entries per core and edge node]({rel_plot(plot_files['table_role_average'])})",
         "",
         "### Total table entries by phase and table",
         f"![Total table entries by phase and table]({rel_plot(plot_files['table_stack'])})",
@@ -663,16 +765,9 @@ def write_core_edge_summary(results_by_phase, data_dir, out_dir,
 
     onephase_fib_core_delta = _series_delta(onephase_fib_core, start_prefix, max_prefix)
     onephase_fib_edge_delta = _series_delta(onephase_fib_edge, start_prefix, max_prefix)
-    onephase_rib_core_delta = _series_delta(onephase_rib_core, start_prefix, max_prefix)
-    onephase_rib_edge_delta = _series_delta(onephase_rib_edge, start_prefix, max_prefix)
-    if any(delta is not None for delta in (
-        onephase_fib_core_delta,
-        onephase_fib_edge_delta,
-        onephase_rib_core_delta,
-        onephase_rib_edge_delta,
-    )):
+    if onephase_fib_core_delta is not None or onephase_fib_edge_delta is not None:
         observations.append(
-            f"- At {max_prefix} total prefixes, one-phase forwarder FIB growth is {0.0 if onephase_fib_core_delta is None else onephase_fib_core_delta:+.2f} average entries on core routers and {0.0 if onephase_fib_edge_delta is None else onephase_fib_edge_delta:+.2f} on edge routers, while one-phase forwarder RIB growth is {0.0 if onephase_rib_core_delta is None else onephase_rib_core_delta:+.2f} on core routers and {0.0 if onephase_rib_edge_delta is None else onephase_rib_edge_delta:+.2f} on edge routers."
+            f"- At {max_prefix} total prefixes, one-phase forwarder FIB growth is {0.0 if onephase_fib_core_delta is None else onephase_fib_core_delta:+.2f} average entries on core routers and {0.0 if onephase_fib_edge_delta is None else onephase_fib_edge_delta:+.2f} on edge routers."
         )
 
     twophase_pet_core_delta = _series_delta(twophase_pet_core, start_prefix, max_prefix)

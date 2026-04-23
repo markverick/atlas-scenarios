@@ -197,6 +197,39 @@ def test_core_edge_prefix_scale_queue_renders_plots_as_user():
     assert jobs[3]["cmd"] == f"./run.sh as-user python3 experiments/prefix_scale/plot.py --data {context['run_root']}"
 
 
+def test_core_edge_prefix_scale_0to50_by10_queue_runs_both_phases():
+    repo_dir = os.path.dirname(os.path.dirname(__file__))
+    path = os.path.join(
+        repo_dir,
+        "experiments",
+        "prefix_scale",
+        "queues",
+        "core_edge_bothphase_0to50_by10_tables.json",
+    )
+
+    spec = load_job_spec(path)
+    state = {}
+    selector = spec.get("selector") or selector_from_path(path, root=repo_dir)
+    context = build_run_context(path, spec, state, selector=selector, stem=queue_stem(path))
+    jobs = load_jobs(path, context)
+
+    assert [job["name"] for job in jobs] == [
+        "build twophase and onephase",
+        "sim twophase core-edge 0..50 by 10",
+        "sim onephase core-edge 0..50 by 10",
+        "render core-edge plots and summary",
+    ]
+    assert jobs[1]["cmd"] == (
+        "./run.sh sim --no-build prefix_scale --prefix-counts 0 10 20 30 40 50 "
+        f"--out {context['run_root']}/twophase"
+    )
+    assert jobs[2]["cmd"] == (
+        "./run.sh --env onephase sim --no-build prefix_scale --prefix-counts 0 10 20 30 40 50 "
+        f"--out {context['run_root']}/onephase"
+    )
+    assert jobs[3]["cmd"] == f"./run.sh as-user python3 experiments/prefix_scale/plot.py --data {context['run_root']}"
+
+
 def test_rocketfuel_prefix_scale_queue_runs_both_phases():
     repo_dir = os.path.dirname(os.path.dirname(__file__))
     path = os.path.join(

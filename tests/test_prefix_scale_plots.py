@@ -4,6 +4,10 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from experiments.prefix_scale.plots.prefix_scale_cli import main
+from experiments.prefix_scale.plots.prefix_scale_plots import (
+    _aggregate_avg_entries_by_prefix_and_table,
+    _aggregate_total_entries_by_prefix_and_table,
+)
 
 
 RUNS_CSV = (
@@ -102,6 +106,7 @@ def test_core_edge_plot_cli_generates_plots(tmp_path):
     assert (plot_dir / "core_edge_control_breakdown.png").exists()
     assert (plot_dir / "core_edge_prefix_state_by_role.png").exists()
     assert (plot_dir / "core_edge_forwarding_delta_by_role.png").exists()
+    assert (plot_dir / "core_edge_table_average_by_role.png").exists()
     assert (plot_dir / "core_edge_table_stack_comparison.png").exists()
 
     summary_path = data_dir / "summary.md"
@@ -110,7 +115,59 @@ def test_core_edge_plot_cli_generates_plots(tmp_path):
     assert "# Core/Edge Prefix-Scale Summary" in summary_text
     assert "plots/core_edge_topology.png" in summary_text
     assert "plots/core_edge_run_comparison.png" in summary_text
+    assert "plots/core_edge_table_average_by_role.png" in summary_text
     assert "plots/core_edge_table_stack_comparison.png" in summary_text
+    assert "forwarder FIB growth" in summary_text
+    assert "forwarder RIB growth" not in summary_text
+
+
+def test_role_table_aggregations_average_across_trials():
+    rows = [
+        {
+            "trial": "1",
+            "prefix_count": "100",
+            "role": "core",
+            "table_category": "common",
+            "table_name": "forwarder_rib",
+            "total_entries": "60",
+            "avg_entries": "10",
+        },
+        {
+            "trial": "1",
+            "prefix_count": "100",
+            "role": "edge",
+            "table_category": "common",
+            "table_name": "forwarder_rib",
+            "total_entries": "30",
+            "avg_entries": "7.5",
+        },
+        {
+            "trial": "2",
+            "prefix_count": "100",
+            "role": "core",
+            "table_category": "common",
+            "table_name": "forwarder_rib",
+            "total_entries": "72",
+            "avg_entries": "12",
+        },
+        {
+            "trial": "2",
+            "prefix_count": "100",
+            "role": "edge",
+            "table_category": "common",
+            "table_name": "forwarder_rib",
+            "total_entries": "34",
+            "avg_entries": "8.5",
+        },
+    ]
+
+    totals = _aggregate_total_entries_by_prefix_and_table(rows)
+    assert totals[("common", "forwarder_rib")][100] == 98.0
+
+    core_avg = _aggregate_avg_entries_by_prefix_and_table(rows, role="core")
+    edge_avg = _aggregate_avg_entries_by_prefix_and_table(rows, role="edge")
+    assert core_avg[("common", "forwarder_rib")][100] == 11.0
+    assert edge_avg[("common", "forwarder_rib")][100] == 8.0
 
 
 def test_rocketfuel_plot_cli_generates_topology_and_summary(tmp_path):
@@ -175,6 +232,7 @@ def test_rocketfuel_plot_cli_generates_topology_and_summary(tmp_path):
     assert (plot_dir / "rocketfuel_4755_control_breakdown.png").exists()
     assert (plot_dir / "rocketfuel_4755_prefix_state_by_role.png").exists()
     assert (plot_dir / "rocketfuel_4755_forwarding_delta_by_role.png").exists()
+    assert (plot_dir / "rocketfuel_4755_table_average_by_role.png").exists()
     assert (plot_dir / "rocketfuel_4755_table_stack_comparison.png").exists()
 
     summary_path = data_dir / "summary.md"
@@ -183,6 +241,7 @@ def test_rocketfuel_plot_cli_generates_topology_and_summary(tmp_path):
     assert "# Rocketfuel 4755 Prefix-Scale Summary" in summary_text
     assert "plots/rocketfuel_4755_topology.png" in summary_text
     assert "plots/rocketfuel_4755_run_comparison.png" in summary_text
+    assert "plots/rocketfuel_4755_table_average_by_role.png" in summary_text
     assert "plots/rocketfuel_4755_table_stack_comparison.png" in summary_text
 
 
@@ -248,6 +307,7 @@ def test_large_rocketfuel_plot_cli_generates_topology_and_summary(tmp_path):
     assert (plot_dir / "rocketfuel_2914_control_breakdown.png").exists()
     assert (plot_dir / "rocketfuel_2914_prefix_state_by_role.png").exists()
     assert (plot_dir / "rocketfuel_2914_forwarding_delta_by_role.png").exists()
+    assert (plot_dir / "rocketfuel_2914_table_average_by_role.png").exists()
     assert (plot_dir / "rocketfuel_2914_table_stack_comparison.png").exists()
 
     summary_path = data_dir / "summary.md"
@@ -256,3 +316,4 @@ def test_large_rocketfuel_plot_cli_generates_topology_and_summary(tmp_path):
     assert "# Rocketfuel 2914 Prefix-Scale Summary" in summary_text
     assert "largest connected `r0` component" in summary_text
     assert "plots/rocketfuel_2914_topology.png" in summary_text
+    assert "plots/rocketfuel_2914_table_average_by_role.png" in summary_text
