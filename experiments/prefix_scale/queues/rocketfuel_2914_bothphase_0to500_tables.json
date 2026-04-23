@@ -1,0 +1,28 @@
+{
+  "_comment": "Large Rocketfuel AS 2914 prefix-scale table study for twophase and onephase. Run with: sudo ./jobs.sh start --fresh prefix_scale/rocketfuel_2914_bothphase_0to500_tables",
+  "selector": "prefix_scale/rocketfuel_2914_bothphase_0to500_tables",
+  "name": "rocketfuel_2914_bothphase_0to500_tables",
+  "experiment": "prefix_scale",
+  "topology": "rocketfuel_2914",
+  "mode": "twophase+onephase",
+  "description": "Run the large Rocketfuel AS 2914 prefix-scale table study for prefix counts 0,100,...,500 in twophase and onephase",
+  "run_root_template": "experiments/prefix_scale/results/rocketfuel_2914_bothphase_0to500_tables/{timestamp}",
+  "jobs": [
+    {
+      "name": "build twophase and onephase",
+      "cmd": "./run.sh build && ./run.sh --env onephase build"
+    },
+    {
+      "name": "sim twophase rocketfuel 2914 0..500",
+      "cmd": "./run.sh sim --no-build prefix_scale --topology rocketfuel_2914 --prefix-counts 0 100 200 300 400 500 --out {run_root}/twophase"
+    },
+    {
+      "name": "sim onephase rocketfuel 2914 0..500",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_2914 --prefix-counts 0 100 200 300 400 500 --out {run_root}/onephase"
+    },
+    {
+      "name": "render rocketfuel 2914 plots and summary",
+      "cmd": "./run.sh as-user python3 experiments/prefix_scale/plot.py --data {run_root}"
+    }
+  ]
+}

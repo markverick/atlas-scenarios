@@ -8,6 +8,8 @@ import matplotlib.ticker as ticker
 import numpy as np
 
 from lib.topology import (core_edge_links, core_edge_positions, core_edge_roles,
+                          rocketfuel_2914_links, rocketfuel_2914_positions,
+                          rocketfuel_2914_roles,
                           rocketfuel_sample_4755_links,
                           rocketfuel_sample_4755_positions,
                           rocketfuel_sample_4755_roles)
@@ -43,6 +45,15 @@ ROCKETFUEL_4755_PLOT_FILES = {
     "table_stack": "rocketfuel_4755_table_stack_comparison.png",
 }
 
+ROCKETFUEL_2914_PLOT_FILES = {
+    "topology": "rocketfuel_2914_topology.png",
+    "run_comparison": "rocketfuel_2914_run_comparison.png",
+    "control_breakdown": "rocketfuel_2914_control_breakdown.png",
+    "prefix_state": "rocketfuel_2914_prefix_state_by_role.png",
+    "forwarder_growth": "rocketfuel_2914_forwarding_delta_by_role.png",
+    "table_stack": "rocketfuel_2914_table_stack_comparison.png",
+}
+
 CORE_EDGE_RC = {
     "font.size": 11,
     "axes.titlesize": 12,
@@ -75,6 +86,23 @@ TOPOLOGY_PLOT_PROFILES = {
         "positions": rocketfuel_sample_4755_positions,
         "roles": rocketfuel_sample_4755_roles,
         "node_fontsize": 8,
+    },
+    "rocketfuel_2914": {
+        "study_label": "Rocketfuel 2914 Prefix Scaling",
+        "summary_title": "Rocketfuel 2914 Prefix-Scale Summary",
+        "topology_title": "Rocketfuel AS 2914 largest connected component used by the prefix-scale study",
+        "topology_heading": "Rocketfuel 2914 topology",
+        "plot_files": ROCKETFUEL_2914_PLOT_FILES,
+        "links": rocketfuel_2914_links,
+        "positions": rocketfuel_2914_positions,
+        "roles": rocketfuel_2914_roles,
+        "show_labels": False,
+        "figure_size": (13.5, 13.5),
+        "core_node_size": 18,
+        "edge_node_size": 18,
+        "node_edge_width": 0.25,
+        "link_width": 0.35,
+        "summary_note": "This topology uses the largest connected `r0` component from the public Rocketfuel AS 2914 cch map, so disconnected fragments are intentionally excluded.",
     },
 }
 
@@ -155,17 +183,32 @@ def plot_core_edge_topology(out_dir, topology_key="core_edge"):
     roles = profile["roles"]()
     links = profile["links"]()
     role_styles = {
-        "core": {"color": "#4C72B0", "edgecolor": "#1F3A5F", "size": 850},
-        "edge": {"color": "#DD8452", "edgecolor": "#7A3E1D", "size": 850},
+        "core": {
+            "color": "#4C72B0",
+            "edgecolor": "#1F3A5F",
+            "size": profile.get("core_node_size", 850),
+        },
+        "edge": {
+            "color": "#DD8452",
+            "edgecolor": "#7A3E1D",
+            "size": profile.get("edge_node_size", 850),
+        },
     }
+    show_labels = profile.get("show_labels", True)
 
     with plt.rc_context(CORE_EDGE_RC):
-        fig, axis = plt.subplots(figsize=(7.5, 6.8))
+        fig, axis = plt.subplots(figsize=profile.get("figure_size", (7.5, 6.8)))
 
         for src, dst in links:
             x_values = [positions[src][0], positions[dst][0]]
             y_values = [positions[src][1], positions[dst][1]]
-            axis.plot(x_values, y_values, color="#A8A8A8", linewidth=2.0, zorder=1)
+            axis.plot(
+                x_values,
+                y_values,
+                color="#A8A8A8",
+                linewidth=profile.get("link_width", 2.0),
+                zorder=1,
+            )
 
         for role, nodes in roles.items():
             style = role_styles[role]
@@ -177,22 +220,23 @@ def plot_core_edge_topology(out_dir, topology_key="core_edge"):
                 s=style["size"],
                 c=style["color"],
                 edgecolors=style["edgecolor"],
-                linewidths=1.5,
+                linewidths=profile.get("node_edge_width", 1.5),
                 label=f"{role.capitalize()} routers",
                 zorder=2,
             )
-            for node in nodes:
-                axis.text(
-                    positions[node][0],
-                    positions[node][1],
-                    node,
-                    ha="center",
-                    va="center",
-                    color="white",
-                    fontsize=profile["node_fontsize"],
-                    fontweight="bold",
-                    zorder=3,
-                )
+            if show_labels:
+                for node in nodes:
+                    axis.text(
+                        positions[node][0],
+                        positions[node][1],
+                        node,
+                        ha="center",
+                        va="center",
+                        color="white",
+                        fontsize=profile["node_fontsize"],
+                        fontweight="bold",
+                        zorder=3,
+                    )
 
         axis.set_aspect("equal", adjustable="box")
         axis.axis("off")
@@ -554,6 +598,11 @@ def write_core_edge_summary(results_by_phase, data_dir, out_dir,
         "",
         f"This run covers a {total_nodes}-node topology with {role_counts.get('core', '?')} core routers and {role_counts.get('edge', '?')} edge routers.",
         "The x-axis in all plots is the total number of announced prefixes, distributed across the edge routers named in the scenario.",
+    ]
+    summary_note = profile.get("summary_note")
+    if summary_note:
+        lines.append(summary_note)
+    lines.extend([
         "",
         "## Plot Gallery",
         "",
@@ -579,7 +628,7 @@ def write_core_edge_summary(results_by_phase, data_dir, out_dir,
         "",
         "| total_prefixes | onephase_reachability_s | twophase_reachability_s | onephase_control_packets | twophase_control_packets | onephase_control_bytes | twophase_control_bytes |",
         "| --- | --- | --- | --- | --- | --- | --- |",
-    ]
+    ])
     for prefix_count in prefix_counts:
         lines.append(
             f"| {prefix_count} | {onephase_run['router_reachability_s'][prefix_count]:.4f} | {twophase_run['router_reachability_s'][prefix_count]:.4f} | "

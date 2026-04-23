@@ -46,6 +46,10 @@ Outputs:
 - `experiments/prefix_scale/results/core_edge_bothphase_0to5_tables/<timestamp>/twophase`
 - `experiments/prefix_scale/results/core_edge_bothphase_0to5_tables/<timestamp>/plots`
 - `experiments/prefix_scale/results/core_edge_bothphase_0to5_tables/<timestamp>/summary.md`
+- `experiments/prefix_scale/results/rocketfuel_2914_bothphase_0to500_tables/<timestamp>/onephase`
+- `experiments/prefix_scale/results/rocketfuel_2914_bothphase_0to500_tables/<timestamp>/twophase`
+- `experiments/prefix_scale/results/rocketfuel_2914_bothphase_0to500_tables/<timestamp>/plots`
+- `experiments/prefix_scale/results/rocketfuel_2914_bothphase_0to500_tables/<timestamp>/summary.md`
 - `experiments/prefix_scale/results/rocketfuel_4755_bothphase_0to500_tables/<timestamp>/onephase`
 - `experiments/prefix_scale/results/rocketfuel_4755_bothphase_0to500_tables/<timestamp>/twophase`
 - `experiments/prefix_scale/results/rocketfuel_4755_bothphase_0to500_tables/<timestamp>/plots`
@@ -69,6 +73,19 @@ sudo ./jobs.sh start --fresh prefix_scale/core_edge_bothphase_0to5_tables
 ```
 
 That queue now renders the plot set and `summary.md` automatically after both sim phases finish.
+
+Large Rocketfuel queue:
+
+```bash
+sudo ./jobs.sh start --fresh prefix_scale/rocketfuel_2914_bothphase_0to500_tables
+```
+
+This queue uses the public Rocketfuel AS 2914 `cch` map fetched into
+`experiments/prefix_scale/topologies/rocketfuel_2914.cch`. The simulation uses
+the largest connected `r0` component, which yields 960 routers total with a
+near-even core/edge split (`bb` as core, non-`bb` as edge). The queue renders
+the topology figure, the role-based comparison plots, and `summary.md`
+automatically after both phases finish.
 
 Rocketfuel sample queue:
 

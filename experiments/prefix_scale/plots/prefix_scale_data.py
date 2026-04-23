@@ -76,6 +76,8 @@ def detect_role_table_topology(data_dir):
         return next(iter(topologies))
 
     base = os.path.basename(os.path.abspath(data_dir))
+    if "rocketfuel_2914" in base:
+        return "rocketfuel_2914"
     if "rocketfuel_4755" in base:
         return "rocketfuel_4755"
     if "core_edge" in base:
@@ -89,6 +91,8 @@ def detect_role_table_topology(data_dir):
             num_links = int(rows[0].get("num_links", 0) or 0)
             if (num_nodes, num_links) == (10, 12):
                 return "core_edge"
+            if num_nodes >= 900:
+                return "rocketfuel_2914"
             if (num_nodes, num_links) == (11, 12):
                 return "rocketfuel_4755"
 

@@ -4,9 +4,13 @@ import pytest
 
 from lib.topology import (conf_stats, core_edge_links, core_edge_roles,
                           core_edge_stats, generate_ndnsim_core_edge_topo,
+                          generate_ndnsim_rocketfuel_2914_topo,
                           generate_ndnsim_rocketfuel_sample_4755_topo,
                           grid_links, grid_nodes, grid_stats,
                           parse_rocketfuel_cch_maps,
+                          rocketfuel_2914_path,
+                          rocketfuel_2914_roles,
+                          rocketfuel_2914_stats,
                           rocketfuel_sample_4755_path,
                           rocketfuel_sample_4755_roles,
                           rocketfuel_sample_4755_stats)
@@ -105,3 +109,35 @@ def test_generate_ndnsim_rocketfuel_sample_topo(tmp_path):
     assert links == 12
     assert "rf462  rf463  10Mbps  1  10ms  100" in content
     assert "rf464" not in content
+
+
+def test_parse_rocketfuel_2914_uses_largest_component():
+    maps_path = rocketfuel_2914_path()
+    if not os.path.isfile(maps_path):
+        pytest.skip("Rocketfuel 2914 map not available")
+
+    graph = parse_rocketfuel_cch_maps(maps_path, component_mode="largest")
+
+    assert len(graph["nodes"]) == 960
+    assert len([node for node in graph["nodes"] if node["bb"]]) == 453
+    assert len([node for node in graph["nodes"] if not node["bb"]]) == 507
+
+
+def test_generate_ndnsim_rocketfuel_2914_topo(tmp_path):
+    maps_path = rocketfuel_2914_path()
+    if not os.path.isfile(maps_path):
+        pytest.skip("Rocketfuel 2914 map not available")
+
+    topo_path = tmp_path / "rocketfuel-2914.txt"
+    content = generate_ndnsim_rocketfuel_2914_topo(
+        maps_path=maps_path,
+        path=str(topo_path),
+    )
+    roles = rocketfuel_2914_roles(maps_path)
+    nodes, _links = rocketfuel_2914_stats(maps_path)
+
+    assert topo_path.read_text() == content
+    assert content.startswith("# Auto-generated Rocketfuel AS 2914 largest connected component topology")
+    assert len(roles["core"]) == 453
+    assert len(roles["edge"]) == 507
+    assert nodes == 960

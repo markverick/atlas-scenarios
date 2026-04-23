@@ -12,7 +12,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from lib.result_adapter import parse_conv_trace, parse_link_trace
 from lib.topology import (core_edge_roles, core_edge_stats,
                           generate_ndnsim_core_edge_topo,
+                          generate_ndnsim_rocketfuel_2914_topo,
                           generate_ndnsim_rocketfuel_sample_4755_topo,
+                          rocketfuel_2914_roles,
+                          rocketfuel_2914_stats,
                           rocketfuel_sample_4755_path,
                           rocketfuel_sample_4755_roles,
                           rocketfuel_sample_4755_stats)
@@ -58,6 +61,7 @@ ROLE_FIELDNAMES = [
 
 DEFAULT_PREFIX_COUNTS = {
     "core_edge": [0, 1, 2, 3, 4, 5],
+    "rocketfuel_2914": [0, 100, 200, 300, 400, 500],
     "rocketfuel_4755": [0, 100, 200, 300, 400, 500],
 }
 
@@ -148,6 +152,15 @@ def prepare_prefix_scale_topology(topology, *, ns3_dir, topo_dir, bw_mbps, delay
         )
         roles = rocketfuel_sample_4755_roles(maps_path)
         num_nodes, num_links = rocketfuel_sample_4755_stats(maps_path)
+    elif topology == "rocketfuel_2914":
+        topo_path = os.path.join(topo_dir, "topo-rocketfuel-2914-atlas.txt")
+        generate_ndnsim_rocketfuel_2914_topo(
+            bw=f"{bw_mbps}Mbps",
+            delay_ms=delay_ms,
+            path=topo_path,
+        )
+        roles = rocketfuel_2914_roles()
+        num_nodes, num_links = rocketfuel_2914_stats()
     else:
         raise ValueError(f"Unsupported topology: {topology}")
 

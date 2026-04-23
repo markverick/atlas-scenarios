@@ -135,20 +135,19 @@ For the fixed 10-node core/edge table study:
 sudo ./jobs.sh start --fresh prefix_scale/core_edge_bothphase_0to5_tables
 ```
 
-For the Rocketfuel sample 4755 table study with the larger prefix sweep:
+For the large Rocketfuel AS 2914 table study with the larger prefix sweep:
 
 ```bash
-sudo ./jobs.sh start --fresh prefix_scale/rocketfuel_4755_bothphase_0to500_tables
+sudo ./jobs.sh start --fresh prefix_scale/rocketfuel_2914_bothphase_0to500_tables
 ```
 
 That queue runs both phases, then generates a timestamped plot set and
 `summary.md` in the run root.
 
-The Rocketfuel queue uses the checked-in ns-3 sample
-`RocketFuel_sample_4755.r0.cch_maps.txt`. Its role split is taken from the
-original Rocketfuel `bb` flag: `bb` nodes are treated as core and non-`bb`
-radius-0 nodes are treated as edge. In the workspace sample, that yields one
-edge router after dropping one isolated radius-0 node with no internal links.
+The large Rocketfuel queue uses the checked-in `2914.cch` map fetched from the
+original Rocketfuel dataset. The simulation uses the largest connected `r0`
+component, which yields 960 routers total: 453 `bb` routers treated as core
+and 507 non-`bb` routers treated as edge.
 
 Each queue run writes to a unique timestamped output root under:
 
@@ -178,10 +177,13 @@ The core/edge queue writes to:
 - `experiments/prefix_scale/results/core_edge_bothphase_0to5_tables/<timestamp>/plots`
 - `experiments/prefix_scale/results/core_edge_bothphase_0to5_tables/<timestamp>/summary.md`
 
-The Rocketfuel queue writes to:
+The large Rocketfuel queue writes to:
 
-- `experiments/prefix_scale/results/rocketfuel_4755_bothphase_0to500_tables/<timestamp>/onephase`
-- `experiments/prefix_scale/results/rocketfuel_4755_bothphase_0to500_tables/<timestamp>/twophase`
+- `experiments/prefix_scale/results/rocketfuel_2914_bothphase_0to500_tables/<timestamp>/onephase`
+- `experiments/prefix_scale/results/rocketfuel_2914_bothphase_0to500_tables/<timestamp>/twophase`
+
+The smaller `rocketfuel_4755_bothphase_0to500_tables` queue remains available
+if you want the tiny bundled ns-3 sample for quick smoke tests.
 
 The Rocketfuel queue also renders a topology figure, the role-based comparison
 plots, and `summary.md` after both phases finish.

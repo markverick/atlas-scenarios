@@ -86,3 +86,7 @@ def test_summarize_role_table_metrics():
 
 def test_default_prefix_counts_for_rocketfuel_sample():
     assert default_prefix_counts("rocketfuel_4755") == [0, 100, 200, 300, 400, 500]
+
+
+def test_default_prefix_counts_for_large_rocketfuel_topology():
+    assert default_prefix_counts("rocketfuel_2914") == [0, 100, 200, 300, 400, 500]

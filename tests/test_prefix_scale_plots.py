@@ -184,3 +184,75 @@ def test_rocketfuel_plot_cli_generates_topology_and_summary(tmp_path):
     assert "plots/rocketfuel_4755_topology.png" in summary_text
     assert "plots/rocketfuel_4755_run_comparison.png" in summary_text
     assert "plots/rocketfuel_4755_table_stack_comparison.png" in summary_text
+
+
+def test_large_rocketfuel_plot_cli_generates_topology_and_summary(tmp_path):
+    data_dir = tmp_path / "rocketfuel_2914"
+    onephase_dir = data_dir / "onephase"
+    twophase_dir = data_dir / "twophase"
+
+    metadata = '{\n  "topology": "rocketfuel_2914"\n}\n'
+    rocketfuel_onephase_rows = (
+        "onephase,1,0,core,common,forwarder_rib,453,9060,20.0,20\n"
+        "onephase,1,100,core,common,forwarder_rib,453,13590,30.0,30\n"
+        "onephase,1,0,core,common,forwarder_fib,453,11325,25.0,25\n"
+        "onephase,1,100,core,common,forwarder_fib,453,15855,35.0,35\n"
+        "onephase,1,0,core,onephase,dv_prefix_table,453,0,0.0,0\n"
+        "onephase,1,100,core,onephase,dv_prefix_table,453,45300,100.0,100\n"
+        "onephase,1,0,edge,common,forwarder_rib,507,10140,20.0,20\n"
+        "onephase,1,100,edge,common,forwarder_rib,507,60840,120.0,120\n"
+        "onephase,1,0,edge,common,forwarder_fib,507,12675,25.0,25\n"
+        "onephase,1,100,edge,common,forwarder_fib,507,63375,125.0,125\n"
+        "onephase,1,0,edge,onephase,dv_prefix_table,507,0,0.0,0\n"
+        "onephase,1,100,edge,onephase,dv_prefix_table,507,50700,100.0,100\n"
+    )
+    rocketfuel_twophase_rows = (
+        "twophase,1,0,core,twophase,forwarder_pet,453,8154,18.0,18\n"
+        "twophase,1,100,core,twophase,forwarder_pet,453,53454,118.0,118\n"
+        "twophase,1,0,core,twophase,dv_prefix_egress_state,453,0,0.0,0\n"
+        "twophase,1,100,core,twophase,dv_prefix_egress_state,453,45300,100.0,100\n"
+        "twophase,1,0,edge,twophase,forwarder_pet,507,9126,18.0,18\n"
+        "twophase,1,100,edge,twophase,forwarder_pet,507,59826,118.0,118\n"
+        "twophase,1,0,edge,twophase,dv_prefix_egress_state,507,0,0.0,0\n"
+        "twophase,1,100,edge,twophase,dv_prefix_egress_state,507,50700,100.0,100\n"
+    )
+
+    _write(onephase_dir / "metadata.json", metadata)
+    _write(twophase_dir / "metadata.json", metadata)
+    _write(onephase_dir / "runs.csv", _runs_csv("onephase", num_nodes=960, num_links=1558, prefix_counts=(0, 100)))
+    _write(twophase_dir / "runs.csv", _runs_csv("twophase", num_nodes=960, num_links=1558, prefix_counts=(0, 100)))
+    _write(onephase_dir / "role_table_summary.csv", ROLE_SUMMARY_HEADER + rocketfuel_onephase_rows)
+    _write(twophase_dir / "role_table_summary.csv", ROLE_SUMMARY_HEADER + rocketfuel_twophase_rows)
+    _write(
+        onephase_dir / "link-trace-onephase-p0-t1.csv",
+        LINK_TRACE_HEADER + "0.05,100,10000,10,1000,0,0,0,0,0,0,0,0\n",
+    )
+    _write(
+        onephase_dir / "link-trace-onephase-p100-t1.csv",
+        LINK_TRACE_HEADER + "0.05,110,11000,20,2000,0,0,0,0,0,0,0,0\n",
+    )
+    _write(
+        twophase_dir / "link-trace-twophase-p0-t1.csv",
+        LINK_TRACE_HEADER + "0.05,120,12000,30,3000,0,0,0,0,0,0,0,0\n",
+    )
+    _write(
+        twophase_dir / "link-trace-twophase-p100-t1.csv",
+        LINK_TRACE_HEADER + "0.05,130,13000,40,4000,0,0,0,0,0,0,0,0\n",
+    )
+
+    assert main(["--data", str(data_dir)]) == 0
+
+    plot_dir = data_dir / "plots"
+    assert (plot_dir / "rocketfuel_2914_topology.png").exists()
+    assert (plot_dir / "rocketfuel_2914_run_comparison.png").exists()
+    assert (plot_dir / "rocketfuel_2914_control_breakdown.png").exists()
+    assert (plot_dir / "rocketfuel_2914_prefix_state_by_role.png").exists()
+    assert (plot_dir / "rocketfuel_2914_forwarding_delta_by_role.png").exists()
+    assert (plot_dir / "rocketfuel_2914_table_stack_comparison.png").exists()
+
+    summary_path = data_dir / "summary.md"
+    assert summary_path.exists()
+    summary_text = summary_path.read_text()
+    assert "# Rocketfuel 2914 Prefix-Scale Summary" in summary_text
+    assert "largest connected `r0` component" in summary_text
+    assert "plots/rocketfuel_2914_topology.png" in summary_text

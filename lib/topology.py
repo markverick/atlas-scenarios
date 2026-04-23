@@ -155,6 +155,8 @@ _ROCKETFUEL_CCH_LINE_RE = _re.compile(
     r"r(?P<radius>\d+)$"
 )
 
+_ROCKETFUEL_CCH_ALIAS_RE = _re.compile(r"^-\d+\s+=\S+\s+r\d+$")
+
 
 def _rocketfuel_sort_key(uid):
     return (0, int(uid)) if uid.isdigit() else (1, uid)
@@ -162,6 +164,13 @@ def _rocketfuel_sort_key(uid):
 
 def _rocketfuel_node_name(uid):
     return f"rf{uid}"
+
+
+_REPO_ROOT = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), ".."))
+
+
+def _rocketfuel_repo_path(*parts):
+    return _os.path.join(_REPO_ROOT, *parts)
 
 
 def rocketfuel_sample_4755_path(ns3_dir=None):
@@ -175,16 +184,24 @@ def rocketfuel_sample_4755_path(ns3_dir=None):
             "RocketFuel_sample_4755.r0.cch_maps.txt",
         )
 
-    return _os.path.abspath(_os.path.join(
-        _os.path.dirname(__file__),
-        "..",
+    return _rocketfuel_repo_path(
         "deps",
         "ns-3",
         "src",
         "topology-read",
         "examples",
         "RocketFuel_sample_4755.r0.cch_maps.txt",
-    ))
+    )
+
+
+def rocketfuel_2914_path():
+    """Return the path to the checked-in large Rocketfuel AS 2914 maps file."""
+    return _rocketfuel_repo_path(
+        "experiments",
+        "prefix_scale",
+        "topologies",
+        "rocketfuel_2914.cch",
+    )
 
 
 def _rocketfuel_links(entries, keep_uids):
@@ -198,19 +215,47 @@ def _rocketfuel_links(entries, keep_uids):
                                            _rocketfuel_sort_key(pair[1])))
 
 
-def parse_rocketfuel_cch_maps(maps_path, drop_isolated=True):
+def _rocketfuel_connected_components(keep_uids, links):
+    adjacency = {uid: set() for uid in keep_uids}
+    for src, dst in links:
+        adjacency[src].add(dst)
+        adjacency[dst].add(src)
+
+    components = []
+    unseen = set(keep_uids)
+    while unseen:
+        start = next(iter(unseen))
+        stack = [start]
+        component = set()
+        while stack:
+            uid = stack.pop()
+            if uid in component:
+                continue
+            component.add(uid)
+            unseen.discard(uid)
+            stack.extend(adjacency[uid] - component)
+        components.append(component)
+    return components
+
+
+def parse_rocketfuel_cch_maps(maps_path, drop_isolated=True, component_mode="all"):
     """Parse a Rocketfuel cch maps file and keep only connected r0 nodes.
 
     The ns-3 Rocketfuel reader keeps only `r0` nodes. For the prefix-scale
     study we also drop isolated r0 nodes because they cannot participate in
     routing convergence or table measurements.
     """
+    if component_mode not in {"all", "largest"}:
+        raise ValueError(f"unsupported component_mode: {component_mode}")
+
     entries = {}
 
     with open(maps_path) as handle:
         for line_no, raw in enumerate(handle, start=1):
             line = raw.strip()
             if not line or line.startswith("#"):
+                continue
+            if _ROCKETFUEL_CCH_ALIAS_RE.match(line):
                 continue
 
             match = _ROCKETFUEL_CCH_LINE_RE.match(line)
@@ -244,6 +289,18 @@ def parse_rocketfuel_cch_maps(maps_path, drop_isolated=True):
             keep_uids -= isolated_uids
             links = _rocketfuel_links(entries, keep_uids)
 
+    if component_mode == "largest" and keep_uids:
+        components = _rocketfuel_connected_components(keep_uids, links)
+        largest = sorted(
+            components,
+            key=lambda component: (
+                -len(component),
+                [_rocketfuel_sort_key(uid) for uid in sorted(component, key=_rocketfuel_sort_key)],
+            ),
+        )[0]
+        keep_uids = set(largest)
+        links = _rocketfuel_links(entries, keep_uids)
+
     nodes = []
     for uid in sorted(keep_uids, key=_rocketfuel_sort_key):
         entry = entries[uid]
@@ -258,14 +315,7 @@ def parse_rocketfuel_cch_maps(maps_path, drop_isolated=True):
     }
 
 
-def rocketfuel_sample_4755_roles(maps_path=None):
-    """Return core/edge node-role lists for the checked-in Rocketfuel sample.
-
-    The split follows the Rocketfuel `bb` flag from the original cch maps file:
-    backbone (`bb`) nodes are treated as core, and non-backbone r0 nodes are
-    treated as edge.
-    """
-    graph = parse_rocketfuel_cch_maps(maps_path or rocketfuel_sample_4755_path())
+def _rocketfuel_roles_from_graph(graph):
     roles = {"core": [], "edge": []}
     for node in graph["nodes"]:
         role = "core" if node["bb"] else "edge"
@@ -273,26 +323,23 @@ def rocketfuel_sample_4755_roles(maps_path=None):
     return roles
 
 
-def rocketfuel_sample_4755_links(maps_path=None):
-    """Return ndnSIM link pairs for the checked-in Rocketfuel sample."""
-    graph = parse_rocketfuel_cch_maps(maps_path or rocketfuel_sample_4755_path())
+def _rocketfuel_links_from_graph(graph):
     return [
         (_rocketfuel_node_name(src), _rocketfuel_node_name(dst))
         for src, dst in graph["links"]
     ]
 
 
-def rocketfuel_sample_4755_positions(maps_path=None):
-    """Return deterministic drawing positions for the checked-in Rocketfuel sample."""
-    graph = parse_rocketfuel_cch_maps(maps_path or rocketfuel_sample_4755_path())
-    roles = rocketfuel_sample_4755_roles(maps_path)
+def _rocketfuel_positions_from_graph(graph):
+    """Return deterministic drawing positions for a parsed Rocketfuel graph."""
+    roles = _rocketfuel_roles_from_graph(graph)
     core_nodes = roles["core"]
     edge_nodes = roles["edge"]
 
     positions = {}
     angle_by_name = {}
-    core_radius = 4.0
-    edge_radius = 7.0
+    core_radius = max(4.0, len(core_nodes) / 20.0)
+    edge_radius = max(7.0, core_radius * 1.65)
 
     if core_nodes:
         for index, name in enumerate(core_nodes):
@@ -331,7 +378,8 @@ def rocketfuel_sample_4755_positions(maps_path=None):
         if count == 1:
             offsets = [0.0]
         else:
-            offsets = [0.18 * (index - (count - 1) / 2.0) for index in range(count)]
+            span = min(0.9, 0.03 * (count - 1))
+            offsets = [(-span / 2.0) + span * index / (count - 1) for index in range(count)]
 
         for edge_name, offset in zip(edge_names, offsets):
             angle = angle_by_name[anchor] + offset
@@ -350,24 +398,19 @@ def rocketfuel_sample_4755_positions(maps_path=None):
     return positions
 
 
-def rocketfuel_sample_4755_stats(maps_path=None):
-    """Return (num_nodes, num_links) for the checked-in Rocketfuel sample."""
-    graph = parse_rocketfuel_cch_maps(maps_path or rocketfuel_sample_4755_path())
+def _rocketfuel_stats_from_graph(graph):
     return len(graph["nodes"]), len(graph["links"])
 
 
-def generate_ndnsim_rocketfuel_sample_4755_topo(maps_path=None, bw="10Mbps",
-                                                delay_ms=10, path=None,
-                                                queue_size=100):
-    """Write an ndnSIM topology file for the checked-in Rocketfuel sample 4755."""
-    resolved_maps_path = maps_path or rocketfuel_sample_4755_path()
-    graph = parse_rocketfuel_cch_maps(resolved_maps_path)
-    positions = rocketfuel_sample_4755_positions(resolved_maps_path)
-    roles = rocketfuel_sample_4755_roles(resolved_maps_path)
+def _generate_ndnsim_rocketfuel_topo(graph, *, label, bw="10Mbps",
+                                     delay_ms=10, path=None,
+                                     queue_size=100):
+    positions = _rocketfuel_positions_from_graph(graph)
+    roles = _rocketfuel_roles_from_graph(graph)
     ordered_nodes = roles["core"] + roles["edge"]
 
     lines = [
-        "# Auto-generated Rocketfuel sample 4755 topology (r0 nodes only)",
+        f"# Auto-generated {label} topology (r0 nodes only)",
         "router",
         "# node  comment  yPos  xPos",
     ]
@@ -378,10 +421,89 @@ def generate_ndnsim_rocketfuel_sample_4755_topo(maps_path=None, bw="10Mbps",
     lines.append("")
     lines.append("link")
     lines.append("# srcNode  dstNode  bandwidth  metric  delay  queue")
-    for src, dst in rocketfuel_sample_4755_links(resolved_maps_path):
+    for src, dst in _rocketfuel_links_from_graph(graph):
         lines.append(f"{src}  {dst}  {bw}  1  {delay_ms}ms  {queue_size}")
 
     return _write_topo(lines, path)
+
+
+def _rocketfuel_sample_4755_graph(maps_path=None):
+    return parse_rocketfuel_cch_maps(maps_path or rocketfuel_sample_4755_path())
+
+
+def rocketfuel_sample_4755_roles(maps_path=None):
+    """Return core/edge node-role lists for the checked-in Rocketfuel sample."""
+    return _rocketfuel_roles_from_graph(_rocketfuel_sample_4755_graph(maps_path))
+
+
+def rocketfuel_sample_4755_links(maps_path=None):
+    """Return ndnSIM link pairs for the checked-in Rocketfuel sample."""
+    return _rocketfuel_links_from_graph(_rocketfuel_sample_4755_graph(maps_path))
+
+
+def rocketfuel_sample_4755_positions(maps_path=None):
+    """Return deterministic drawing positions for the checked-in Rocketfuel sample."""
+    return _rocketfuel_positions_from_graph(_rocketfuel_sample_4755_graph(maps_path))
+
+
+def rocketfuel_sample_4755_stats(maps_path=None):
+    """Return (num_nodes, num_links) for the checked-in Rocketfuel sample."""
+    return _rocketfuel_stats_from_graph(_rocketfuel_sample_4755_graph(maps_path))
+
+
+def generate_ndnsim_rocketfuel_sample_4755_topo(maps_path=None, bw="10Mbps",
+                                                delay_ms=10, path=None,
+                                                queue_size=100):
+    """Write an ndnSIM topology file for the checked-in Rocketfuel sample 4755."""
+    return _generate_ndnsim_rocketfuel_topo(
+        _rocketfuel_sample_4755_graph(maps_path),
+        label="Rocketfuel sample 4755",
+        bw=bw,
+        delay_ms=delay_ms,
+        path=path,
+        queue_size=queue_size,
+    )
+
+
+def _rocketfuel_2914_graph(maps_path=None):
+    return parse_rocketfuel_cch_maps(
+        maps_path or rocketfuel_2914_path(),
+        component_mode="largest",
+    )
+
+
+def rocketfuel_2914_roles(maps_path=None):
+    """Return core/edge node-role lists for the large Rocketfuel AS 2914 map."""
+    return _rocketfuel_roles_from_graph(_rocketfuel_2914_graph(maps_path))
+
+
+def rocketfuel_2914_links(maps_path=None):
+    """Return ndnSIM link pairs for the large Rocketfuel AS 2914 map."""
+    return _rocketfuel_links_from_graph(_rocketfuel_2914_graph(maps_path))
+
+
+def rocketfuel_2914_positions(maps_path=None):
+    """Return deterministic drawing positions for the large Rocketfuel AS 2914 map."""
+    return _rocketfuel_positions_from_graph(_rocketfuel_2914_graph(maps_path))
+
+
+def rocketfuel_2914_stats(maps_path=None):
+    """Return (num_nodes, num_links) for the large Rocketfuel AS 2914 map."""
+    return _rocketfuel_stats_from_graph(_rocketfuel_2914_graph(maps_path))
+
+
+def generate_ndnsim_rocketfuel_2914_topo(maps_path=None, bw="10Mbps",
+                                         delay_ms=10, path=None,
+                                         queue_size=100):
+    """Write an ndnSIM topology file for the large Rocketfuel AS 2914 map."""
+    return _generate_ndnsim_rocketfuel_topo(
+        _rocketfuel_2914_graph(maps_path),
+        label="Rocketfuel AS 2914 largest connected component",
+        bw=bw,
+        delay_ms=delay_ms,
+        path=path,
+        queue_size=queue_size,
+    )
 
 
 def _write_topo(lines, path=None):
