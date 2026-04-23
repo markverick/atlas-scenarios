@@ -474,7 +474,7 @@ def run_prefix_scale_scenario(ns3_dir, *, topo, edge_nodes, sim_time=40.0,
                               table_trace=None, dv_config=None,
                               network="/minindn", num_prefixes=0,
                               run_log=None):
-    """Build ns-3 and run the core-edge prefix-scale scenario."""
+    """Build ns-3 and run the generic prefix-scale table scenario."""
     if not edge_nodes:
         raise ValueError("edge_nodes must not be empty")
 

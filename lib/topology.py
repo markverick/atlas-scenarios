@@ -5,10 +5,16 @@ Supports:
   - NxN grid topologies (build_grid_topo, generate_ndnsim_topo)
   - Linear chain topologies (generate_ndnsim_linear_topo)
   - Mini-NDN .conf file topologies (parse_minindn_conf, generate_ndnsim_topo_from_conf)
+    - Rocketfuel sample topologies converted into ndnSIM topology files
 
 Mininet is imported lazily so the simulation side can use grid_stats()
 and generate_ndnsim_topo() without having Mininet installed.
 """
+
+from collections import defaultdict as _defaultdict
+import math as _math
+import os as _os
+import re as _re
 
 
 def build_grid_topo(n, delay="10ms", bw=10):
@@ -137,6 +143,247 @@ def generate_ndnsim_core_edge_topo(bw="10Mbps", delay_ms=10, path=None, queue_si
     return _write_topo(lines, path)
 
 
+_ROCKETFUEL_CCH_LINE_RE = _re.compile(
+    r"^(?P<uid>\S+)\s+@(?P<loc>\S+)\s+"
+    r"(?P<dns>\+)?\s*"
+    r"(?P<bb>bb)?\s*"
+    r"\((?P<num_neigh>-?\d+)\)\s*"
+    r"(?P<extern>&\d+)?\s*->\s*"
+    r"(?P<neighbors>(?:<[^>]+>\s*)*)"
+    r"(?:\{[^}]+\}\s*)*"
+    r"=(?P<name>\S+)\s+"
+    r"r(?P<radius>\d+)$"
+)
+
+
+def _rocketfuel_sort_key(uid):
+    return (0, int(uid)) if uid.isdigit() else (1, uid)
+
+
+def _rocketfuel_node_name(uid):
+    return f"rf{uid}"
+
+
+def rocketfuel_sample_4755_path(ns3_dir=None):
+    """Return the path to the checked-in Rocketfuel sample 4755 maps file."""
+    if ns3_dir:
+        return _os.path.join(
+            ns3_dir,
+            "src",
+            "topology-read",
+            "examples",
+            "RocketFuel_sample_4755.r0.cch_maps.txt",
+        )
+
+    return _os.path.abspath(_os.path.join(
+        _os.path.dirname(__file__),
+        "..",
+        "deps",
+        "ns-3",
+        "src",
+        "topology-read",
+        "examples",
+        "RocketFuel_sample_4755.r0.cch_maps.txt",
+    ))
+
+
+def _rocketfuel_links(entries, keep_uids):
+    links = set()
+    for uid in keep_uids:
+        for neighbor in entries[uid]["neighbors"]:
+            if neighbor not in keep_uids or neighbor == uid:
+                continue
+            links.add(tuple(sorted((uid, neighbor), key=_rocketfuel_sort_key)))
+    return sorted(links, key=lambda pair: (_rocketfuel_sort_key(pair[0]),
+                                           _rocketfuel_sort_key(pair[1])))
+
+
+def parse_rocketfuel_cch_maps(maps_path, drop_isolated=True):
+    """Parse a Rocketfuel cch maps file and keep only connected r0 nodes.
+
+    The ns-3 Rocketfuel reader keeps only `r0` nodes. For the prefix-scale
+    study we also drop isolated r0 nodes because they cannot participate in
+    routing convergence or table measurements.
+    """
+    entries = {}
+
+    with open(maps_path) as handle:
+        for line_no, raw in enumerate(handle, start=1):
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+
+            match = _ROCKETFUEL_CCH_LINE_RE.match(line)
+            if not match:
+                raise ValueError(f"Malformed Rocketfuel maps line {line_no}: {raw.rstrip()}")
+
+            radius = int(match.group("radius"))
+            if radius != 0:
+                continue
+
+            uid = match.group("uid")
+            entries[uid] = {
+                "uid": uid,
+                "loc": match.group("loc"),
+                "dns": bool(match.group("dns")),
+                "bb": bool(match.group("bb")),
+                "name": match.group("name"),
+                "neighbors": sorted(_re.findall(r"<([^>]+)>", match.group("neighbors")),
+                                    key=_rocketfuel_sort_key),
+            }
+
+    keep_uids = set(entries)
+    links = _rocketfuel_links(entries, keep_uids)
+
+    if drop_isolated:
+        while True:
+            linked_uids = {uid for link in links for uid in link}
+            isolated_uids = keep_uids - linked_uids
+            if not isolated_uids:
+                break
+            keep_uids -= isolated_uids
+            links = _rocketfuel_links(entries, keep_uids)
+
+    nodes = []
+    for uid in sorted(keep_uids, key=_rocketfuel_sort_key):
+        entry = entries[uid]
+        nodes.append({
+            **entry,
+            "neighbors": [neighbor for neighbor in entry["neighbors"] if neighbor in keep_uids],
+        })
+
+    return {
+        "nodes": nodes,
+        "links": links,
+    }
+
+
+def rocketfuel_sample_4755_roles(maps_path=None):
+    """Return core/edge node-role lists for the checked-in Rocketfuel sample.
+
+    The split follows the Rocketfuel `bb` flag from the original cch maps file:
+    backbone (`bb`) nodes are treated as core, and non-backbone r0 nodes are
+    treated as edge.
+    """
+    graph = parse_rocketfuel_cch_maps(maps_path or rocketfuel_sample_4755_path())
+    roles = {"core": [], "edge": []}
+    for node in graph["nodes"]:
+        role = "core" if node["bb"] else "edge"
+        roles[role].append(_rocketfuel_node_name(node["uid"]))
+    return roles
+
+
+def rocketfuel_sample_4755_links(maps_path=None):
+    """Return ndnSIM link pairs for the checked-in Rocketfuel sample."""
+    graph = parse_rocketfuel_cch_maps(maps_path or rocketfuel_sample_4755_path())
+    return [
+        (_rocketfuel_node_name(src), _rocketfuel_node_name(dst))
+        for src, dst in graph["links"]
+    ]
+
+
+def rocketfuel_sample_4755_positions(maps_path=None):
+    """Return deterministic drawing positions for the checked-in Rocketfuel sample."""
+    graph = parse_rocketfuel_cch_maps(maps_path or rocketfuel_sample_4755_path())
+    roles = rocketfuel_sample_4755_roles(maps_path)
+    core_nodes = roles["core"]
+    edge_nodes = roles["edge"]
+
+    positions = {}
+    angle_by_name = {}
+    core_radius = 4.0
+    edge_radius = 7.0
+
+    if core_nodes:
+        for index, name in enumerate(core_nodes):
+            angle = 2.0 * _math.pi * index / len(core_nodes)
+            angle_by_name[name] = angle
+            positions[name] = (
+                round(core_radius * _math.cos(angle), 3),
+                round(core_radius * _math.sin(angle), 3),
+            )
+
+    name_by_uid = {node["uid"]: _rocketfuel_node_name(node["uid"]) for node in graph["nodes"]}
+    neighbors_by_name = {
+        name_by_uid[node["uid"]]: [name_by_uid[neighbor] for neighbor in node["neighbors"]]
+        for node in graph["nodes"]
+    }
+
+    anchored_edges = _defaultdict(list)
+    unanchored_edges = []
+    core_order = {name: index for index, name in enumerate(core_nodes)}
+
+    for edge_name in edge_nodes:
+        core_neighbors = [name for name in neighbors_by_name.get(edge_name, []) if name in core_order]
+        if not core_neighbors:
+            unanchored_edges.append(edge_name)
+            continue
+
+        anchor = min(core_neighbors, key=lambda name: core_order[name])
+        anchored_edges[anchor].append(edge_name)
+
+    for anchor in core_nodes:
+        edge_names = anchored_edges.get(anchor, [])
+        count = len(edge_names)
+        if count == 0:
+            continue
+
+        if count == 1:
+            offsets = [0.0]
+        else:
+            offsets = [0.18 * (index - (count - 1) / 2.0) for index in range(count)]
+
+        for edge_name, offset in zip(edge_names, offsets):
+            angle = angle_by_name[anchor] + offset
+            positions[edge_name] = (
+                round(edge_radius * _math.cos(angle), 3),
+                round(edge_radius * _math.sin(angle), 3),
+            )
+
+    for index, edge_name in enumerate(unanchored_edges):
+        angle = 2.0 * _math.pi * index / max(1, len(unanchored_edges))
+        positions[edge_name] = (
+            round(edge_radius * _math.cos(angle), 3),
+            round(edge_radius * _math.sin(angle), 3),
+        )
+
+    return positions
+
+
+def rocketfuel_sample_4755_stats(maps_path=None):
+    """Return (num_nodes, num_links) for the checked-in Rocketfuel sample."""
+    graph = parse_rocketfuel_cch_maps(maps_path or rocketfuel_sample_4755_path())
+    return len(graph["nodes"]), len(graph["links"])
+
+
+def generate_ndnsim_rocketfuel_sample_4755_topo(maps_path=None, bw="10Mbps",
+                                                delay_ms=10, path=None,
+                                                queue_size=100):
+    """Write an ndnSIM topology file for the checked-in Rocketfuel sample 4755."""
+    resolved_maps_path = maps_path or rocketfuel_sample_4755_path()
+    graph = parse_rocketfuel_cch_maps(resolved_maps_path)
+    positions = rocketfuel_sample_4755_positions(resolved_maps_path)
+    roles = rocketfuel_sample_4755_roles(resolved_maps_path)
+    ordered_nodes = roles["core"] + roles["edge"]
+
+    lines = [
+        "# Auto-generated Rocketfuel sample 4755 topology (r0 nodes only)",
+        "router",
+        "# node  comment  yPos  xPos",
+    ]
+    for name in ordered_nodes:
+        x_pos, y_pos = positions[name]
+        lines.append(f"{name}  NA  {y_pos}  {x_pos}")
+
+    lines.append("")
+    lines.append("link")
+    lines.append("# srcNode  dstNode  bandwidth  metric  delay  queue")
+    for src, dst in rocketfuel_sample_4755_links(resolved_maps_path):
+        lines.append(f"{src}  {dst}  {bw}  1  {delay_ms}ms  {queue_size}")
+
+    return _write_topo(lines, path)
+
+
 def _write_topo(lines, path=None):
     """Join lines into topology content and optionally write to disk."""
     content = "\n".join(lines) + "\n"
@@ -201,8 +448,6 @@ def generate_ndnsim_topo(n, bw="10Mbps", delay_ms=10, path=None, queue_size=100)
 # ---------------------------------------------------------------------------
 # Mini-NDN .conf topology support
 # ---------------------------------------------------------------------------
-
-import os as _os
 
 
 def parse_minindn_conf(conf_path):

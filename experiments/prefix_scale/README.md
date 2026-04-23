@@ -46,6 +46,10 @@ Outputs:
 - `experiments/prefix_scale/results/core_edge_bothphase_0to5_tables/<timestamp>/twophase`
 - `experiments/prefix_scale/results/core_edge_bothphase_0to5_tables/<timestamp>/plots`
 - `experiments/prefix_scale/results/core_edge_bothphase_0to5_tables/<timestamp>/summary.md`
+- `experiments/prefix_scale/results/rocketfuel_4755_bothphase_0to500_tables/<timestamp>/onephase`
+- `experiments/prefix_scale/results/rocketfuel_4755_bothphase_0to500_tables/<timestamp>/twophase`
+- `experiments/prefix_scale/results/rocketfuel_4755_bothphase_0to500_tables/<timestamp>/plots`
+- `experiments/prefix_scale/results/rocketfuel_4755_bothphase_0to500_tables/<timestamp>/summary.md`
 
 Useful CLI shortcuts:
 
@@ -65,6 +69,20 @@ sudo ./jobs.sh start --fresh prefix_scale/core_edge_bothphase_0to5_tables
 ```
 
 That queue now renders the plot set and `summary.md` automatically after both sim phases finish.
+
+Rocketfuel sample queue:
+
+```bash
+sudo ./jobs.sh start --fresh prefix_scale/rocketfuel_4755_bothphase_0to500_tables
+```
+
+This queue uses the checked-in ns-3 Rocketfuel `cch` sample for AS 4755. The
+role split is derived from the original file's `bb` flag, so core means
+backbone (`bb`) and edge means non-backbone among connected radius-0 nodes.
+In the workspace sample that yields one edge router after dropping one
+isolated radius-0 node with no internal links. The queue renders the topology
+figure, the role-based comparison plots, and `summary.md` automatically after
+both phases finish.
 
 `./jobs.sh` auto-prompts for sudo on commands that need elevated privileges.
 

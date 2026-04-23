@@ -1,9 +1,10 @@
 /*
  * ndndsim-atlas-prefix-scale-scenario.cc
  *
- * Routing-only scenario on a fixed core/edge topology. After router
- * reachability converges, synthetic prefixes are announced only on the edge
- * routers. The scenario records per-node table metrics emitted by ndndSIM.
+ * Routing-only scenario on a caller-provided topology. After router
+ * reachability converges, synthetic prefixes are announced only on the
+ * caller-specified edge routers. The scenario records per-node table metrics
+ * emitted by ndndSIM.
  */
 
 #include "ns3/core-module.h"

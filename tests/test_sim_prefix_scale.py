@@ -3,7 +3,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from sim.prefix_scale import parse_table_trace, summarize_role_table_metrics
+from sim.prefix_scale import (default_prefix_counts, parse_table_trace,
+                              summarize_role_table_metrics)
 
 
 def test_parse_table_trace(tmp_path):
@@ -81,3 +82,7 @@ def test_summarize_role_table_metrics():
             "max_entries": 3,
         },
     ]
+
+
+def test_default_prefix_counts_for_rocketfuel_sample():
+    assert default_prefix_counts("rocketfuel_4755") == [0, 100, 200, 300, 400, 500]

@@ -2,6 +2,7 @@ import argparse
 import os
 
 from .prefix_scale_data import (
+    detect_role_table_topology,
     has_core_edge_result_layout,
     load_churn_csv,
     load_core_edge_results,
@@ -71,15 +72,16 @@ def main(argv=None):
         return 0
 
     if has_core_edge_result_layout(args.data):
+        topology_key = detect_role_table_topology(args.data)
         results_by_phase = load_core_edge_results(args.data)
-        print(f"Generating core/edge prefix-scale plots from {args.data}")
-        plot_core_edge_topology(out_dir)
-        plot_core_edge_run_comparison(results_by_phase, out_dir, source_label)
-        plot_core_edge_control_breakdown(args.data, out_dir, source_label)
-        plot_core_edge_prefix_state_by_role(results_by_phase, out_dir, source_label)
-        plot_core_edge_forwarding_delta_by_role(results_by_phase, out_dir, source_label)
-        plot_core_edge_table_stack_comparison(results_by_phase, out_dir, source_label)
-        write_core_edge_summary(results_by_phase, os.path.abspath(args.data), out_dir)
+        print(f"Generating role-based prefix-scale plots from {args.data} ({topology_key})")
+        plot_core_edge_topology(out_dir, topology_key=topology_key)
+        plot_core_edge_run_comparison(results_by_phase, out_dir, source_label, topology_key=topology_key)
+        plot_core_edge_control_breakdown(args.data, out_dir, source_label, topology_key=topology_key)
+        plot_core_edge_prefix_state_by_role(results_by_phase, out_dir, source_label, topology_key=topology_key)
+        plot_core_edge_forwarding_delta_by_role(results_by_phase, out_dir, source_label, topology_key=topology_key)
+        plot_core_edge_table_stack_comparison(results_by_phase, out_dir, source_label, topology_key=topology_key)
+        write_core_edge_summary(results_by_phase, os.path.abspath(args.data), out_dir, topology_key=topology_key)
         if args.data2:
             print("WARNING: --data2 is not used for the core/edge table-study layout")
         print("Done.")

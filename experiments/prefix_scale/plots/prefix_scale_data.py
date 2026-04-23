@@ -58,6 +58,43 @@ def load_core_edge_results(data_dir):
     return results
 
 
+def detect_role_table_topology(data_dir):
+    topologies = set()
+    for phase in ("onephase", "twophase"):
+        metadata_path = os.path.join(data_dir, phase, "metadata.json")
+        if not os.path.exists(metadata_path):
+            continue
+        with open(metadata_path) as handle:
+            metadata = json.load(handle)
+        topology = metadata.get("topology")
+        if topology:
+            topologies.add(topology)
+
+    if len(topologies) > 1:
+        raise ValueError(f"conflicting topology metadata under {data_dir}: {sorted(topologies)}")
+    if len(topologies) == 1:
+        return next(iter(topologies))
+
+    base = os.path.basename(os.path.abspath(data_dir))
+    if "rocketfuel_4755" in base:
+        return "rocketfuel_4755"
+    if "core_edge" in base:
+        return "core_edge"
+
+    runs_path = os.path.join(data_dir, "onephase", "runs.csv")
+    if os.path.exists(runs_path):
+        rows = _load_csv(runs_path)
+        if rows:
+            num_nodes = int(rows[0].get("num_nodes", 0) or 0)
+            num_links = int(rows[0].get("num_links", 0) or 0)
+            if (num_nodes, num_links) == (10, 12):
+                return "core_edge"
+            if (num_nodes, num_links) == (11, 12):
+                return "rocketfuel_4755"
+
+    raise ValueError(f"unable to detect prefix-scale topology for {data_dir}")
+
+
 _CORE_EDGE_LINK_TRACE_RE = re.compile(r"link-trace-(onephase|twophase)-p(\d+)-t(\d+)\.csv$")
 
 

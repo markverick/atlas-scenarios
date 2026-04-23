@@ -4,7 +4,12 @@ import pytest
 
 from lib.topology import (conf_stats, core_edge_links, core_edge_roles,
                           core_edge_stats, generate_ndnsim_core_edge_topo,
-                          grid_links, grid_nodes, grid_stats)
+                          generate_ndnsim_rocketfuel_sample_4755_topo,
+                          grid_links, grid_nodes, grid_stats,
+                          parse_rocketfuel_cch_maps,
+                          rocketfuel_sample_4755_path,
+                          rocketfuel_sample_4755_roles,
+                          rocketfuel_sample_4755_stats)
 
 
 def test_grid_stats_2x2():
@@ -67,3 +72,36 @@ def test_generate_ndnsim_core_edge_topo(tmp_path):
     assert topo_path.read_text() == content
     assert "c0  NA" in content
     assert "e3  c5  10Mbps  1  10ms  100" in content
+
+
+def test_parse_rocketfuel_cch_maps_drops_isolated_r0_nodes():
+    maps_path = rocketfuel_sample_4755_path()
+    if not os.path.isfile(maps_path):
+        pytest.skip("Rocketfuel sample not available (deps not installed)")
+
+    graph = parse_rocketfuel_cch_maps(maps_path)
+
+    assert [node["uid"] for node in graph["nodes"] if not node["bb"]] == ["462"]
+    assert "464" not in {node["uid"] for node in graph["nodes"]}
+    assert len(graph["links"]) == 12
+
+
+def test_generate_ndnsim_rocketfuel_sample_topo(tmp_path):
+    maps_path = rocketfuel_sample_4755_path()
+    if not os.path.isfile(maps_path):
+        pytest.skip("Rocketfuel sample not available (deps not installed)")
+
+    topo_path = tmp_path / "rocketfuel-4755.txt"
+    content = generate_ndnsim_rocketfuel_sample_4755_topo(
+        maps_path=maps_path,
+        path=str(topo_path),
+    )
+    roles = rocketfuel_sample_4755_roles(maps_path)
+    nodes, links = rocketfuel_sample_4755_stats(maps_path)
+
+    assert topo_path.read_text() == content
+    assert roles["edge"] == ["rf462"]
+    assert nodes == 11
+    assert links == 12
+    assert "rf462  rf463  10Mbps  1  10ms  100" in content
+    assert "rf464" not in content

@@ -7,7 +7,10 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
 
-from lib.topology import core_edge_links, core_edge_positions, core_edge_roles
+from lib.topology import (core_edge_links, core_edge_positions, core_edge_roles,
+                          rocketfuel_sample_4755_links,
+                          rocketfuel_sample_4755_positions,
+                          rocketfuel_sample_4755_roles)
 from .prefix_scale_data import bin_io, human_bytes, load_event_log, load_packet_trace, load_svs_suppression_dir
 from .prefix_scale_data import load_core_edge_link_trace_summaries
 
@@ -31,6 +34,15 @@ CORE_EDGE_PLOT_FILES = {
     "table_stack": "core_edge_table_stack_comparison.png",
 }
 
+ROCKETFUEL_4755_PLOT_FILES = {
+    "topology": "rocketfuel_4755_topology.png",
+    "run_comparison": "rocketfuel_4755_run_comparison.png",
+    "control_breakdown": "rocketfuel_4755_control_breakdown.png",
+    "prefix_state": "rocketfuel_4755_prefix_state_by_role.png",
+    "forwarder_growth": "rocketfuel_4755_forwarding_delta_by_role.png",
+    "table_stack": "rocketfuel_4755_table_stack_comparison.png",
+}
+
 CORE_EDGE_RC = {
     "font.size": 11,
     "axes.titlesize": 12,
@@ -40,6 +52,53 @@ CORE_EDGE_RC = {
     "legend.fontsize": 10,
     "figure.titlesize": 14,
 }
+
+TOPOLOGY_PLOT_PROFILES = {
+    "core_edge": {
+        "study_label": "Core-Edge Prefix Scaling",
+        "summary_title": "Core/Edge Prefix-Scale Summary",
+        "topology_title": "Core-edge topology used by the prefix-scale study",
+        "topology_heading": "Core-edge topology",
+        "plot_files": CORE_EDGE_PLOT_FILES,
+        "links": core_edge_links,
+        "positions": core_edge_positions,
+        "roles": core_edge_roles,
+        "node_fontsize": 10,
+    },
+    "rocketfuel_4755": {
+        "study_label": "Rocketfuel 4755 Prefix Scaling",
+        "summary_title": "Rocketfuel 4755 Prefix-Scale Summary",
+        "topology_title": "Rocketfuel sample 4755 topology used by the prefix-scale study",
+        "topology_heading": "Rocketfuel 4755 topology",
+        "plot_files": ROCKETFUEL_4755_PLOT_FILES,
+        "links": rocketfuel_sample_4755_links,
+        "positions": rocketfuel_sample_4755_positions,
+        "roles": rocketfuel_sample_4755_roles,
+        "node_fontsize": 8,
+    },
+}
+
+
+def _topology_profile(topology_key):
+    return TOPOLOGY_PLOT_PROFILES[topology_key]
+
+
+def _plot_files(topology_key):
+    return _topology_profile(topology_key)["plot_files"]
+
+
+def _series_value(series, prefix_count):
+    if not series:
+        return None
+    return series.get(prefix_count)
+
+
+def _series_delta(series, start_prefix, end_prefix):
+    start_value = _series_value(series, start_prefix)
+    end_value = _series_value(series, end_prefix)
+    if start_value is None or end_value is None:
+        return None
+    return end_value - start_value
 
 
 def _mean(values):
@@ -90,10 +149,11 @@ def _aggregate_total_entries_by_prefix_and_table(rows):
     return grouped
 
 
-def plot_core_edge_topology(out_dir):
-    positions = core_edge_positions()
-    roles = core_edge_roles()
-    links = core_edge_links()
+def plot_core_edge_topology(out_dir, topology_key="core_edge"):
+    profile = _topology_profile(topology_key)
+    positions = profile["positions"]()
+    roles = profile["roles"]()
+    links = profile["links"]()
     role_styles = {
         "core": {"color": "#4C72B0", "edgecolor": "#1F3A5F", "size": 850},
         "edge": {"color": "#DD8452", "edgecolor": "#7A3E1D", "size": 850},
@@ -129,24 +189,25 @@ def plot_core_edge_topology(out_dir):
                     ha="center",
                     va="center",
                     color="white",
-                    fontsize=10,
+                    fontsize=profile["node_fontsize"],
                     fontweight="bold",
                     zorder=3,
                 )
 
         axis.set_aspect("equal", adjustable="box")
         axis.axis("off")
-        fig.suptitle("Core-edge topology used by the prefix-scale study", y=0.98)
+        fig.suptitle(profile["topology_title"], y=0.98)
         fig.legend(loc="upper center", ncol=2, frameon=False, bbox_to_anchor=(0.5, 0.94))
 
         fig.tight_layout(rect=(0, 0, 1, 0.88))
-        path = os.path.join(out_dir, CORE_EDGE_PLOT_FILES["topology"])
+        path = os.path.join(out_dir, _plot_files(topology_key)["topology"])
         fig.savefig(path, dpi=180, bbox_inches="tight")
         plt.close(fig)
         print(f"  Saved {path}")
 
 
-def plot_core_edge_table_stack_comparison(results_by_phase, out_dir, source_label):
+def plot_core_edge_table_stack_comparison(results_by_phase, out_dir, source_label,
+                                          topology_key="core_edge"):
     table_order = [
         ("common", "dv_neighbors"),
         ("common", "dv_rib"),
@@ -228,15 +289,16 @@ def plot_core_edge_table_stack_comparison(results_by_phase, out_dir, source_labe
         axis.add_artist(phase_legend)
         axis.legend(table_handle_list, table_label_list, loc="upper center", bbox_to_anchor=(0.5, -0.16), ncol=2)
 
-        fig.suptitle("Core-Edge Prefix Scaling: Total Table Entries by Phase and Table", y=1.02)
+        fig.suptitle(f"{_topology_profile(topology_key)['study_label']}: Total Table Entries by Phase and Table", y=1.02)
         fig.tight_layout()
-        path = os.path.join(out_dir, CORE_EDGE_PLOT_FILES["table_stack"])
+        path = os.path.join(out_dir, _plot_files(topology_key)["table_stack"])
         fig.savefig(path, dpi=180, bbox_inches="tight")
         plt.close(fig)
         print(f"  Saved {path}")
 
 
-def plot_core_edge_run_comparison(results_by_phase, out_dir, source_label):
+def plot_core_edge_run_comparison(results_by_phase, out_dir, source_label,
+                                  topology_key="core_edge"):
     metrics = [
         ("router_reachability_s", "Router reachability (s)", None),
         ("control_packets", "Control packets", None),
@@ -262,15 +324,16 @@ def plot_core_edge_run_comparison(results_by_phase, out_dir, source_label):
         axes[1].set_ylabel("Packets")
         axes[2].set_ylabel("Bytes")
         axes[0].legend(loc="best")
-        fig.suptitle("Core-Edge Prefix Scaling: Reachability and Control Traffic", y=1.02)
+        fig.suptitle(f"{_topology_profile(topology_key)['study_label']}: Reachability and Control Traffic", y=1.02)
         fig.tight_layout()
-        path = os.path.join(out_dir, CORE_EDGE_PLOT_FILES["run_comparison"])
+        path = os.path.join(out_dir, _plot_files(topology_key)["run_comparison"])
         fig.savefig(path, dpi=180, bbox_inches="tight")
         plt.close(fig)
         print(f"  Saved {path}")
 
 
-def plot_core_edge_prefix_state_by_role(results_by_phase, out_dir, source_label):
+def plot_core_edge_prefix_state_by_role(results_by_phase, out_dir, source_label,
+                                        topology_key="core_edge"):
     with plt.rc_context(CORE_EDGE_RC):
         fig, axes = plt.subplots(1, 2, figsize=(12.5, 5.0), sharey=True)
         role_specs = [("core", "Core routers"), ("edge", "Edge routers")]
@@ -305,15 +368,16 @@ def plot_core_edge_prefix_state_by_role(results_by_phase, out_dir, source_label)
 
         axes[0].set_ylabel("Average entries per node")
         axes[0].legend(loc="upper left")
-        fig.suptitle("Core-Edge Prefix Scaling: Phase-Specific Prefix State", y=1.02)
+        fig.suptitle(f"{_topology_profile(topology_key)['study_label']}: Phase-Specific Prefix State", y=1.02)
         fig.tight_layout()
-        path = os.path.join(out_dir, CORE_EDGE_PLOT_FILES["prefix_state"])
+        path = os.path.join(out_dir, _plot_files(topology_key)["prefix_state"])
         fig.savefig(path, dpi=180, bbox_inches="tight")
         plt.close(fig)
         print(f"  Saved {path}")
 
 
-def plot_core_edge_forwarding_delta_by_role(results_by_phase, out_dir, source_label):
+def plot_core_edge_forwarding_delta_by_role(results_by_phase, out_dir, source_label,
+                                            topology_key="core_edge"):
     role_specs = [("core", "Core routers"), ("edge", "Edge routers")]
     series_specs = [
         {
@@ -375,15 +439,16 @@ def plot_core_edge_forwarding_delta_by_role(results_by_phase, out_dir, source_la
 
         axes[0].set_ylabel("Average entry delta from 0-prefix run")
         axes[0].legend(loc="upper left")
-        fig.suptitle("Core-Edge Prefix Scaling: Prefix-Driven Forwarder State Growth", y=1.02)
+        fig.suptitle(f"{_topology_profile(topology_key)['study_label']}: Prefix-Driven Forwarder State Growth", y=1.02)
         fig.tight_layout()
-        path = os.path.join(out_dir, CORE_EDGE_PLOT_FILES["forwarder_growth"])
+        path = os.path.join(out_dir, _plot_files(topology_key)["forwarder_growth"])
         fig.savefig(path, dpi=180, bbox_inches="tight")
         plt.close(fig)
         print(f"  Saved {path}")
 
 
-def plot_core_edge_control_breakdown(data_dir, out_dir, source_label):
+def plot_core_edge_control_breakdown(data_dir, out_dir, source_label,
+                                     topology_key="core_edge"):
     summaries = load_core_edge_link_trace_summaries(data_dir)
     if not any(summaries.values()):
         print("  No core/edge link traces found, skipping control-breakdown plots")
@@ -416,15 +481,19 @@ def plot_core_edge_control_breakdown(data_dir, out_dir, source_label):
                     axis.set_ylabel(ylabel)
 
         axes[0][0].legend(loc="best")
-        fig.suptitle("Core-Edge Prefix Scaling: Control Traffic Breakdown", y=0.99)
+        fig.suptitle(f"{_topology_profile(topology_key)['study_label']}: Control Traffic Breakdown", y=0.99)
         fig.tight_layout()
-        path = os.path.join(out_dir, CORE_EDGE_PLOT_FILES["control_breakdown"])
+        path = os.path.join(out_dir, _plot_files(topology_key)["control_breakdown"])
         fig.savefig(path, dpi=180, bbox_inches="tight")
         plt.close(fig)
         print(f"  Saved {path}")
 
 
-def write_core_edge_summary(results_by_phase, data_dir, out_dir):
+def write_core_edge_summary(results_by_phase, data_dir, out_dir,
+                            topology_key="core_edge"):
+    profile = _topology_profile(topology_key)
+    plot_files = _plot_files(topology_key)
+
     def rel_plot(name):
         return os.path.relpath(os.path.join(out_dir, name), data_dir)
 
@@ -444,6 +513,8 @@ def write_core_edge_summary(results_by_phase, data_dir, out_dir):
         run_series("onephase", "router_reachability_s"),
         run_series("twophase", "router_reachability_s"),
     )
+    if not prefix_counts:
+        raise ValueError("no run rows available for prefix-scale summary")
 
     role_counts = {}
     for role in ("core", "edge"):
@@ -477,31 +548,32 @@ def write_core_edge_summary(results_by_phase, data_dir, out_dir):
     onephase_packet_max = int(round(max(onephase_run["control_packets"].values())))
     twophase_packet_min = int(round(min(twophase_run["control_packets"].values())))
     twophase_packet_max = int(round(max(twophase_run["control_packets"].values())))
+    total_nodes = role_counts.get("core", 0) + role_counts.get("edge", 0)
     lines = [
-        "# Core/Edge Prefix-Scale Summary",
+        f"# {profile['summary_title']}",
         "",
-        f"This run covers a fixed {role_counts.get('core', '?') + role_counts.get('edge', '?')}-node topology with {role_counts.get('core', '?')} core routers and {role_counts.get('edge', '?')} edge routers.",
-        "The x-axis in all plots is the total number of announced prefixes, distributed across the edge routers.",
+        f"This run covers a {total_nodes}-node topology with {role_counts.get('core', '?')} core routers and {role_counts.get('edge', '?')} edge routers.",
+        "The x-axis in all plots is the total number of announced prefixes, distributed across the edge routers named in the scenario.",
         "",
         "## Plot Gallery",
         "",
-        "### Core-edge topology",
-        f"![Core-edge topology]({rel_plot(CORE_EDGE_PLOT_FILES['topology'])})",
+        f"### {profile['topology_heading']}",
+        f"![{profile['topology_heading']}]({rel_plot(plot_files['topology'])})",
         "",
         "### Reachability and control traffic",
-        f"![Reachability and control traffic]({rel_plot(CORE_EDGE_PLOT_FILES['run_comparison'])})",
+        f"![Reachability and control traffic]({rel_plot(plot_files['run_comparison'])})",
         "",
         "### Control traffic breakdown",
-        f"![Control traffic breakdown]({rel_plot(CORE_EDGE_PLOT_FILES['control_breakdown'])})",
+        f"![Control traffic breakdown]({rel_plot(plot_files['control_breakdown'])})",
         "",
         "### Phase-specific prefix state by role",
-        f"![Phase-specific prefix state by role]({rel_plot(CORE_EDGE_PLOT_FILES['prefix_state'])})",
+        f"![Phase-specific prefix state by role]({rel_plot(plot_files['prefix_state'])})",
         "",
         "### Prefix-driven forwarder state growth",
-        f"![Prefix-driven forwarder state growth]({rel_plot(CORE_EDGE_PLOT_FILES['forwarder_growth'])})",
+        f"![Prefix-driven forwarder state growth]({rel_plot(plot_files['forwarder_growth'])})",
         "",
         "### Total table entries by phase and table",
-        f"![Total table entries by phase and table]({rel_plot(CORE_EDGE_PLOT_FILES['table_stack'])})",
+        f"![Total table entries by phase and table]({rel_plot(plot_files['table_stack'])})",
         "",
         "## Run Metrics",
         "",
@@ -515,17 +587,60 @@ def write_core_edge_summary(results_by_phase, data_dir, out_dir):
             f"{int(round(onephase_run['control_bytes'][prefix_count]))} | {int(round(twophase_run['control_bytes'][prefix_count]))} |"
         )
 
-    lines.extend([
-        "",
-        "## Observations",
-        "",
-        f"- Router reachability stays essentially flat at about {onephase_run['router_reachability_s'][start_prefix]:.4f}s to {onephase_run['router_reachability_s'][max_prefix]:.4f}s for one-phase and {twophase_run['router_reachability_s'][start_prefix]:.4f}s for two-phase, so prefix count is not materially moving router reachability in this scenario.",
-        f"- Phase-specific prefix state grows linearly from 0 to {onephase_prefix_core[max_prefix]:.1f} average entries per node on both roles in both phases; the total across all nodes is exactly 10 x prefixes.",
-        f"- At {max_prefix} total prefixes, one-phase average forwarder FIB growth is +{onephase_fib_core[max_prefix] - onephase_fib_core[start_prefix]:.2f} entries on core routers and +{onephase_fib_edge[max_prefix] - onephase_fib_edge[start_prefix]:.2f} on edge routers, while one-phase forwarder RIB growth is +{onephase_rib_core[max_prefix] - onephase_rib_core[start_prefix]:.2f} on core routers and +{onephase_rib_edge[max_prefix] - onephase_rib_edge[start_prefix]:.2f} on edge routers.",
-        f"- At {max_prefix} total prefixes, two-phase average forwarder PET growth is +{twophase_pet_core[max_prefix] - twophase_pet_core[start_prefix]:.2f} entries on core routers and +{twophase_pet_edge[max_prefix] - twophase_pet_edge[start_prefix]:.2f} on edge routers, while common forwarder RIB and FIB remain flat.",
-        f"- Two-phase control traffic is higher than one-phase at every measured prefix count in this run: packets range from {twophase_packet_min} to {twophase_packet_max} in two-phase versus {onephase_packet_min} to {onephase_packet_max} in one-phase.",
-        "- Control traffic is not monotonic with prefix count, and the visible swings come mainly from PrefixSync rather than DV adverts. Treat this run as a qualitative comparison, not as evidence of a strictly monotonic scaling law.",
-    ])
+    observations = ["", "## Observations", ""]
+
+    onephase_reach_start = _series_value(onephase_run["router_reachability_s"], start_prefix)
+    onephase_reach_end = _series_value(onephase_run["router_reachability_s"], max_prefix)
+    twophase_reach_start = _series_value(twophase_run["router_reachability_s"], start_prefix)
+    twophase_reach_end = _series_value(twophase_run["router_reachability_s"], max_prefix)
+    if None not in (onephase_reach_start, onephase_reach_end, twophase_reach_start, twophase_reach_end):
+        observations.append(
+            f"- Router reachability stays essentially flat from {onephase_reach_start:.4f}s to {onephase_reach_end:.4f}s in one-phase and {twophase_reach_start:.4f}s to {twophase_reach_end:.4f}s in two-phase, so prefix count is not materially moving router reachability in this scenario."
+        )
+
+    onephase_prefix_core_end = _series_value(onephase_prefix_core, max_prefix)
+    onephase_prefix_edge_end = _series_value(onephase_prefix_edge, max_prefix)
+    if onephase_prefix_core_end is not None or onephase_prefix_edge_end is not None:
+        observations.append(
+            f"- At {max_prefix} total prefixes, one-phase DV prefix state reaches {0.0 if onephase_prefix_core_end is None else onephase_prefix_core_end:.1f} average entries on core routers and {0.0 if onephase_prefix_edge_end is None else onephase_prefix_edge_end:.1f} on edge routers."
+        )
+
+    twophase_prefix_core_end = _series_value(twophase_prefix_core, max_prefix)
+    twophase_prefix_edge_end = _series_value(twophase_prefix_edge, max_prefix)
+    if twophase_prefix_core_end is not None or twophase_prefix_edge_end is not None:
+        observations.append(
+            f"- At {max_prefix} total prefixes, two-phase DV prefix egress state reaches {0.0 if twophase_prefix_core_end is None else twophase_prefix_core_end:.1f} average entries on core routers and {0.0 if twophase_prefix_edge_end is None else twophase_prefix_edge_end:.1f} on edge routers."
+        )
+
+    onephase_fib_core_delta = _series_delta(onephase_fib_core, start_prefix, max_prefix)
+    onephase_fib_edge_delta = _series_delta(onephase_fib_edge, start_prefix, max_prefix)
+    onephase_rib_core_delta = _series_delta(onephase_rib_core, start_prefix, max_prefix)
+    onephase_rib_edge_delta = _series_delta(onephase_rib_edge, start_prefix, max_prefix)
+    if any(delta is not None for delta in (
+        onephase_fib_core_delta,
+        onephase_fib_edge_delta,
+        onephase_rib_core_delta,
+        onephase_rib_edge_delta,
+    )):
+        observations.append(
+            f"- At {max_prefix} total prefixes, one-phase forwarder FIB growth is {0.0 if onephase_fib_core_delta is None else onephase_fib_core_delta:+.2f} average entries on core routers and {0.0 if onephase_fib_edge_delta is None else onephase_fib_edge_delta:+.2f} on edge routers, while one-phase forwarder RIB growth is {0.0 if onephase_rib_core_delta is None else onephase_rib_core_delta:+.2f} on core routers and {0.0 if onephase_rib_edge_delta is None else onephase_rib_edge_delta:+.2f} on edge routers."
+        )
+
+    twophase_pet_core_delta = _series_delta(twophase_pet_core, start_prefix, max_prefix)
+    twophase_pet_edge_delta = _series_delta(twophase_pet_edge, start_prefix, max_prefix)
+    if twophase_pet_core_delta is not None or twophase_pet_edge_delta is not None:
+        observations.append(
+            f"- At {max_prefix} total prefixes, two-phase forwarder PET growth is {0.0 if twophase_pet_core_delta is None else twophase_pet_core_delta:+.2f} average entries on core routers and {0.0 if twophase_pet_edge_delta is None else twophase_pet_edge_delta:+.2f} on edge routers."
+        )
+
+    observations.append(
+        f"- Two-phase control traffic is higher than one-phase at every measured prefix count in this run: packets range from {twophase_packet_min} to {twophase_packet_max} in two-phase versus {onephase_packet_min} to {onephase_packet_max} in one-phase."
+    )
+    observations.append(
+        "- Control traffic is not monotonic with prefix count, and the visible swings come mainly from PrefixSync rather than DV adverts. Treat this run as a qualitative comparison, not as evidence of a strictly monotonic scaling law."
+    )
+
+    lines.extend(observations)
 
     path = os.path.join(data_dir, "summary.md")
     with open(path, "w") as handle:

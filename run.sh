@@ -7,7 +7,7 @@
 #   sudo ./run.sh [--env twophase|onephase] emu scalability  NxN grid scalability test
 #   ./run.sh [--env twophase|onephase] sim demo [opts]       3-node ndndSIM demo
 #   ./run.sh [--env twophase|onephase] sim scalability [opts] NxN grid ndndSIM scalability test
-#   ./run.sh [--env twophase|onephase] sim prefix_scale [opts] Core/edge prefix table study
+#   ./run.sh [--env twophase|onephase] sim prefix_scale [opts] Prefix-scale table study
 set -eo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -163,7 +163,7 @@ Commands:
   sim [--no-build] demo [opts]         Run 3-node ndndSIM demo
   sim [--no-build] scalability [opts]  Run NxN grid ndndSIM scalability test
   sim [--no-build] routing [opts]      Run routing-only ndndSIM traffic measurement
-    sim [--no-build] prefix_scale [opts] Run core/edge prefix-scale table study
+    sim [--no-build] prefix_scale [opts] Run prefix-scale table study
 Emulation options (emu scalability):
   --grids 2 3 4 5            Grid sizes to test
   --trials 1                 Repetitions per grid size

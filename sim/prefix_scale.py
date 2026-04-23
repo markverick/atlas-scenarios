@@ -3,6 +3,7 @@
 
 import argparse
 import csv
+import json
 import os
 import sys
 
@@ -10,7 +11,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from lib.result_adapter import parse_conv_trace, parse_link_trace
 from lib.topology import (core_edge_roles, core_edge_stats,
-                          generate_ndnsim_core_edge_topo)
+                          generate_ndnsim_core_edge_topo,
+                          generate_ndnsim_rocketfuel_sample_4755_topo,
+                          rocketfuel_sample_4755_path,
+                          rocketfuel_sample_4755_roles,
+                          rocketfuel_sample_4755_stats)
 from sim._helpers import resolve_ns3_dir, run_prefix_scale_scenario
 
 
@@ -50,6 +55,11 @@ ROLE_FIELDNAMES = [
     "avg_entries",
     "max_entries",
 ]
+
+DEFAULT_PREFIX_COUNTS = {
+    "core_edge": [0, 1, 2, 3, 4, 5],
+    "rocketfuel_4755": [0, 100, 200, 300, 400, 500],
+}
 
 
 def current_phase_label():
@@ -113,14 +123,56 @@ def summarize_role_table_metrics(rows):
     return summaries
 
 
+def default_prefix_counts(topology):
+    return list(DEFAULT_PREFIX_COUNTS[topology])
+
+
+def prepare_prefix_scale_topology(topology, *, ns3_dir, topo_dir, bw_mbps, delay_ms):
+    if topology == "core_edge":
+        topo_path = os.path.join(topo_dir, "topo-core-edge-atlas.txt")
+        generate_ndnsim_core_edge_topo(
+            bw=f"{bw_mbps}Mbps",
+            delay_ms=delay_ms,
+            path=topo_path,
+        )
+        roles = core_edge_roles()
+        num_nodes, num_links = core_edge_stats()
+    elif topology == "rocketfuel_4755":
+        maps_path = rocketfuel_sample_4755_path(ns3_dir)
+        topo_path = os.path.join(topo_dir, "topo-rocketfuel-4755-atlas.txt")
+        generate_ndnsim_rocketfuel_sample_4755_topo(
+            maps_path=maps_path,
+            bw=f"{bw_mbps}Mbps",
+            delay_ms=delay_ms,
+            path=topo_path,
+        )
+        roles = rocketfuel_sample_4755_roles(maps_path)
+        num_nodes, num_links = rocketfuel_sample_4755_stats(maps_path)
+    else:
+        raise ValueError(f"Unsupported topology: {topology}")
+
+    if not roles["edge"]:
+        raise ValueError(f"Topology {topology} has no edge nodes for prefix announcements")
+
+    return {
+        "topo_rel": os.path.relpath(topo_path, ns3_dir),
+        "roles": roles,
+        "num_nodes": num_nodes,
+        "num_links": num_links,
+    }
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="ndndSIM core/edge prefix-scale table measurement"
+        description="ndndSIM prefix-scale table measurement"
     )
     parser.add_argument("--ns3-dir", default=None,
                         help="Path to ns-3 root (default: deps/ns-3 or NS3_DIR env)")
+    parser.add_argument("--topology", choices=sorted(DEFAULT_PREFIX_COUNTS),
+                        default="core_edge",
+                        help="Topology preset to run (default: core_edge)")
     parser.add_argument("--prefix-counts", nargs="+", type=int,
-                        default=[0, 1, 2, 3, 4, 5],
+                        default=None,
                         help="Total prefixes to sweep across edge routers")
     parser.add_argument("--delay", type=int, default=10,
                         help="Per-link delay in ms (default: 10)")
@@ -147,15 +199,31 @@ def main(argv=None):
     os.makedirs(args.out, exist_ok=True)
     os.makedirs(topo_dir, exist_ok=True)
 
-    topo_path = os.path.join(topo_dir, "topo-core-edge-atlas.txt")
-    generate_ndnsim_core_edge_topo(
-        bw=f"{args.bw}Mbps",
+    if args.prefix_counts is None:
+        args.prefix_counts = default_prefix_counts(args.topology)
+
+    topology = prepare_prefix_scale_topology(
+        args.topology,
+        ns3_dir=ns3_dir,
+        topo_dir=topo_dir,
+        bw_mbps=args.bw,
         delay_ms=args.delay,
-        path=topo_path,
     )
-    topo_rel = os.path.relpath(topo_path, ns3_dir)
-    roles = core_edge_roles()
-    num_nodes, num_links = core_edge_stats()
+    topo_rel = topology["topo_rel"]
+    roles = topology["roles"]
+    num_nodes = topology["num_nodes"]
+    num_links = topology["num_links"]
+
+    metadata_path = os.path.join(args.out, "metadata.json")
+    with open(metadata_path, "w") as handle:
+        json.dump({
+            "topology": args.topology,
+            "num_nodes": num_nodes,
+            "num_links": num_links,
+            "role_counts": {role: len(nodes) for role, nodes in roles.items()},
+            "roles": roles,
+            "prefix_counts": args.prefix_counts,
+        }, handle, indent=2, sort_keys=True)
 
     runs_path = os.path.join(args.out, "runs.csv")
     node_path = os.path.join(args.out, "node_table_metrics.csv")
@@ -179,7 +247,10 @@ def main(argv=None):
                 table_csv = os.path.abspath(os.path.join(args.out, f"tables-{tag}.csv"))
                 run_log = os.path.abspath(os.path.join(args.out, f"run-{tag}.log"))
 
-                print(f"\n=== Prefix scale: phase {phase}, prefixes {prefix_count}, trial {trial} ===")
+                print(
+                    f"\n=== Prefix scale: topology {args.topology}, phase {phase}, "
+                    f"prefixes {prefix_count}, trial {trial} ==="
+                )
                 run_prefix_scale_scenario(
                     ns3_dir,
                     topo=topo_rel,
