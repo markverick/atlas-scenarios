@@ -26,6 +26,11 @@ def main():
     add_grid_scenario_args(parser, default_out="results/sim")
     parser.add_argument("--ns3-dir", default=None,
                         help="Path to ns-3 root (default: deps/ns-3 or NS3_DIR env)")
+    parser.add_argument(
+        "--allow-no-convergence",
+        action="store_true",
+        help="Keep trial outputs even when DV never converges (convergence_s stays -1)",
+    )
     args = parser.parse_args()
 
     delay_ms, bw_mbps, dv_config = apply_config_overrides(args)
@@ -64,6 +69,7 @@ def main():
                     conv_trace=conv_file,
                     link_trace=link_csv,
                     dv_config=dv_config or None,
+                    require_convergence=not args.allow_no_convergence,
                 )
 
                 result = sim_trial_result(grid_size, num_nodes, num_links,

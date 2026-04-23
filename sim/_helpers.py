@@ -102,7 +102,7 @@ def run_scenario(ns3_dir, *, topo, rate_trace, sim_time=60.0,
                  consumer=None, producer=None, prefix="/ndn/test",
                  frequency=10.0, cores=0, conv_trace=None,
                  link_trace=None, dv_config=None, network="/minindn",
-                 run_log=None):
+                 run_log=None, require_convergence=True):
     """Build ns-3 and run the atlas scenario with the given parameters.
 
     Args:
@@ -119,6 +119,7 @@ def run_scenario(ns3_dir, *, topo, rate_trace, sim_time=60.0,
         link_trace: Output link traffic CSV path (absolute).
         dv_config:  Dict of DV config overrides (JSON keys from Go config).
         run_log:    Optional path to capture scenario stdout/stderr logs.
+        require_convergence: Whether conv_trace must report a non-negative value.
     """
     sync_scenario(ns3_dir)
     _build_ns3(ns3_dir, cores)
@@ -164,12 +165,12 @@ def run_scenario(ns3_dir, *, topo, rate_trace, sim_time=60.0,
     else:
         errors.append(f"rate_trace '{rate_trace}' was not created by the simulation")
 
-    # conv_trace must contain a non-negative float (DV must converge)
+    # conv_trace must contain a non-negative float when convergence is required
     if conv_trace:
         if os.path.isfile(conv_trace):
             try:
                 val = float(open(conv_trace).read().strip())
-                if val < 0:
+                if val < 0 and require_convergence:
                     errors.append(
                         f"conv_trace '{conv_trace}' reports convergence=-1 -- "
                         "DV routing never converged during the simulation"

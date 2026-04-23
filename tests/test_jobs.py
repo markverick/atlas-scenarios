@@ -2,16 +2,18 @@
 import io
 import json
 import os
+import shutil
+import subprocess
 import sys
 from contextlib import redirect_stdout
 
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from jobs.conventions import InteractiveCancel, discover_active_queues, discover_catalog, resolve_queue_path, selector_from_path, select_queue_interactively
+from jobs.conventions import InteractiveCancel, discover_active_queues, discover_catalog, queue_stem, resolve_queue_path, selector_from_path, select_queue_interactively
 from jobs import cli as jobs_cli
 from jobs.runner import _progress_bar, _trim_line, cmd_list, cmd_run, cmd_status
-from jobs.spec import expand_matrix, load_job_spec, load_jobs
+from jobs.spec import build_run_context, expand_matrix, load_job_spec, load_jobs
 from jobs import state as jobs_state
 from jobs.state import STATE_META_KEY, load_state, save_state, screen_exists, state_path
 
@@ -125,6 +127,107 @@ def test_load_job_spec_requires_timestamp_in_run_root_template(tmp_path):
 
     with pytest.raises(SystemExit):
         load_job_spec(path)
+
+
+def test_3x3_bothphase_queue_builds_once_then_runs_no_build():
+    repo_dir = os.path.dirname(os.path.dirname(__file__))
+    path = os.path.join(
+        repo_dir,
+        "experiments",
+        "scalability",
+        "queues",
+        "3x3_bothphase_tables.json",
+    )
+
+    spec = load_job_spec(path)
+    state = {}
+    selector = spec.get("selector") or selector_from_path(path, root=repo_dir)
+    context = build_run_context(path, spec, state, selector=selector, stem=queue_stem(path))
+    jobs = load_jobs(path, context)
+
+    assert [job["name"] for job in jobs] == [
+        "build twophase and onephase",
+        "sim twophase 3x3 x3",
+        "sim onephase 3x3 x3",
+        "render 3x3 summary table",
+    ]
+    assert jobs[0]["cmd"] == "./run.sh build && ./run.sh --env onephase build"
+    assert jobs[1]["cmd"].startswith("./run.sh sim --no-build scalability --allow-no-convergence")
+    assert jobs[2]["cmd"].startswith("./run.sh --env onephase sim --no-build scalability --allow-no-convergence")
+    assert jobs[3]["cmd"].startswith("./run.sh as-user python3 aggregate.py --grid-size 3")
+    assert "tables-3x3.md" in jobs[3]["cmd"]
+
+
+def test_queue_render_runs_as_user():
+    repo_dir = os.path.dirname(os.path.dirname(__file__))
+    path = os.path.join(
+        repo_dir,
+        "experiments",
+        "scalability",
+        "queues",
+        "3x3_bothphase_tables.json",
+    )
+
+    spec = load_job_spec(path)
+    assert spec["jobs"][3]["cmd"].startswith("./run.sh as-user python3 aggregate.py")
+
+
+def _fake_root_env(tmp_path):
+    real_id = shutil.which("id")
+    assert real_id is not None
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_id = fake_bin / "id"
+    fake_id.write_text(
+        "#!/bin/sh\n"
+        "if [ \"$1\" = \"-u\" ]; then\n"
+        "  echo 0\n"
+        "  exit 0\n"
+        "fi\n"
+        f"exec {real_id} \"$@\"\n"
+    )
+    fake_id.chmod(0o755)
+
+    env = os.environ.copy()
+    env.pop("ATLAS_USER", None)
+    env.pop("SUDO_USER", None)
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    return env
+
+
+def test_run_sh_as_user_requires_target_user_when_running_as_root(tmp_path):
+    env = _fake_root_env(tmp_path)
+    result = subprocess.run(
+        [
+            "./run.sh",
+            "as-user",
+            "python3",
+            "-c",
+            "print('unexpected-success')",
+        ],
+        cwd=os.path.dirname(os.path.dirname(__file__)),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "ATLAS_USER or SUDO_USER must be set" in result.stderr
+
+
+def test_run_sh_build_requires_target_user_when_running_as_root(tmp_path):
+    env = _fake_root_env(tmp_path)
+    result = subprocess.run(
+        ["./run.sh", "build"],
+        cwd=os.path.dirname(os.path.dirname(__file__)),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "ATLAS_USER or SUDO_USER must be set" in result.stderr
 
 
 def test_discover_job_catalog_for_experiment_selector(tmp_path):

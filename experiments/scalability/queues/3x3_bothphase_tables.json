@@ -1,0 +1,28 @@
+{
+  "_comment": "3x3 both-phase sim queue that renders per-trial packet and byte summary tables as the final job. Run with: sudo ./jobs.sh start --fresh scalability/3x3_bothphase_tables",
+  "selector": "scalability/3x3_bothphase_tables",
+  "name": "3x3_bothphase_tables",
+  "experiment": "scalability",
+  "topology": "grid",
+  "mode": "twophase+onephase",
+  "description": "Run 3x3 sim trials for twophase and onephase, then render the final metrics table",
+  "run_root_template": "experiments/scalability/results/3x3_bothphase_tables/{timestamp}",
+  "jobs": [
+    {
+      "name": "build twophase and onephase",
+      "cmd": "./run.sh build && ./run.sh --env onephase build"
+    },
+    {
+      "name": "sim twophase 3x3 x3",
+      "cmd": "./run.sh sim --no-build scalability --allow-no-convergence --grids 3 --trials 3 --out {run_root}/twophase"
+    },
+    {
+      "name": "sim onephase 3x3 x3",
+      "cmd": "./run.sh --env onephase sim --no-build scalability --allow-no-convergence --grids 3 --trials 3 --out {run_root}/onephase"
+    },
+    {
+      "name": "render 3x3 summary table",
+      "cmd": "./run.sh as-user python3 aggregate.py --grid-size 3 --input twophase={run_root}/twophase --input onephase={run_root}/onephase --out {run_root}/tables-3x3.md"
+    }
+  ]
+}

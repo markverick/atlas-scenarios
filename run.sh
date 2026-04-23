@@ -13,20 +13,54 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPS_DIR="$REPO_DIR/deps"
 NS3_DIR="$DEPS_DIR/ns-3"
 
+RUN_UID="$(id -u)"
+
 # Resolve the non-root user who should own result files.
 # Prefer ATLAS_USER (set by ./jobs.sh), fall back to SUDO_USER.
 ATLAS_USER="${ATLAS_USER:-$SUDO_USER}"
+ATLAS_OWNER_SPEC=""
+if [[ -n "$ATLAS_USER" ]]; then
+    atlas_group="$(id -gn "$ATLAS_USER" 2>/dev/null)" || {
+        echo "ERROR: could not resolve primary group for ATLAS_USER=$ATLAS_USER" >&2
+        exit 1
+    }
+    ATLAS_OWNER_SPEC="$ATLAS_USER:$atlas_group"
+fi
 
 # When running as root, ensure experiment result trees are owned by the
 # real user before dispatching commands. This prevents stale root-owned
 # files from blocking subsequent sim runs.
 fix_results_owner() {
-    if [[ $EUID -eq 0 && -n "$ATLAS_USER" ]]; then
+    if [[ "$RUN_UID" -eq 0 && -n "$ATLAS_OWNER_SPEC" ]]; then
         local result_dir
         for result_dir in "$REPO_DIR/results" "$REPO_DIR/experiments"/*/results; do
             [[ -d "$result_dir" ]] || continue
-            chown -R "$ATLAS_USER:$ATLAS_USER" "$result_dir" 2>/dev/null || true
+            chown -R "$ATLAS_OWNER_SPEC" "$result_dir"
         done
+    fi
+}
+
+require_atlas_user() {
+    if [[ "$RUN_UID" -eq 0 && -z "$ATLAS_USER" ]]; then
+        echo "ERROR: ATLAS_USER or SUDO_USER must be set when running this command under sudo" >&2
+        exit 1
+    fi
+}
+
+run_as_atlas_user() {
+    require_atlas_user
+    if [[ "$RUN_UID" -eq 0 && -n "$ATLAS_USER" ]]; then
+        sudo -u "$ATLAS_USER" env "PATH=$PATH" "PYTHONPATH=$PYTHONPATH" "$@"
+    else
+        "$@"
+    fi
+}
+
+build_sim_run_cmd() {
+    SIM_RUN_CMD=(python3)
+    require_atlas_user
+    if [[ "$RUN_UID" -eq 0 && -n "$ATLAS_USER" ]]; then
+        SIM_RUN_CMD=(sudo -u "$ATLAS_USER" env "PATH=$PATH" "PYTHONPATH=$PYTHONPATH" "NS3_CMAKE_CACHE=$NS3_CMAKE_CACHE" "NS3_BUILD_OUT=$NS3_BUILD_OUT" "NDNDSIM_NO_BUILD=${NDNDSIM_NO_BUILD:-}" python3)
     fi
 }
 
@@ -48,28 +82,28 @@ ensure_ns3_ready() {
         exit 1
     fi
 
-    local ns3_cmd=(./ns3)
-    if [[ $EUID -eq 0 && -n "$ATLAS_USER" ]]; then
-        ns3_cmd=(sudo -u "$ATLAS_USER" env "PATH=$PATH" ./ns3)
-    fi
-
     if [[ "$phase" == "onephase" ]]; then
         local cmake_cache="$NS3_DIR/cmake-cache-op"
         local build_out="$NS3_DIR/build-op"
         echo "[sim] Configuring ns-3 (onephase)"
-        cmake -S "$NS3_DIR" -B "$cmake_cache" \
+        run_as_atlas_user cmake -S "$NS3_DIR" -B "$cmake_cache" \
             -DCMAKE_BUILD_TYPE=release \
             -DNS3_EXAMPLES=ON -DNS3_TESTS=ON \
             -DNDNDSIM_PHASE=onephase \
             "-DNS3_OUTPUT_DIRECTORY=$build_out"
         echo "[sim] Building ns-3 (onephase)"
-        cmake --build "$cmake_cache" -j$(nproc)
+        run_as_atlas_user cmake --build "$cmake_cache" -j$(nproc)
     else
-        # Reconfigure each run so newly-added Go files are picked up by cmake globs.
+        local cmake_cache="$NS3_DIR/cmake-cache"
+        local build_out="$NS3_DIR/build"
         echo "[sim] Configuring ns-3 (twophase)"
-        (cd "$NS3_DIR" && "${ns3_cmd[@]}" configure -d release)
+        run_as_atlas_user cmake -S "$NS3_DIR" -B "$cmake_cache" \
+            -DCMAKE_BUILD_TYPE=release \
+            -DNS3_EXAMPLES=ON -DNS3_TESTS=ON \
+            -DNDNDSIM_PHASE=twophase \
+            "-DNS3_OUTPUT_DIRECTORY=$build_out"
         echo "[sim] Building ns-3 (twophase)"
-        (cd "$NS3_DIR" && "${ns3_cmd[@]}" build)
+        run_as_atlas_user cmake --build "$cmake_cache" -j$(nproc)
     fi
 }
 
@@ -91,11 +125,11 @@ build_ndnd() {
     local out="$DEPS_DIR/bin/ndnd"
     echo "[emu] Building ndnd daemon from $NDND_SRC (go: $go_bin)"
     mkdir -p "$DEPS_DIR/bin"
-    (cd "$NDND_SRC" && GOPATH="$GOPATH_DIR" GOFLAGS=-mod=mod "$go_bin" build -buildvcs=false -o "$out" ./cmd/ndnd/)
+    (cd "$NDND_SRC" && run_as_atlas_user env "GOPATH=$GOPATH_DIR" "GOFLAGS=-mod=mod" "$go_bin" build -buildvcs=false -o "$out" ./cmd/ndnd/)
     # Kill any leftover ndnd processes so the binary isn't "text file busy"
     pkill -9 -x ndnd 2>/dev/null || true
     sleep 0.3
-    if [[ $EUID -eq 0 ]]; then
+    if [[ "$RUN_UID" -eq 0 ]]; then
         cp "$out" /usr/local/bin/ndnd
     else
         sudo cp "$out" /usr/local/bin/ndnd
@@ -111,7 +145,7 @@ build_ndnd_traffic() {
     local src="$NS3_DIR/contrib/ndndSIM/go/.transformed-ndnd-${phase}"
     local out="$REPO_DIR/emu/ndnd-traffic"
     echo "[emu] Building ndnd-traffic from $src (go: $go_bin)"
-    (cd "$src" && GOWORK=off GOPATH="$GOPATH_DIR" GOFLAGS=-mod=mod "$go_bin" build -buildvcs=false -o "$out" ./cmd/traffic/)
+    (cd "$src" && run_as_atlas_user env "GOWORK=off" "GOPATH=$GOPATH_DIR" "GOFLAGS=-mod=mod" "$go_bin" build -buildvcs=false -o "$out" ./cmd/traffic/)
 }
 
 usage() {
@@ -120,6 +154,7 @@ Usage: ./run.sh <command> [args...]
 
 Commands:
   setup                      Install all dependencies from source
+    as-user <cmd...>           Run a command as the real user when invoked under sudo
   build                      Build all binaries (ns-3, ndnd, ndnd-traffic)
   emu [--no-build] demo      Run 3-node file transfer demo (needs sudo)
   emu [--no-build] scalability [opts]  Run NxN grid scalability test (needs sudo)
@@ -176,6 +211,12 @@ case "$1" in
     setup)
         exec "$REPO_DIR/setup.sh"
         ;;
+    as-user)
+        shift
+        [[ $# -lt 1 ]] && { echo "Usage: ./run.sh as-user <cmd...>"; exit 1; }
+        run_as_atlas_user "$@"
+        exit $?
+        ;;
     build)
         shift
         echo "[build] Building all binaries (env: $ENV_PHASE)"
@@ -221,14 +262,19 @@ case "$1" in
         if [[ "$ENV_PHASE" == "onephase" ]]; then
             export NS3_CMAKE_CACHE="cmake-cache-op"
             export NS3_BUILD_OUT="build-op"
+        else
+            export NS3_CMAKE_CACHE="cmake-cache"
+            export NS3_BUILD_OUT="build"
         fi
 
-        run_cmd=(python3)
-        if [[ $EUID -eq 0 && -n "$ATLAS_USER" ]]; then
-            run_cmd=(sudo -u "$ATLAS_USER" env "PATH=$PATH" "PYTHONPATH=$PYTHONPATH" "NS3_CMAKE_CACHE=${NS3_CMAKE_CACHE:-}" "NS3_BUILD_OUT=${NS3_BUILD_OUT:-build}" python3)
+        if $no_build; then
+            export NDNDSIM_NO_BUILD=1
+        else
+            unset NDNDSIM_NO_BUILD
         fi
 
-        exec "${run_cmd[@]}" "$REPO_DIR/sim/$subcmd" --ns3-dir "$NS3_DIR" "$@"
+        build_sim_run_cmd
+        exec "${SIM_RUN_CMD[@]}" "$REPO_DIR/sim/$subcmd" --ns3-dir "$NS3_DIR" "$@"
         ;;
     both)
         shift
@@ -236,13 +282,7 @@ case "$1" in
         subcmd="$1"; shift
 
         # Must be run as root (emu needs sudo; sim will drop privs internally)
-        [[ $EUID -ne 0 ]] && { echo "ERROR: 'both' must be run with sudo"; exit 1; }
-
-        # ns-3 build user (drop privs for sim)
-        sim_cmd=(python3)
-        if [[ -n "$ATLAS_USER" ]]; then
-            sim_cmd=(sudo -u "$ATLAS_USER" env "PATH=$PATH" "PYTHONPATH=$PYTHONPATH" python3)
-        fi
+        [[ "$RUN_UID" -ne 0 ]] && { echo "ERROR: 'both' must be run with sudo"; exit 1; }
 
         [[ "$subcmd" != *.py ]] && subcmd="${subcmd}.py"
 
@@ -260,8 +300,13 @@ case "$1" in
         if [[ "$ENV_PHASE" == "onephase" ]]; then
             export NS3_CMAKE_CACHE="cmake-cache-op"
             export NS3_BUILD_OUT="build-op"
+        else
+            export NS3_CMAKE_CACHE="cmake-cache"
+            export NS3_BUILD_OUT="build"
         fi
-        "${sim_cmd[@]}" "$REPO_DIR/sim/$subcmd" --ns3-dir "$NS3_DIR" "$@"
+        export NDNDSIM_NO_BUILD=1
+        build_sim_run_cmd
+        "${SIM_RUN_CMD[@]}" "$REPO_DIR/sim/$subcmd" --ns3-dir "$NS3_DIR" "$@"
 
         ;;
     *)
