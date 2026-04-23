@@ -12,6 +12,8 @@ import shutil
 import subprocess
 import textwrap
 
+from lib.result_adapter import parse_conv_trace
+
 # Default ns-3 directory: deps/ns-3 relative to this repo
 DEFAULT_NS3_DIR = os.path.join(os.path.dirname(__file__), "..", "deps", "ns-3")
 _REPO_DIR = os.path.join(os.path.dirname(__file__), "..")
@@ -165,11 +167,11 @@ def run_scenario(ns3_dir, *, topo, rate_trace, sim_time=60.0,
     else:
         errors.append(f"rate_trace '{rate_trace}' was not created by the simulation")
 
-    # conv_trace must contain a non-negative float when convergence is required
+    # conv_trace must contain a non-negative convergence value when required
     if conv_trace:
         if os.path.isfile(conv_trace):
             try:
-                val = float(open(conv_trace).read().strip())
+                val = parse_conv_trace(conv_trace)
                 if val < 0 and require_convergence:
                     errors.append(
                         f"conv_trace '{conv_trace}' reports convergence=-1 -- "
@@ -429,7 +431,7 @@ def run_routing_scenario(ns3_dir, *, topo, sim_time=30.0, cores=0,
             errors.append(f"conv_trace '{conv_trace}' was not created by the simulation")
         else:
             try:
-                val = float(open(conv_trace).read().strip())
+                val = parse_conv_trace(conv_trace)
                 if val < 0:
                     errors.append(
                         f"conv_trace '{conv_trace}' reports convergence=-1 -- "

@@ -70,6 +70,7 @@ def main(argv=None, routing=False):
                         trial=trial,
                         convergence_s=conv,
                         convergence_scope="router_reachability",
+                        router_reachability_s=conv,
                         transfer_ok=conv >= 0,
                         **parse_link_trace(link_csv),
                     )

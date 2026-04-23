@@ -18,6 +18,7 @@ def write_scalability_csv(directory, rows):
             "trial",
             "convergence_s",
             "convergence_scope",
+            "router_reachability_s",
             "transfer_ok",
             "avg_mem_kb",
             "total_packets",
@@ -76,8 +77,8 @@ def test_aggregate_dir_sums_categories(tmp_path):
     out_dir = tmp_path / "twophase"
     out_dir.mkdir()
     write_scalability_csv(out_dir, [
-        [3, 9, 12, 2, "0.1234", "prefix_propagation", True, 0, 0, 0, 0, 0, 0, 0],
-        [3, 9, 12, 1, "0.1200", "prefix_propagation", True, 0, 0, 0, 0, 0, 0, 0],
+        [3, 9, 12, 2, "0.1234", "prefix_propagation", "0.1010", True, 0, 0, 0, 0, 0, 0, 0],
+        [3, 9, 12, 1, "0.1200", "prefix_propagation", "0.1000", True, 0, 0, 0, 0, 0, 0, 0],
     ])
     write_link_trace(out_dir, 1, 10, 1000, 20, 200)
     write_link_trace(out_dir, 2, 11, 1100, 21, 210)
@@ -86,6 +87,7 @@ def test_aggregate_dir_sums_categories(tmp_path):
 
     assert [row["trial"] for row in rows] == [1, 2]
     assert rows[0]["convergence_s"] == "0.1200"
+    assert rows[0]["router_reachability_s"] == "0.1000"
     assert rows[0]["DvAdvert_pkts"] == 10
     assert rows[0]["UserInterest_pkts"] == 20
     assert rows[0]["UserData_pkts"] == 20
@@ -98,8 +100,8 @@ def test_render_report_outputs_markdown_sections(tmp_path):
     op_dir = tmp_path / "onephase"
     tw_dir.mkdir()
     op_dir.mkdir()
-    write_scalability_csv(op_dir, [[3, 9, 12, 1, "0.2000", "router_reachability", True, 0, 0, 0, 0, 0, 0, 0]])
-    write_scalability_csv(tw_dir, [[3, 9, 12, 1, "0.1000", "prefix_propagation", True, 0, 0, 0, 0, 0, 0, 0]])
+    write_scalability_csv(op_dir, [[3, 9, 12, 1, "0.2000", "router_reachability", "0.2000", True, 0, 0, 0, 0, 0, 0, 0]])
+    write_scalability_csv(tw_dir, [[3, 9, 12, 1, "0.1000", "prefix_propagation", "0.0900", True, 0, 0, 0, 0, 0, 0, 0]])
     write_link_trace(tw_dir, 1, 1, 100, 2, 20)
     write_link_trace(op_dir, 1, 3, 300, 4, 40)
 
@@ -110,9 +112,9 @@ def test_render_report_outputs_markdown_sections(tmp_path):
 
     assert "## twophase" in report
     assert "## onephase" in report
-    assert "| trial | prefix_propagation_s |" in report
+    assert "| trial | prefix_propagation_s | router_reachability_s |" in report
     assert "| trial | router_reachability_s |" in report
-    assert "| 1 | 0.1000 | 1 | 100 |" in report
+    assert "| 1 | 0.1000 | 0.0900 | 1 | 100 |" in report
     assert "| 1 | 0.2000 | 3 | 300 |" in report
 
 

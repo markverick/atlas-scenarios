@@ -99,6 +99,7 @@ def aggregate_dir(directory: str, *, grid_size: int) -> List[Dict[str, object]]:
             "trial": trial,
             "convergence_s": row["convergence_s"],
             "convergence_scope": row.get("convergence_scope", _DEFAULT_CONVERGENCE_SCOPE) or _DEFAULT_CONVERGENCE_SCOPE,
+            "router_reachability_s": row.get("router_reachability_s", "-1"),
         }
         result.update(breakdown)
         results.append(result)
@@ -109,13 +110,19 @@ def render_markdown_table(label: str, results: Iterable[Dict[str, object]]) -> s
     rows = list(results)
     scope = rows[0].get("convergence_scope", "unspecified") if rows else "unspecified"
     convergence_label = _CONVERGENCE_LABELS.get(scope, "convergence_s")
-    columns = ["trial", convergence_label, *COMMON_COLUMNS[1:]]
+    include_routing_convergence = (
+        convergence_label != "router_reachability_s"
+        and any(str(row.get("router_reachability_s", "-1")) != "-1" for row in rows)
+    )
+    extra_columns = ["router_reachability_s"] if include_routing_convergence else []
+    columns = ["trial", convergence_label, *extra_columns, *COMMON_COLUMNS[1:]]
 
     lines = [f"## {label}", ""]
     lines.append("| " + " | ".join(columns) + " |")
     lines.append("| " + " | ".join(["---"] * len(columns)) + " |")
     for row in rows:
         rendered = [str(row["trial"]), str(row["convergence_s"])]
+        rendered.extend(str(row[column]) for column in extra_columns)
         rendered.extend(str(row[column]) for column in COMMON_COLUMNS[1:])
         lines.append("| " + " | ".join(rendered) + " |")
     return "\n".join(lines)
