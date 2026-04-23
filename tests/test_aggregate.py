@@ -17,12 +17,13 @@ def write_scalability_csv(directory, rows):
             "num_links",
             "trial",
             "convergence_s",
+            "convergence_scope",
             "transfer_ok",
             "avg_mem_kb",
             "total_packets",
             "total_bytes",
-            "dv_packets",
-            "dv_bytes",
+            "control_packets",
+            "control_bytes",
             "user_packets",
             "user_bytes",
         ])
@@ -75,8 +76,8 @@ def test_aggregate_dir_sums_categories(tmp_path):
     out_dir = tmp_path / "twophase"
     out_dir.mkdir()
     write_scalability_csv(out_dir, [
-        [3, 9, 12, 2, "0.1234", True, 0, 0, 0, 0, 0, 0, 0],
-        [3, 9, 12, 1, "0.1200", True, 0, 0, 0, 0, 0, 0, 0],
+        [3, 9, 12, 2, "0.1234", "prefix_propagation", True, 0, 0, 0, 0, 0, 0, 0],
+        [3, 9, 12, 1, "0.1200", "prefix_propagation", True, 0, 0, 0, 0, 0, 0, 0],
     ])
     write_link_trace(out_dir, 1, 10, 1000, 20, 200)
     write_link_trace(out_dir, 2, 11, 1100, 21, 210)
@@ -97,8 +98,8 @@ def test_render_report_outputs_markdown_sections(tmp_path):
     op_dir = tmp_path / "onephase"
     tw_dir.mkdir()
     op_dir.mkdir()
-    write_scalability_csv(tw_dir, [[3, 9, 12, 1, "0.1000", True, 0, 0, 0, 0, 0, 0, 0]])
-    write_scalability_csv(op_dir, [[3, 9, 12, 1, "0.2000", True, 0, 0, 0, 0, 0, 0, 0]])
+    write_scalability_csv(op_dir, [[3, 9, 12, 1, "0.2000", "router_reachability", True, 0, 0, 0, 0, 0, 0, 0]])
+    write_scalability_csv(tw_dir, [[3, 9, 12, 1, "0.1000", "prefix_propagation", True, 0, 0, 0, 0, 0, 0, 0]])
     write_link_trace(tw_dir, 1, 1, 100, 2, 20)
     write_link_trace(op_dir, 1, 3, 300, 4, 40)
 
@@ -109,6 +110,35 @@ def test_render_report_outputs_markdown_sections(tmp_path):
 
     assert "## twophase" in report
     assert "## onephase" in report
-    assert "| trial | convergence_s |" in report
+    assert "| trial | prefix_propagation_s |" in report
+    assert "| trial | router_reachability_s |" in report
     assert "| 1 | 0.1000 | 1 | 100 |" in report
     assert "| 1 | 0.2000 | 3 | 300 |" in report
+
+
+def test_render_report_defaults_old_scalability_csv_to_prefix_propagation(tmp_path):
+    tw_dir = tmp_path / "twophase"
+    tw_dir.mkdir()
+    with open(tw_dir / "scalability.csv", "w", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow([
+            "grid_size",
+            "num_nodes",
+            "num_links",
+            "trial",
+            "convergence_s",
+            "transfer_ok",
+            "avg_mem_kb",
+            "total_packets",
+            "total_bytes",
+            "dv_packets",
+            "dv_bytes",
+            "user_packets",
+            "user_bytes",
+        ])
+        writer.writerow([3, 9, 12, 1, "0.1500", True, 0, 0, 0, 0, 0, 0, 0])
+    write_link_trace(tw_dir, 1, 1, 100, 2, 20)
+
+    report = aggregate.render_report([("twophase", str(tw_dir))], grid_size=3)
+
+    assert "| trial | prefix_propagation_s |" in report

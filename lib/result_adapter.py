@@ -22,12 +22,13 @@ FIELDNAMES = [
     "num_links",
     "trial",
     "convergence_s",
+    "convergence_scope",
     "transfer_ok",
     "avg_mem_kb",
     "total_packets",
     "total_bytes",
-    "dv_packets",
-    "dv_bytes",
+    "control_packets",
+    "control_bytes",
     "user_packets",
     "user_bytes",
 ]
@@ -41,12 +42,13 @@ class TrialResult:
     num_links: int
     trial: int = 1
     convergence_s: float = -1
+    convergence_scope: str = "unspecified"
     transfer_ok: bool = False
     avg_mem_kb: int = 0
     total_packets: int = 0
     total_bytes: int = 0
-    dv_packets: int = 0
-    dv_bytes: int = 0
+    control_packets: int = 0
+    control_bytes: int = 0
     user_packets: int = 0
     user_bytes: int = 0
 
@@ -235,10 +237,10 @@ def parse_link_trace(link_trace_path):
     """Parse a link-tracer CSV and return aggregate traffic counters.
 
     Returns dict with keys: total_packets, total_bytes,
-    dv_packets, dv_bytes, user_packets, user_bytes.
+    control_packets, control_bytes, user_packets, user_bytes.
     """
     result = dict(total_packets=0, total_bytes=0,
-                  dv_packets=0, dv_bytes=0,
+                  control_packets=0, control_bytes=0,
                   user_packets=0, user_bytes=0)
     if not link_trace_path or not os.path.isfile(link_trace_path):
         return result
@@ -253,8 +255,8 @@ def parse_link_trace(link_trace_path):
                 result["total_packets"] += pkts
                 result["total_bytes"] += bts
                 if cat in ("DvAdvert", "PrefixSync", "Mgmt"):
-                    result["dv_packets"] += pkts
-                    result["dv_bytes"] += bts
+                    result["control_packets"] += pkts
+                    result["control_bytes"] += bts
                 elif cat in ("UserInterest", "UserData"):
                     result["user_packets"] += pkts
                     result["user_bytes"] += bts
@@ -278,6 +280,7 @@ def sim_trial_result(grid_size, num_nodes, num_links, rate_trace_path,
         num_links=num_links,
         trial=trial,
         convergence_s=conv,
+        convergence_scope="prefix_propagation",
         transfer_ok=conv >= 0,
         avg_mem_kb=0,
         **traffic,

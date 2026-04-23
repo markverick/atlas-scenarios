@@ -8,9 +8,8 @@ from typing import Dict, Iterable, List, Tuple
 
 
 CATEGORIES = ["DvAdvert", "PrefixSync", "Mgmt", "UserInterest", "UserData", "Other"]
-COLUMNS = [
+COMMON_COLUMNS = [
     "trial",
-    "convergence_s",
     "DvAdvert_pkts",
     "DvAdvert_bytes",
     "PrefixSync_pkts",
@@ -26,6 +25,14 @@ COLUMNS = [
     "total_pkts",
     "total_bytes",
 ]
+
+_DEFAULT_CONVERGENCE_SCOPE = "prefix_propagation"
+
+_CONVERGENCE_LABELS = {
+    "prefix_propagation": "prefix_propagation_s",
+    "router_reachability": "router_reachability_s",
+    "unspecified": "convergence_s",
+}
 
 
 def parse_input_arg(value: str) -> Tuple[str, str]:
@@ -91,6 +98,7 @@ def aggregate_dir(directory: str, *, grid_size: int) -> List[Dict[str, object]]:
         result: Dict[str, object] = {
             "trial": trial,
             "convergence_s": row["convergence_s"],
+            "convergence_scope": row.get("convergence_scope", _DEFAULT_CONVERGENCE_SCOPE) or _DEFAULT_CONVERGENCE_SCOPE,
         }
         result.update(breakdown)
         results.append(result)
@@ -98,11 +106,18 @@ def aggregate_dir(directory: str, *, grid_size: int) -> List[Dict[str, object]]:
 
 
 def render_markdown_table(label: str, results: Iterable[Dict[str, object]]) -> str:
+    rows = list(results)
+    scope = rows[0].get("convergence_scope", "unspecified") if rows else "unspecified"
+    convergence_label = _CONVERGENCE_LABELS.get(scope, "convergence_s")
+    columns = ["trial", convergence_label, *COMMON_COLUMNS[1:]]
+
     lines = [f"## {label}", ""]
-    lines.append("| " + " | ".join(COLUMNS) + " |")
-    lines.append("| " + " | ".join(["---"] * len(COLUMNS)) + " |")
-    for row in results:
-        lines.append("| " + " | ".join(str(row[column]) for column in COLUMNS) + " |")
+    lines.append("| " + " | ".join(columns) + " |")
+    lines.append("| " + " | ".join(["---"] * len(columns)) + " |")
+    for row in rows:
+        rendered = [str(row["trial"]), str(row["convergence_s"])]
+        rendered.extend(str(row[column]) for column in COMMON_COLUMNS[1:])
+        lines.append("| " + " | ".join(rendered) + " |")
     return "\n".join(lines)
 
 

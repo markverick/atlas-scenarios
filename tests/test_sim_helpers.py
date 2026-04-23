@@ -25,6 +25,7 @@ def _prepare_outputs(tmp_path):
 
 def _stub_run(monkeypatch):
     monkeypatch.setattr(_helpers, "sync_scenario", lambda ns3_dir: None)
+    monkeypatch.setattr(_helpers, "sync_routing_scenario", lambda ns3_dir: None)
     monkeypatch.setattr(_helpers, "_build_ns3", lambda ns3_dir, cores: None)
     monkeypatch.setattr(_helpers, "_find_scenario_exe", lambda ns3_dir, target: "/bin/true")
     monkeypatch.setattr(_helpers, "_run_exe", lambda exe, run_args, run_log: None)
@@ -56,3 +57,28 @@ def test_run_scenario_allows_unconverged_outputs_when_requested(monkeypatch, tmp
         link_trace=str(link_csv),
         require_convergence=False,
     )
+
+
+@pytest.mark.parametrize(
+    ("conv_text", "remove_file", "match"),
+    [
+        ("-1\n", False, "convergence=-1"),
+        ("0.1234\n", True, "was not created"),
+    ],
+)
+def test_run_routing_scenario_requires_valid_convergence_trace(monkeypatch, tmp_path,
+                                                               conv_text, remove_file, match):
+    ns3_dir, topo, _rate_csv, conv_file, link_csv = _prepare_outputs(tmp_path)
+    _stub_run(monkeypatch)
+
+    conv_file.write_text(conv_text)
+    if remove_file:
+        conv_file.unlink()
+
+    with pytest.raises(RuntimeError, match=match):
+        _helpers.run_routing_scenario(
+            str(ns3_dir),
+            topo=str(topo),
+            conv_trace=str(conv_file),
+            link_trace=str(link_csv),
+        )

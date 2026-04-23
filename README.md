@@ -4,15 +4,15 @@ Emulation and simulation scenarios for NDN using [NDNd](https://github.com/named
 
 | Mode | Engine | What it measures |
 |---|---|---|
-| **Emulation** | [Mini-NDN](https://github.com/named-data/mini-ndn) + real NDNd processes | Convergence, transfer, memory, total traffic |
-| **Simulation** | [ndndSIM](https://github.com/markverick/ndndSIM) (ns-3 + NDNd via CGo) | Convergence (RIB-based), total traffic, DV/user traffic split |
+| **Emulation** | [Mini-NDN](https://github.com/named-data/mini-ndn) + real NDNd processes | Scenario-specific convergence, transfer, memory, total traffic |
+| **Simulation** | [ndndSIM](https://github.com/markverick/ndndSIM) (ns-3 + NDNd via CGo) | Scenario-specific convergence, total traffic, control/user traffic split |
 
 Scenarios include scalability tests (NxN grids with app traffic), routing-only
 measurement (DV traffic burst with no app traffic), churn testing under link
 failures and prefix events (grid and Sprint topologies), and multi-hop DV
 routing change tests.
 
-Both produce CSV results in the same schema so they can be plotted side-by-side.
+Both produce CSV results in the same schema so they can be plotted side-by-side, but the convergence scope is now recorded explicitly per row.
 
 ### How Emu and Sim Stay Aligned
 
@@ -310,12 +310,16 @@ See the [ndndSIM README](https://github.com/markverick/ndndSIM) for the full API
 Both emu and sim produce identical CSV columns:
 
 ```csv
-grid_size,num_nodes,num_links,trial,convergence_s,transfer_ok,avg_mem_kb,total_packets,total_bytes,dv_packets,dv_bytes,user_packets,user_bytes
+grid_size,num_nodes,num_links,trial,convergence_s,convergence_scope,transfer_ok,avg_mem_kb,total_packets,total_bytes,control_packets,control_bytes,user_packets,user_bytes
 ```
 
-The `dv_*` columns cover DV advertisements + prefix sync. The `user_*` columns
-cover application Interests and Data. All byte counts are at the NDNLPv2 wire
-level (excluding L2 headers) so emu and sim are directly comparable.
+- `convergence_scope` disambiguates what `convergence_s` means for the row.
+	Current values include `router_reachability` and `prefix_propagation`.
+- `control_*` covers all control-plane traffic: DV advertisements, PrefixSync,
+	and management exchanges.
+- `user_*` covers application Interests and Data.
+
+All byte counts are at the NDNLPv2 wire level (excluding L2 headers) so emu and sim are directly comparable.
 
 ### Churn / Routing Comparison CSV
 

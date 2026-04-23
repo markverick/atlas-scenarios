@@ -10,12 +10,16 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from lib.pcap import collect_traffic
+from lib.result_adapter import ResultWriter
+
 from minindn_ndnd.bootstrap import patch_minindn
 
 patch_minindn()
 
 from minindn.minindn import Minindn
 from minindn.apps.app_manager import AppManager
+from minindn_ndnd import dv_util
 from minindn_ndnd.ndnd_fw import NDNd_FW
 
 from lib.topology import build_grid_topo, grid_stats, build_conf_topo, conf_stats
@@ -56,6 +60,52 @@ def setup_conf_topo(conf_path, delay_ms, bw_mbps, cores=0):
             host.setCPUs(cores=cores)
     AppManager(ndn, ndn.net.hosts, NDNd_FW)
     return ndn, num_nodes, num_links
+
+
+def start_grid_trial(grid_size, delay_ms, bw_mbps, cores=0, dv_config=None,
+                     capture_prefix="ndnd_cap"):
+    """Set up an emu grid trial and start packet capture on all hosts."""
+    ndn, num_nodes, num_links = setup_grid(grid_size, delay_ms, bw_mbps, cores)
+    cap_tag, cap_paths = start_tcpdump(ndn.net.hosts, prefix=capture_prefix)
+    return {
+        "ndn": ndn,
+        "num_nodes": num_nodes,
+        "num_links": num_links,
+        "cap_tag": cap_tag,
+        "cap_paths": cap_paths,
+        "capture_prefix": capture_prefix,
+        "dv_start": dv_util.setup(ndn, network=NETWORK, dv_config=dv_config),
+    }
+
+
+def finish_grid_trial(state, *, start_ts=None, end_ts=None):
+    """Stop capture, collect memory/traffic, and tear down an emu grid trial."""
+    ndn = state["ndn"]
+    avg_mem_kb = collect_memory(ndn.net.hosts)
+    stop_tcpdump(ndn.net.hosts, state["cap_tag"], prefix=state["capture_prefix"])
+    traffic = collect_traffic(state["cap_paths"].values(), start_ts=start_ts, end_ts=end_ts)
+    ndn.stop()
+    return avg_mem_kb, traffic
+
+
+def run_grid_experiment(args, *, run_trial, build_result, header, summary,
+                        log=print, after_trial=None):
+    """Run the common grid-size/trial loop and write TrialResult rows."""
+    os.makedirs(args.out, exist_ok=True)
+    csv_path = os.path.join(args.out, "scalability.csv")
+
+    with ResultWriter(csv_path) as writer:
+        for grid_size in args.grids:
+            for trial in range(1, args.trials + 1):
+                log(header(grid_size, trial))
+                raw = run_trial(grid_size, trial)
+                if after_trial is not None:
+                    after_trial(raw, grid_size, trial)
+                result = build_result(raw, trial)
+                writer.write(result)
+                log(summary(result))
+
+    log(f"\nResults written to {csv_path}\n")
 
 
 def start_tcpdump(hosts, prefix="ndnd_cap"):

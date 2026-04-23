@@ -21,11 +21,10 @@ from mininet.log import setLogLevel, info
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from minindn_ndnd import dv_util
 from lib.config import add_grid_scenario_args, apply_config_overrides
-from lib.pcap import collect_traffic
-from lib.result_adapter import ResultWriter, TrialResult
+from lib.result_adapter import TrialResult
 from emu._helpers import (
     NDND_TRAFFIC, NETWORK,
-    setup_grid, start_tcpdump, stop_tcpdump, collect_memory,
+    finish_grid_trial, run_grid_experiment, start_grid_trial,
 )
 
 
@@ -35,10 +34,11 @@ def run_trial(grid_size, delay_ms=10, bw_mbps=10, cores=0, dv_config=None,
 
     Returns a dict with metrics and a TrafficCounters instance.
     """
-    ndn, num_nodes, num_links = setup_grid(grid_size, delay_ms, bw_mbps, cores)
-    cap_tag, cap_paths = start_tcpdump(ndn.net.hosts)
-
-    dv_start = dv_util.setup(ndn, network=NETWORK, dv_config=dv_config)
+    state = start_grid_trial(grid_size, delay_ms, bw_mbps, cores, dv_config)
+    ndn = state["ndn"]
+    num_nodes = state["num_nodes"]
+    num_links = state["num_links"]
+    dv_start = state["dv_start"]
 
     # Match sim behavior: producer and consumer both start at t=0.5s.
     src_name = "n0_0"
@@ -98,15 +98,13 @@ def run_trial(grid_size, delay_ms=10, bw_mbps=10, cores=0, dv_config=None,
             out = ndn.net[src_name].cmd(f"cat {consumer_log} 2>/dev/null")
             transfer_ok = "received" in out
 
-    avg_mem_kb = collect_memory(ndn.net.hosts)
-    stop_tcpdump(ndn.net.hosts, cap_tag)
-
     cap_start = dv_start if observation_window_s > 0 else None
     cap_end = (dv_start + observation_window_s) if observation_window_s > 0 else None
-    traffic = collect_traffic(cap_paths.values(),
-                              start_ts=cap_start, end_ts=cap_end)
-
-    ndn.stop()
+    avg_mem_kb, traffic = finish_grid_trial(
+        state,
+        start_ts=cap_start,
+        end_ts=cap_end,
+    )
 
     return {
         "grid_size": grid_size,
@@ -127,40 +125,49 @@ def main():
 
     delay_ms, bw_mbps, dv_config = apply_config_overrides(args)
 
-    os.makedirs(args.out, exist_ok=True)
-    csv_path = os.path.join(args.out, "scalability.csv")
+    def execute_trial(grid_size, _trial):
+        return run_trial(
+            grid_size,
+            delay_ms=delay_ms,
+            bw_mbps=bw_mbps,
+            cores=args.cores,
+            dv_config=dv_config,
+            observation_window_s=args.window,
+        )
 
-    with ResultWriter(csv_path) as writer:
-        for grid_size in args.grids:
-            for trial in range(1, args.trials + 1):
-                info(f"\n=== Grid {grid_size}x{grid_size}, trial {trial} ===\n")
-                raw = run_trial(grid_size, delay_ms=delay_ms, bw_mbps=bw_mbps,
-                               cores=args.cores, dv_config=dv_config,
-                               observation_window_s=args.window)
-                t = raw["traffic"]
-                result = TrialResult(
-                    grid_size=raw["grid_size"],
-                    num_nodes=raw["num_nodes"],
-                    num_links=raw["num_links"],
-                    trial=trial,
-                    convergence_s=raw["convergence_s"],
-                    transfer_ok=raw["transfer_ok"],
-                    avg_mem_kb=raw["avg_mem_kb"],
-                    total_packets=t.total_packets,
-                    total_bytes=t.total_bytes,
-                    user_packets=t.user_packets,
-                    user_bytes=t.user_bytes,
-                    dv_packets=t.dv_packets,
-                    dv_bytes=t.dv_bytes,
-                )
-                writer.write(result)
-                info(f"  convergence={result.convergence_s}s  "
-                     f"transfer={'OK' if result.transfer_ok else 'FAIL'}  "
-                     f"mem={result.avg_mem_kb}KB  "
-                     f"dv_pkts={result.dv_packets}  "
-                     f"total_pkts={result.total_packets}\n")
+    def build_result(raw, trial):
+        t = raw["traffic"]
+        return TrialResult(
+            grid_size=raw["grid_size"],
+            num_nodes=raw["num_nodes"],
+            num_links=raw["num_links"],
+            trial=trial,
+            convergence_s=raw["convergence_s"],
+            convergence_scope="router_reachability",
+            transfer_ok=raw["transfer_ok"],
+            avg_mem_kb=raw["avg_mem_kb"],
+            total_packets=t.total_packets,
+            total_bytes=t.total_bytes,
+            user_packets=t.user_packets,
+            user_bytes=t.user_bytes,
+            control_packets=t.routing_packets,
+            control_bytes=t.routing_bytes,
+        )
 
-    info(f"\nResults written to {csv_path}\n")
+    run_grid_experiment(
+        args,
+        run_trial=execute_trial,
+        build_result=build_result,
+        header=lambda grid_size, trial: f"\n=== Grid {grid_size}x{grid_size}, trial {trial} ===\n",
+        summary=lambda result: (
+            f"  convergence={result.convergence_s}s  "
+            f"transfer={'OK' if result.transfer_ok else 'FAIL'}  "
+            f"mem={result.avg_mem_kb}KB  "
+            f"control_pkts={result.control_packets}  "
+            f"total_pkts={result.total_packets}\n"
+        ),
+        log=info,
+    )
 
 
 if __name__ == "__main__":

@@ -422,19 +422,39 @@ def run_routing_scenario(ns3_dir, *, topo, sim_time=30.0, cores=0,
     _run_exe(_find_scenario_exe(ns3_dir, "ndndsim-atlas-routing-scenario"),
              run_args, run_log)
 
-    # Validate link trace
+    errors = []
+
+    if conv_trace:
+        if not os.path.isfile(conv_trace):
+            errors.append(f"conv_trace '{conv_trace}' was not created by the simulation")
+        else:
+            try:
+                val = float(open(conv_trace).read().strip())
+                if val < 0:
+                    errors.append(
+                        f"conv_trace '{conv_trace}' reports convergence=-1 -- "
+                        "DV routing never converged during the simulation"
+                    )
+            except (ValueError, OSError) as exc:
+                errors.append(f"conv_trace '{conv_trace}' is unreadable: {exc}")
+
     if link_trace:
         if not os.path.isfile(link_trace):
-            raise RuntimeError(
-                f"link_trace '{link_trace}' was not created by the simulation"
-            )
-        with open(link_trace) as f:
-            lines = [l for l in f if l.strip()]
-        if len(lines) <= 1:
-            raise RuntimeError(
-                f"link_trace '{link_trace}' has no data rows -- "
-                "no packets were traced on any link"
-            )
+            errors.append(f"link_trace '{link_trace}' was not created by the simulation")
+        else:
+            with open(link_trace) as f:
+                lines = [l for l in f if l.strip()]
+            if len(lines) <= 1:
+                errors.append(
+                    f"link_trace '{link_trace}' has no data rows -- "
+                    "no packets were traced on any link"
+                )
+
+    if errors:
+        raise RuntimeError(
+            "Routing simulation completed but produced invalid output:\n"
+            + "\n".join(f"  - {error}" for error in errors)
+        )
 
 
 def sync_churn_scenario(ns3_dir):
