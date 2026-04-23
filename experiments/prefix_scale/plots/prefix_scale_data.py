@@ -1,6 +1,7 @@
 import csv
 import json
 import os
+import re
 
 
 def human_bytes(value, _pos=None):
@@ -13,6 +14,11 @@ def human_bytes(value, _pos=None):
     return f"{value:.0f} B"
 
 
+def _load_csv(path):
+    with open(path) as handle:
+        return list(csv.DictReader(handle))
+
+
 def source_label_from_dir(data_dir):
     base = os.path.basename(os.path.abspath(data_dir))
     if "sim" in base:
@@ -23,8 +29,73 @@ def source_label_from_dir(data_dir):
 
 
 def load_churn_csv(path):
-    with open(path) as handle:
-        return list(csv.DictReader(handle))
+    return _load_csv(path)
+
+
+def has_core_edge_result_layout(data_dir):
+    for phase in ("onephase", "twophase"):
+        phase_dir = os.path.join(data_dir, phase)
+        if not os.path.isdir(phase_dir):
+            return False
+        if not os.path.exists(os.path.join(phase_dir, "runs.csv")):
+            return False
+        if not os.path.exists(os.path.join(phase_dir, "role_table_summary.csv")):
+            return False
+    return True
+
+
+def load_core_edge_results(data_dir):
+    if not has_core_edge_result_layout(data_dir):
+        raise FileNotFoundError(f"core/edge result layout not found under {data_dir}")
+
+    results = {}
+    for phase in ("onephase", "twophase"):
+        phase_dir = os.path.join(data_dir, phase)
+        results[phase] = {
+            "runs": _load_csv(os.path.join(phase_dir, "runs.csv")),
+            "role_table_summary": _load_csv(os.path.join(phase_dir, "role_table_summary.csv")),
+        }
+    return results
+
+
+_CORE_EDGE_LINK_TRACE_RE = re.compile(r"link-trace-(onephase|twophase)-p(\d+)-t(\d+)\.csv$")
+
+
+def load_core_edge_link_trace_summaries(data_dir):
+    fields = [
+        "DvAdvert_Pkts",
+        "DvAdvert_Bytes",
+        "PrefixSync_Pkts",
+        "PrefixSync_Bytes",
+        "Mgmt_Pkts",
+        "Mgmt_Bytes",
+        "UserInterest_Pkts",
+        "UserInterest_Bytes",
+        "UserData_Pkts",
+        "UserData_Bytes",
+        "Other_Pkts",
+        "Other_Bytes",
+    ]
+    results = {"onephase": {}, "twophase": {}}
+
+    for phase in results:
+        phase_dir = os.path.join(data_dir, phase)
+        if not os.path.isdir(phase_dir):
+            continue
+        for name in os.listdir(phase_dir):
+            match = _CORE_EDGE_LINK_TRACE_RE.fullmatch(name)
+            if not match:
+                continue
+            prefix_count = int(match.group(2))
+            path = os.path.join(phase_dir, name)
+            totals = {field: 0 for field in fields}
+            with open(path) as handle:
+                reader = csv.DictReader(handle)
+                for row in reader:
+                    for field in fields:
+                        totals[field] += int(row.get(field, 0) or 0)
+            results[phase].setdefault(prefix_count, []).append(totals)
+    return results
 
 
 def load_packet_trace(path):

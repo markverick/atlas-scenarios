@@ -94,6 +94,22 @@ def core_edge_links():
     ]
 
 
+def core_edge_positions():
+    """Return drawing positions for the fixed 10-node core/edge topology."""
+    return {
+        "c0": (1, 0),
+        "c1": (3, 0),
+        "c2": (4, 1),
+        "c3": (3, 3),
+        "c4": (1, 3),
+        "c5": (0, 1),
+        "e0": (1, -1.1),
+        "e1": (5.1, 1),
+        "e2": (3, 4.1),
+        "e3": (-1.1, 1),
+    }
+
+
 def core_edge_stats():
     """Return (num_nodes, num_links) for the fixed 10-node core/edge topology."""
     return len(core_edge_nodes()), len(core_edge_links())
@@ -101,18 +117,7 @@ def core_edge_stats():
 
 def generate_ndnsim_core_edge_topo(bw="10Mbps", delay_ms=10, path=None, queue_size=100):
     """Write an ndnSIM topology file for the fixed 10-node core/edge topology."""
-    positions = {
-        "c0": (0, 1),
-        "c1": (0, 3),
-        "c2": (1, 4),
-        "c3": (2, 3),
-        "c4": (2, 1),
-        "c5": (1, 0),
-        "e0": (-1, 1),
-        "e1": (1, 5),
-        "e2": (3, 3),
-        "e3": (1, -1),
-    }
+    positions = core_edge_positions()
 
     lines = [
         "# Auto-generated 10-node core/edge topology",
@@ -120,7 +125,7 @@ def generate_ndnsim_core_edge_topo(bw="10Mbps", delay_ms=10, path=None, queue_si
         "# node  comment  yPos  xPos",
     ]
     for name in core_edge_nodes():
-        y_pos, x_pos = positions[name]
+        x_pos, y_pos = positions[name]
         lines.append(f"{name}  NA  {y_pos}  {x_pos}")
 
     lines.append("")

@@ -129,6 +129,15 @@ sudo ./jobs.sh start --fresh prefix_scale/sprint_onephase_0to50
 ./jobs.sh running
 ```
 
+For the fixed 10-node core/edge table study:
+
+```bash
+sudo ./jobs.sh start --fresh prefix_scale/core_edge_bothphase_0to5_tables
+```
+
+That queue runs both phases, then generates a timestamped plot set and
+`summary.md` in the run root.
+
 Each queue run writes to a unique timestamped output root under:
 
 - `experiments/prefix_scale/results/sprint_onephase_0to50/<timestamp>/sim`
@@ -149,6 +158,13 @@ Scenario definitions:
 - `experiments/prefix_scale/scenarios/*.json` — Prefix-scaling experiment scenarios
 
 Output: `experiments/prefix_scale/results/sprint_onephase_0to50/<timestamp>/{sim,emu,compare}`.
+
+The core/edge queue writes to:
+
+- `experiments/prefix_scale/results/core_edge_bothphase_0to5_tables/<timestamp>/onephase`
+- `experiments/prefix_scale/results/core_edge_bothphase_0to5_tables/<timestamp>/twophase`
+- `experiments/prefix_scale/results/core_edge_bothphase_0to5_tables/<timestamp>/plots`
+- `experiments/prefix_scale/results/core_edge_bothphase_0to5_tables/<timestamp>/summary.md`
 
 For modular experiment queues, use `./jobs.sh list` to discover experiment folders, scenarios, and queue selectors instead of remembering queue file paths.
 Running `./jobs.sh` with no arguments opens a numbered interactive menu.
@@ -191,6 +207,15 @@ The JSON schema is implemented in `lib/config.py`:
 ```bash
 python3 experiments/prefix_scale/plot.py --data experiments/prefix_scale/results/.../emu --data2 experiments/prefix_scale/results/.../sim --out experiments/prefix_scale/results/.../compare
 ```
+
+For the core/edge table-study layout, point `--data` at the timestamped run root:
+
+```bash
+python3 experiments/prefix_scale/plot.py --data experiments/prefix_scale/results/core_edge_bothphase_0to5_tables/<timestamp>
+```
+
+This emits the topology figure, control and table comparison plots, the dual
+stacked-bar table plot, and `summary.md`.
 
 ### All Options
 

@@ -42,6 +42,10 @@ Outputs:
 - `experiments/prefix_scale/results/sprint_bothstep_0to5/<timestamp>/compare`
 - `experiments/prefix_scale/results/sprint_bothstep_sim_p50/<timestamp>/sim`
 - `experiments/prefix_scale/results/sprint_bothstep_emu_p50/<timestamp>/emu`
+- `experiments/prefix_scale/results/core_edge_bothphase_0to5_tables/<timestamp>/onephase`
+- `experiments/prefix_scale/results/core_edge_bothphase_0to5_tables/<timestamp>/twophase`
+- `experiments/prefix_scale/results/core_edge_bothphase_0to5_tables/<timestamp>/plots`
+- `experiments/prefix_scale/results/core_edge_bothphase_0to5_tables/<timestamp>/summary.md`
 
 Useful CLI shortcuts:
 
@@ -53,6 +57,14 @@ Useful CLI shortcuts:
 ./jobs.sh status prefix_scale/sprint_bothstep_0to50 --watch
 ./jobs.sh running
 ```
+
+Core/edge table-study queue:
+
+```bash
+sudo ./jobs.sh start --fresh prefix_scale/core_edge_bothphase_0to5_tables
+```
+
+That queue now renders the plot set and `summary.md` automatically after both sim phases finish.
 
 `./jobs.sh` auto-prompts for sudo on commands that need elevated privileges.
 

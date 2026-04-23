@@ -172,6 +172,31 @@ def test_queue_render_runs_as_user():
     assert spec["jobs"][3]["cmd"].startswith("./run.sh as-user python3 aggregate.py")
 
 
+def test_core_edge_prefix_scale_queue_renders_plots_as_user():
+    repo_dir = os.path.dirname(os.path.dirname(__file__))
+    path = os.path.join(
+        repo_dir,
+        "experiments",
+        "prefix_scale",
+        "queues",
+        "core_edge_bothphase_0to5_tables.json",
+    )
+
+    spec = load_job_spec(path)
+    state = {}
+    selector = spec.get("selector") or selector_from_path(path, root=repo_dir)
+    context = build_run_context(path, spec, state, selector=selector, stem=queue_stem(path))
+    jobs = load_jobs(path, context)
+
+    assert [job["name"] for job in jobs] == [
+        "build twophase and onephase",
+        "sim twophase core-edge 0..5",
+        "sim onephase core-edge 0..5",
+        "render core-edge plots and summary",
+    ]
+    assert jobs[3]["cmd"] == f"./run.sh as-user python3 experiments/prefix_scale/plot.py --data {context['run_root']}"
+
+
 def _fake_root_env(tmp_path):
     real_id = shutil.which("id")
     assert real_id is not None
