@@ -34,7 +34,9 @@ CORE_EDGE_PLOT_FILES = {
     "prefix_state": "core_edge_prefix_state_by_role.png",
     "forwarder_growth": "core_edge_forwarding_delta_by_role.png",
     "table_role_average": "core_edge_table_average_by_role.png",
+    "table_role_average_reduced": "core_edge_table_average_by_role_reduced.png",
     "table_stack": "core_edge_table_stack_comparison.png",
+    "table_stack_reduced": "core_edge_table_stack_comparison_reduced.png",
 }
 
 ROCKETFUEL_4755_PLOT_FILES = {
@@ -44,7 +46,9 @@ ROCKETFUEL_4755_PLOT_FILES = {
     "prefix_state": "rocketfuel_4755_prefix_state_by_role.png",
     "forwarder_growth": "rocketfuel_4755_forwarding_delta_by_role.png",
     "table_role_average": "rocketfuel_4755_table_average_by_role.png",
+    "table_role_average_reduced": "rocketfuel_4755_table_average_by_role_reduced.png",
     "table_stack": "rocketfuel_4755_table_stack_comparison.png",
+    "table_stack_reduced": "rocketfuel_4755_table_stack_comparison_reduced.png",
 }
 
 ROCKETFUEL_2914_PLOT_FILES = {
@@ -54,7 +58,9 @@ ROCKETFUEL_2914_PLOT_FILES = {
     "prefix_state": "rocketfuel_2914_prefix_state_by_role.png",
     "forwarder_growth": "rocketfuel_2914_forwarding_delta_by_role.png",
     "table_role_average": "rocketfuel_2914_table_average_by_role.png",
+    "table_role_average_reduced": "rocketfuel_2914_table_average_by_role_reduced.png",
     "table_stack": "rocketfuel_2914_table_stack_comparison.png",
+    "table_stack_reduced": "rocketfuel_2914_table_stack_comparison_reduced.png",
 }
 
 CORE_EDGE_RC = {
@@ -112,6 +118,7 @@ TOPOLOGY_PLOT_PROFILES = {
 TABLE_ORDER = [
     ("common", "dv_neighbors"),
     ("common", "dv_rib"),
+    ("common", "forwarder_rib"),
     ("common", "forwarder_fib"),
     ("onephase", "dv_prefix_table"),
     ("twophase", "forwarder_pet"),
@@ -119,9 +126,20 @@ TABLE_ORDER = [
     ("twophase", "dv_prefix_egress_state"),
 ]
 
+REDUCED_TABLE_HIDDEN_KEYS = {
+    ("common", "dv_neighbors"),
+    ("common", "dv_rib"),
+    ("common", "forwarder_rib"),
+    ("onephase", "dv_prefix_table"),
+    ("twophase", "dv_prefix_egress_state"),
+}
+
+REDUCED_TABLE_ORDER = [key for key in TABLE_ORDER if key not in REDUCED_TABLE_HIDDEN_KEYS]
+
 TABLE_STYLES = {
     ("common", "dv_neighbors"): ("DV neighbors", "#7A7A7A"),
     ("common", "dv_rib"): ("DV RIB", "#4C72B0"),
+    ("common", "forwarder_rib"): ("Forwarder RIB", "#55A868"),
     ("common", "forwarder_fib"): ("Forwarder FIB", "#2E8B57"),
     ("onephase", "dv_prefix_table"): ("One-phase DV prefix table", "#8172B2"),
     ("twophase", "forwarder_pet"): ("Two-phase forwarder PET", "#DD8452"),
@@ -299,8 +317,8 @@ def plot_core_edge_topology(out_dir, topology_key="core_edge"):
         print(f"  Saved {path}")
 
 
-def plot_core_edge_table_stack_comparison(results_by_phase, out_dir, source_label,
-                                          topology_key="core_edge"):
+def _plot_table_stack_comparison(results_by_phase, out_dir, *, table_order,
+                                 plot_key, title, topology_key="core_edge"):
     aggregated = {
         phase: _aggregate_total_entries_by_prefix_and_table(results_by_phase[phase]["role_table_summary"])
         for phase in ("onephase", "twophase")
@@ -324,7 +342,7 @@ def plot_core_edge_table_stack_comparison(results_by_phase, out_dir, source_labe
 
         for offset, phase in ((-width / 2, "onephase"), (width / 2, "twophase")):
             bottoms = np.zeros(len(prefix_counts))
-            for key in TABLE_ORDER:
+            for key in table_order:
                 prefix_to_value = aggregated[phase].get(key)
                 if not prefix_to_value:
                     continue
@@ -361,16 +379,40 @@ def plot_core_edge_table_stack_comparison(results_by_phase, out_dir, source_labe
         axis.add_artist(phase_legend)
         axis.legend(table_handle_list, table_label_list, loc="upper center", bbox_to_anchor=(0.5, -0.16), ncol=2)
 
-        fig.suptitle(f"{_topology_profile(topology_key)['study_label']}: Total Table Entries by Phase and Table", y=1.02)
+        fig.suptitle(f"{_topology_profile(topology_key)['study_label']}: {title}", y=1.02)
         fig.tight_layout()
-        path = os.path.join(out_dir, _plot_files(topology_key)["table_stack"])
+        path = os.path.join(out_dir, _plot_files(topology_key)[plot_key])
         fig.savefig(path, dpi=180, bbox_inches="tight")
         plt.close(fig)
         print(f"  Saved {path}")
 
 
-def plot_core_edge_table_average_by_role(results_by_phase, out_dir, source_label,
-                                         topology_key="core_edge"):
+def plot_core_edge_table_stack_comparison(results_by_phase, out_dir, source_label,
+                                          topology_key="core_edge"):
+    _plot_table_stack_comparison(
+        results_by_phase,
+        out_dir,
+        table_order=TABLE_ORDER,
+        plot_key="table_stack",
+        title="Total Table Entries by Phase and Table",
+        topology_key=topology_key,
+    )
+
+
+def plot_core_edge_table_stack_comparison_reduced(results_by_phase, out_dir, source_label,
+                                                  topology_key="core_edge"):
+    _plot_table_stack_comparison(
+        results_by_phase,
+        out_dir,
+        table_order=REDUCED_TABLE_ORDER,
+        plot_key="table_stack_reduced",
+        title="Forwarding-Focused Total Table Entries by Phase and Table",
+        topology_key=topology_key,
+    )
+
+
+def _plot_table_average_by_role(results_by_phase, out_dir, *, table_order,
+                                plot_key, title, topology_key="core_edge"):
     aggregated = {
         phase: {
             role: _aggregate_avg_entries_by_prefix_and_table(
@@ -400,10 +442,10 @@ def plot_core_edge_table_average_by_role(results_by_phase, out_dir, source_label
         legend_handles = {}
         role_specs = (("core", "Core routers"), ("edge", "Edge routers"))
 
-        for axis, (role, title) in zip(axes, role_specs):
+        for axis, (role, role_title) in zip(axes, role_specs):
             for offset, phase in ((-width / 2, "onephase"), (width / 2, "twophase")):
                 bottoms = np.zeros(len(prefix_counts))
-                for key in TABLE_ORDER:
+                for key in table_order:
                     prefix_to_value = aggregated[phase][role].get(key)
                     if not prefix_to_value:
                         continue
@@ -421,8 +463,7 @@ def plot_core_edge_table_average_by_role(results_by_phase, out_dir, source_label
                     )
                     legend_handles.setdefault(label, bars[0])
                     bottoms = bottoms + heights
-
-            axis.set_title(title)
+                    axis.set_title(role_title)
             axis.set_xticks(x_values)
             axis.set_xticklabels([str(prefix_count) for prefix_count in prefix_counts])
             axis.set_xlabel("Total announced prefixes")
@@ -442,12 +483,36 @@ def plot_core_edge_table_average_by_role(results_by_phase, out_dir, source_label
         table_label_list = list(legend_handles.keys())
         fig.legend(table_handle_list, table_label_list, loc="upper center", bbox_to_anchor=(0.5, -0.02), ncol=2)
 
-        fig.suptitle(f"{_topology_profile(topology_key)['study_label']}: Average Table Entries per Node by Role and Table", y=1.02)
+        fig.suptitle(f"{_topology_profile(topology_key)['study_label']}: {title}", y=1.02)
         fig.tight_layout(rect=(0, 0.06, 1, 1))
-        path = os.path.join(out_dir, _plot_files(topology_key)["table_role_average"])
+        path = os.path.join(out_dir, _plot_files(topology_key)[plot_key])
         fig.savefig(path, dpi=180, bbox_inches="tight")
         plt.close(fig)
         print(f"  Saved {path}")
+
+
+def plot_core_edge_table_average_by_role(results_by_phase, out_dir, source_label,
+                                         topology_key="core_edge"):
+    _plot_table_average_by_role(
+        results_by_phase,
+        out_dir,
+        table_order=TABLE_ORDER,
+        plot_key="table_role_average",
+        title="Average Table Entries per Node by Role and Table",
+        topology_key=topology_key,
+    )
+
+
+def plot_core_edge_table_average_by_role_reduced(results_by_phase, out_dir, source_label,
+                                                 topology_key="core_edge"):
+    _plot_table_average_by_role(
+        results_by_phase,
+        out_dir,
+        table_order=REDUCED_TABLE_ORDER,
+        plot_key="table_role_average_reduced",
+        title="Forwarding-Focused Average Table Entries per Node",
+        topology_key=topology_key,
+    )
 
 
 def plot_core_edge_run_comparison(results_by_phase, out_dir, source_label,
@@ -723,8 +788,16 @@ def write_core_edge_summary(results_by_phase, data_dir, out_dir,
         "### Average table entries per core and edge node",
         f"![Average table entries per core and edge node]({rel_plot(plot_files['table_role_average'])})",
         "",
+        "### Forwarding-focused average table entries per core and edge node",
+        f"![Forwarding-focused average table entries per core and edge node]({rel_plot(plot_files['table_role_average_reduced'])})",
+        "Hidden tables: Forwarder RIB, DV neighbors, DV RIB, one-phase DV prefix table, and two-phase DV prefix egress state.",
+        "",
         "### Total table entries by phase and table",
         f"![Total table entries by phase and table]({rel_plot(plot_files['table_stack'])})",
+        "",
+        "### Forwarding-focused total table entries by phase and table",
+        f"![Forwarding-focused total table entries by phase and table]({rel_plot(plot_files['table_stack_reduced'])})",
+        "Hidden tables: Forwarder RIB, DV neighbors, DV RIB, one-phase DV prefix table, and two-phase DV prefix egress state.",
         "",
         "## Run Metrics",
         "",

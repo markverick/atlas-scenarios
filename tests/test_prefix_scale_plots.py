@@ -107,7 +107,9 @@ def test_core_edge_plot_cli_generates_plots(tmp_path):
     assert (plot_dir / "core_edge_prefix_state_by_role.png").exists()
     assert (plot_dir / "core_edge_forwarding_delta_by_role.png").exists()
     assert (plot_dir / "core_edge_table_average_by_role.png").exists()
+    assert (plot_dir / "core_edge_table_average_by_role_reduced.png").exists()
     assert (plot_dir / "core_edge_table_stack_comparison.png").exists()
+    assert (plot_dir / "core_edge_table_stack_comparison_reduced.png").exists()
 
     summary_path = data_dir / "summary.md"
     assert summary_path.exists()
@@ -116,7 +118,10 @@ def test_core_edge_plot_cli_generates_plots(tmp_path):
     assert "plots/core_edge_topology.png" in summary_text
     assert "plots/core_edge_run_comparison.png" in summary_text
     assert "plots/core_edge_table_average_by_role.png" in summary_text
+    assert "plots/core_edge_table_average_by_role_reduced.png" in summary_text
     assert "plots/core_edge_table_stack_comparison.png" in summary_text
+    assert "plots/core_edge_table_stack_comparison_reduced.png" in summary_text
+    assert "Hidden tables: Forwarder RIB, DV neighbors, DV RIB, one-phase DV prefix table, and two-phase DV prefix egress state." in summary_text
     assert "forwarder FIB growth" in summary_text
     assert "forwarder RIB growth" not in summary_text
 
@@ -233,7 +238,9 @@ def test_rocketfuel_plot_cli_generates_topology_and_summary(tmp_path):
     assert (plot_dir / "rocketfuel_4755_prefix_state_by_role.png").exists()
     assert (plot_dir / "rocketfuel_4755_forwarding_delta_by_role.png").exists()
     assert (plot_dir / "rocketfuel_4755_table_average_by_role.png").exists()
+    assert (plot_dir / "rocketfuel_4755_table_average_by_role_reduced.png").exists()
     assert (plot_dir / "rocketfuel_4755_table_stack_comparison.png").exists()
+    assert (plot_dir / "rocketfuel_4755_table_stack_comparison_reduced.png").exists()
 
     summary_path = data_dir / "summary.md"
     assert summary_path.exists()
@@ -242,7 +249,9 @@ def test_rocketfuel_plot_cli_generates_topology_and_summary(tmp_path):
     assert "plots/rocketfuel_4755_topology.png" in summary_text
     assert "plots/rocketfuel_4755_run_comparison.png" in summary_text
     assert "plots/rocketfuel_4755_table_average_by_role.png" in summary_text
+    assert "plots/rocketfuel_4755_table_average_by_role_reduced.png" in summary_text
     assert "plots/rocketfuel_4755_table_stack_comparison.png" in summary_text
+    assert "plots/rocketfuel_4755_table_stack_comparison_reduced.png" in summary_text
 
 
 def test_large_rocketfuel_plot_cli_generates_topology_and_summary(tmp_path):
@@ -308,7 +317,9 @@ def test_large_rocketfuel_plot_cli_generates_topology_and_summary(tmp_path):
     assert (plot_dir / "rocketfuel_2914_prefix_state_by_role.png").exists()
     assert (plot_dir / "rocketfuel_2914_forwarding_delta_by_role.png").exists()
     assert (plot_dir / "rocketfuel_2914_table_average_by_role.png").exists()
+    assert (plot_dir / "rocketfuel_2914_table_average_by_role_reduced.png").exists()
     assert (plot_dir / "rocketfuel_2914_table_stack_comparison.png").exists()
+    assert (plot_dir / "rocketfuel_2914_table_stack_comparison_reduced.png").exists()
 
     summary_path = data_dir / "summary.md"
     assert summary_path.exists()
@@ -317,3 +328,5 @@ def test_large_rocketfuel_plot_cli_generates_topology_and_summary(tmp_path):
     assert "largest connected `r0` component" in summary_text
     assert "plots/rocketfuel_2914_topology.png" in summary_text
     assert "plots/rocketfuel_2914_table_average_by_role.png" in summary_text
+    assert "plots/rocketfuel_2914_table_average_by_role_reduced.png" in summary_text
+    assert "plots/rocketfuel_2914_table_stack_comparison_reduced.png" in summary_text

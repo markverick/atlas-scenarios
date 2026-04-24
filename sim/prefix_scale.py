@@ -84,6 +84,68 @@ def cli_dv_config(args):
     return dv_config or None
 
 
+def parse_dv_config_json(text, *, field_name):
+    if not text:
+        return None
+
+    try:
+        dv_config = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{field_name} must be valid JSON: {exc}") from exc
+
+    if not isinstance(dv_config, dict):
+        raise ValueError(f"{field_name} must decode to a JSON object")
+
+    return dv_config or None
+
+
+def merge_dv_configs(shared_config, role_config):
+    if not shared_config and not role_config:
+        return None
+
+    merged = {}
+    if shared_config:
+        merged.update(shared_config)
+    if role_config:
+        merged.update(role_config)
+    return merged or None
+
+
+def cli_role_dv_overrides(args):
+    core_dv_config = parse_dv_config_json(
+        args.core_dv_config_json,
+        field_name="--core-dv-config-json",
+    )
+    edge_dv_config = parse_dv_config_json(
+        args.edge_dv_config_json,
+        field_name="--edge-dv-config-json",
+    )
+
+    if args.core_disable_prefix_egress_replication:
+        core_dv_config = {
+            **(core_dv_config or {}),
+            "prefix_egre_state_replicate": False,
+        }
+    if args.edge_disable_prefix_egress_replication:
+        edge_dv_config = {
+            **(edge_dv_config or {}),
+            "prefix_egre_state_replicate": False,
+        }
+
+    return core_dv_config or None, edge_dv_config or None
+
+
+def effective_role_dv_configs(shared_dv_config, core_override, edge_override):
+    if not core_override and not edge_override:
+        return shared_dv_config, None, None
+
+    return (
+        None,
+        merge_dv_configs(shared_dv_config, core_override),
+        merge_dv_configs(shared_dv_config, edge_override),
+    )
+
+
 def parse_table_trace(path):
     rows = []
     with open(path, newline="") as handle:
@@ -203,10 +265,40 @@ def main(argv=None):
                         help="DV advertisement interval in ms (0 = default)")
     parser.add_argument("--dead-interval", type=int, default=0,
                         help="DV router dead interval in ms (0 = default)")
+    parser.add_argument("--core-dv-config-json", default="",
+                        help="JSON DV config overlay applied only to core nodes")
+    parser.add_argument("--edge-dv-config-json", default="",
+                        help="JSON DV config overlay applied only to edge nodes")
+    parser.add_argument(
+        "--core-disable-prefix-egress-replication",
+        action="store_true",
+        help=(
+            "Set prefix_egre_state_replicate=false on core nodes so remote "
+            "prefix-egress state is not replicated into PET"
+        ),
+    )
+    parser.add_argument(
+        "--edge-disable-prefix-egress-replication",
+        action="store_true",
+        help=(
+            "Set prefix_egre_state_replicate=false on edge nodes so remote "
+            "prefix-egress state is not replicated into PET"
+        ),
+    )
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
 
     phase = current_phase_label()
-    dv_config = cli_dv_config(args)
+    shared_dv_config = cli_dv_config(args)
+    try:
+        core_dv_override, edge_dv_override = cli_role_dv_overrides(args)
+    except ValueError as exc:
+        parser.error(str(exc))
+
+    dv_config, core_dv_config, edge_dv_config = effective_role_dv_configs(
+        shared_dv_config,
+        core_dv_override,
+        edge_dv_override,
+    )
     ns3_dir = resolve_ns3_dir(args.ns3_dir)
     topo_dir = os.path.join(ns3_dir, "contrib", "ndndSIM", "examples", "topologies")
     os.makedirs(args.out, exist_ok=True)
@@ -236,6 +328,11 @@ def main(argv=None):
             "role_counts": {role: len(nodes) for role, nodes in roles.items()},
             "roles": roles,
             "prefix_counts": args.prefix_counts,
+            "shared_dv_config": shared_dv_config,
+            "effective_dv_config_by_role": {
+                "core": core_dv_config or dv_config,
+                "edge": edge_dv_config or dv_config,
+            },
         }, handle, indent=2, sort_keys=True)
 
     runs_path = os.path.join(args.out, "runs.csv")
@@ -274,6 +371,8 @@ def main(argv=None):
                     link_trace=link_csv,
                     table_trace=table_csv,
                     dv_config=dv_config,
+                    core_dv_config=core_dv_config,
+                    edge_dv_config=edge_dv_config,
                     num_prefixes=prefix_count,
                     run_log=run_log,
                 )

@@ -14,7 +14,9 @@ from .prefix_scale_plots import (
     plot_core_edge_prefix_state_by_role,
     plot_core_edge_run_comparison,
     plot_core_edge_table_average_by_role,
+    plot_core_edge_table_average_by_role_reduced,
     plot_core_edge_table_stack_comparison,
+    plot_core_edge_table_stack_comparison_reduced,
     plot_core_edge_topology,
     plot_churn_breakdown,
     plot_churn_comparison,
@@ -82,7 +84,9 @@ def main(argv=None):
         plot_core_edge_prefix_state_by_role(results_by_phase, out_dir, source_label, topology_key=topology_key)
         plot_core_edge_forwarding_delta_by_role(results_by_phase, out_dir, source_label, topology_key=topology_key)
         plot_core_edge_table_average_by_role(results_by_phase, out_dir, source_label, topology_key=topology_key)
+        plot_core_edge_table_average_by_role_reduced(results_by_phase, out_dir, source_label, topology_key=topology_key)
         plot_core_edge_table_stack_comparison(results_by_phase, out_dir, source_label, topology_key=topology_key)
+        plot_core_edge_table_stack_comparison_reduced(results_by_phase, out_dir, source_label, topology_key=topology_key)
         write_core_edge_summary(results_by_phase, os.path.abspath(args.data), out_dir, topology_key=topology_key)
         if args.data2:
             print("WARNING: --data2 is not used for the core/edge table-study layout")

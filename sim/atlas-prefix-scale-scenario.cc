@@ -55,6 +55,8 @@ main(int argc, char* argv[])
     std::string convTrace;
     std::string tableTrace;
     std::string dvConfig;
+    std::string coreDvConfig;
+    std::string edgeDvConfig;
     std::string network = "/minindn";
     std::string edgeNodesCsv;
     double simTime = 40.0;
@@ -70,6 +72,10 @@ main(int argc, char* argv[])
     cmd.AddValue("simTime", "Simulation time in seconds", simTime);
     cmd.AddValue("traceInterval", "Link trace sampling interval in seconds", traceInterval);
     cmd.AddValue("dvConfig", "DV config JSON overlay (overrides defaults)", dvConfig);
+    cmd.AddValue("coreDvConfig", "DV config JSON overlay applied to core nodes",
+                 coreDvConfig);
+    cmd.AddValue("edgeDvConfig", "DV config JSON overlay applied to edge nodes",
+                 edgeDvConfig);
     cmd.AddValue("network", "DV network prefix (default: /minindn)", network);
     cmd.AddValue("numPrefixes", "Total prefixes to announce across edge routers", numPrefixes);
     cmd.Parse(argc, argv);
@@ -98,7 +104,16 @@ main(int argc, char* argv[])
 
     NdndStackHelper stackHelper;
     stackHelper.Install(nodes);
-    NdndStackHelper::EnableDvRouting(network, nodes, dvConfig);
+    for (uint32_t i = 0; i < nodes.GetN(); ++i)
+    {
+        Ptr<Node> node = nodes.Get(i);
+        std::string nodeName = Names::FindName(node);
+        std::string roleDvConfig =
+          edgeNodeSet.find(nodeName) != edgeNodeSet.end() ? edgeDvConfig : coreDvConfig;
+        const std::string& effectiveDvConfig =
+          roleDvConfig.empty() ? dvConfig : roleDvConfig;
+        NdndStackHelper::EnableDvRouting(network, node, effectiveDvConfig);
+    }
 
     NdndSimSetTotalNodes(static_cast<int>(nodes.GetN()));
     if (numPrefixes > 0)

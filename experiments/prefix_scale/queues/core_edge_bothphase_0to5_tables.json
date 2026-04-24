@@ -14,7 +14,7 @@
     },
     {
       "name": "sim twophase core-edge 0..5",
-      "cmd": "./run.sh sim --no-build prefix_scale --prefix-counts 0 1 2 3 4 5 --out {run_root}/twophase"
+      "cmd": "./run.sh sim --no-build prefix_scale --prefix-counts 0 1 2 3 4 5 --core-disable-prefix-egress-replication --out {run_root}/twophase"
     },
     {
       "name": "sim onephase core-edge 0..5",

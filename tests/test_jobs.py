@@ -194,6 +194,10 @@ def test_core_edge_prefix_scale_queue_renders_plots_as_user():
         "sim onephase core-edge 0..5",
         "render core-edge plots and summary",
     ]
+    assert jobs[1]["cmd"] == (
+        "./run.sh sim --no-build prefix_scale --prefix-counts 0 1 2 3 4 5 "
+        f"--core-disable-prefix-egress-replication --out {context['run_root']}/twophase"
+    )
     assert jobs[3]["cmd"] == f"./run.sh as-user python3 experiments/prefix_scale/plot.py --data {context['run_root']}"
 
 
@@ -221,7 +225,7 @@ def test_core_edge_prefix_scale_0to50_by10_queue_runs_both_phases():
     ]
     assert jobs[1]["cmd"] == (
         "./run.sh sim --no-build prefix_scale --prefix-counts 0 10 20 30 40 50 "
-        f"--out {context['run_root']}/twophase"
+        f"--core-disable-prefix-egress-replication --out {context['run_root']}/twophase"
     )
     assert jobs[2]["cmd"] == (
         "./run.sh --env onephase sim --no-build prefix_scale --prefix-counts 0 10 20 30 40 50 "
@@ -254,7 +258,7 @@ def test_rocketfuel_prefix_scale_queue_runs_both_phases():
     ]
     assert jobs[1]["cmd"] == (
         "./run.sh sim --no-build prefix_scale --topology rocketfuel_4755 "
-        f"--prefix-counts 0 100 200 300 400 500 --out {context['run_root']}/twophase"
+        f"--prefix-counts 0 100 200 300 400 500 --core-disable-prefix-egress-replication --out {context['run_root']}/twophase"
     )
     assert jobs[2]["cmd"] == (
         "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_4755 "
@@ -287,7 +291,7 @@ def test_large_rocketfuel_prefix_scale_queue_runs_both_phases():
     ]
     assert jobs[1]["cmd"] == (
         "./run.sh sim --no-build prefix_scale --topology rocketfuel_2914 "
-        f"--prefix-counts 0 100 200 300 400 500 --out {context['run_root']}/twophase"
+        f"--prefix-counts 0 100 200 300 400 500 --core-disable-prefix-egress-replication --out {context['run_root']}/twophase"
     )
     assert jobs[2]["cmd"] == (
         "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_2914 "

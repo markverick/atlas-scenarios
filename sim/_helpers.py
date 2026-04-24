@@ -472,6 +472,7 @@ def run_routing_scenario(ns3_dir, *, topo, sim_time=30.0, cores=0,
 def run_prefix_scale_scenario(ns3_dir, *, topo, edge_nodes, sim_time=40.0,
                               cores=0, conv_trace=None, link_trace=None,
                               table_trace=None, dv_config=None,
+                              core_dv_config=None, edge_dv_config=None,
                               network="/minindn", num_prefixes=0,
                               run_log=None):
     """Build ns-3 and run the generic prefix-scale table scenario."""
@@ -500,6 +501,14 @@ def run_prefix_scale_scenario(ns3_dir, *, topo, edge_nodes, sim_time=40.0,
         run_args.append(f"--tableTrace={table_trace}")
     if dv_config:
         run_args.append(f"--dvConfig={json.dumps(dv_config, separators=(',', ':'))}")
+    if core_dv_config:
+        run_args.append(
+            f"--coreDvConfig={json.dumps(core_dv_config, separators=(',', ':'))}"
+        )
+    if edge_dv_config:
+        run_args.append(
+            f"--edgeDvConfig={json.dumps(edge_dv_config, separators=(',', ':'))}"
+        )
 
     _run_exe(_find_scenario_exe(ns3_dir, PREFIX_SCALE_TARGET_NAME),
              run_args, run_log)

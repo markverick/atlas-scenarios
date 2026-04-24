@@ -14,7 +14,7 @@
     },
     {
       "name": "sim twophase rocketfuel 4755 0..500",
-      "cmd": "./run.sh sim --no-build prefix_scale --topology rocketfuel_4755 --prefix-counts 0 100 200 300 400 500 --out {run_root}/twophase"
+      "cmd": "./run.sh sim --no-build prefix_scale --topology rocketfuel_4755 --prefix-counts 0 100 200 300 400 500 --core-disable-prefix-egress-replication --out {run_root}/twophase"
     },
     {
       "name": "sim onephase rocketfuel 4755 0..500",

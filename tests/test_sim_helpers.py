@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 
@@ -122,3 +123,52 @@ def test_run_prefix_scale_scenario_accepts_valid_outputs(monkeypatch, tmp_path):
         link_trace=str(link_csv),
         table_trace=str(table_csv),
     )
+
+
+def test_run_prefix_scale_scenario_passes_role_specific_dv_configs(monkeypatch, tmp_path):
+    ns3_dir, topo, _rate_csv, conv_file, link_csv = _prepare_outputs(tmp_path)
+    table_csv = tmp_path / "tables.csv"
+    captured = {}
+
+    monkeypatch.setattr(_helpers, "sync_scenario", lambda ns3_dir: None)
+    monkeypatch.setattr(_helpers, "sync_routing_scenario", lambda ns3_dir: None)
+    monkeypatch.setattr(_helpers, "sync_prefix_scale_scenario", lambda ns3_dir: None)
+    monkeypatch.setattr(_helpers, "_build_ns3", lambda ns3_dir, cores: None)
+    monkeypatch.setattr(_helpers, "_find_scenario_exe", lambda ns3_dir, target: "/bin/true")
+    monkeypatch.setattr(
+        _helpers,
+        "_run_exe",
+        lambda exe, run_args, run_log: captured.setdefault("run_args", list(run_args)),
+    )
+
+    conv_file.write_text("0.123\n")
+    table_csv.write_text(
+        "node,role,table_category,table_name,entry_count\n"
+        "c0,core,common,forwarder_rib,10\n"
+    )
+
+    _helpers.run_prefix_scale_scenario(
+        str(ns3_dir),
+        topo=str(topo),
+        edge_nodes=["e0", "e1"],
+        conv_trace=str(conv_file),
+        link_trace=str(link_csv),
+        table_trace=str(table_csv),
+        dv_config={"advertise_interval": 2000},
+        core_dv_config={"prefix_egre_state_replicate": False},
+        edge_dv_config={"router_dead_interval": 6000},
+    )
+
+    assert captured["run_args"] == [
+        f"--topo={topo}",
+        "--simTime=40.0",
+        "--network=/minindn",
+        "--edgeNodes=e0,e1",
+        "--numPrefixes=0",
+        f"--convTrace={conv_file}",
+        f"--linkTrace={link_csv}",
+        f"--tableTrace={table_csv}",
+        f"--dvConfig={json.dumps({'advertise_interval': 2000}, separators=(',', ':'))}",
+        f"--coreDvConfig={json.dumps({'prefix_egre_state_replicate': False}, separators=(',', ':'))}",
+        f"--edgeDvConfig={json.dumps({'router_dead_interval': 6000}, separators=(',', ':'))}",
+    ]
