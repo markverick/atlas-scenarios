@@ -73,9 +73,7 @@ sudo ./jobs.sh start --fresh prefix_scale/core_edge_bothphase_0to5_tables
 ```
 
 That queue now renders the plot set and `summary.md` automatically after both sim phases finish.
-Its twophase run now sets `--core-disable-prefix-egress-replication`, so
-transit/core routers keep remote prefix-egress state out of PET while edge
-routers retain the default behavior.
+Its default twophase run sets `--core-disable-prefix-egress-replication`.
 
 Wider-step core/edge table-study queue:
 
@@ -114,9 +112,10 @@ figure, the role-based comparison plots, and `summary.md` automatically after
 both phases finish.
 
 Role-aware DV config is available on `sim prefix_scale` through
-`--core-dv-config-json` and `--edge-dv-config-json`. The built-in queue
-definitions use `--core-disable-prefix-egress-replication` on twophase runs,
-which maps to `prefix_egre_state_replicate=false` only on core nodes.
+`--core-dv-config-json` and `--edge-dv-config-json`. The
+`--core-disable-prefix-egress-replication` switch maps to
+`prefix_egre_state_replicate=false` only on core nodes. The built-in queues use
+that switch on twophase runs.
 
 `./jobs.sh` auto-prompts for sudo on commands that need elevated privileges.
 

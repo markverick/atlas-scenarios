@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+import signal
 from contextlib import redirect_stdout
 
 import pytest
@@ -549,6 +550,38 @@ def test_cmd_run_clears_stale_queue_error_on_retry(tmp_path, monkeypatch):
     meta = updated[STATE_META_KEY]
     assert "queue_error" not in meta
     assert "queue_error_at" not in meta
+
+
+def test_cmd_run_preserves_interrupt_state_when_signal_arrives_mid_job(tmp_path, monkeypatch):
+    exp_jobs_dir = tmp_path / "experiments" / "prefix_scale" / "queues"
+    exp_jobs_dir.mkdir(parents=True)
+    queue_path = exp_jobs_dir / "sprint.json"
+    queue_path.write_text(json.dumps({
+        "selector": "prefix_scale/sprint",
+        "jobs": [{"name": "build", "cmd": "true"}],
+    }))
+
+    handlers = {}
+
+    monkeypatch.setattr("jobs.runner.queue_ref", lambda _path: "prefix_scale/sprint")
+    monkeypatch.setattr("jobs.runner.atexit.register", lambda _fn: None)
+
+    def fake_signal(signum, handler):
+        handlers[signum] = handler
+
+    def fake_run(*_args, **_kwargs):
+        handlers[signal.SIGINT](signal.SIGINT, None)
+
+    monkeypatch.setattr("jobs.runner.signal.signal", fake_signal)
+    monkeypatch.setattr("jobs.runner.subprocess.run", fake_run)
+
+    with pytest.raises(SystemExit, match="130"):
+        cmd_run(str(queue_path))
+
+    state = load_state(str(queue_path))
+    assert state["1"]["status"] == jobs_state.STATE_FAILED
+    assert state["1"]["error"] == "interrupted by signal 2"
+    assert state["1"]["interrupted"] is True
 
 
 def test_load_state_retries_on_transient_invalid_json(tmp_path, monkeypatch):

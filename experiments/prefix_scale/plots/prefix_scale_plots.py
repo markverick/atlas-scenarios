@@ -131,7 +131,6 @@ REDUCED_TABLE_HIDDEN_KEYS = {
     ("common", "dv_rib"),
     ("common", "forwarder_rib"),
     ("onephase", "dv_prefix_table"),
-    ("twophase", "dv_prefix_egress_state"),
 }
 
 REDUCED_TABLE_ORDER = [key for key in TABLE_ORDER if key not in REDUCED_TABLE_HIDDEN_KEYS]
@@ -141,10 +140,10 @@ TABLE_STYLES = {
     ("common", "dv_rib"): ("DV RIB", "#4C72B0"),
     ("common", "forwarder_rib"): ("Forwarder RIB", "#55A868"),
     ("common", "forwarder_fib"): ("Forwarder FIB", "#2E8B57"),
-    ("onephase", "dv_prefix_table"): ("One-phase DV prefix table", "#8172B2"),
+    ("onephase", "dv_prefix_table"): ("One-phase prefix-to-router mappings", "#8172B2"),
     ("twophase", "forwarder_pet"): ("Two-phase forwarder PET", "#DD8452"),
     ("twophase", "forwarder_multicast_fib"): ("Two-phase multicast FIB", "#CCB974"),
-    ("twophase", "dv_prefix_egress_state"): ("Two-phase DV prefix egress state", "#C44E52"),
+    ("twophase", "dv_prefix_egress_state"): ("Two-phase prefix-to-router mappings", "#C44E52"),
 }
 
 
@@ -556,8 +555,8 @@ def plot_core_edge_prefix_state_by_role(results_by_phase, out_dir, source_label,
         fig, axes = plt.subplots(1, 2, figsize=(12.5, 5.0), sharey=True)
         role_specs = [("core", "Core routers"), ("edge", "Edge routers")]
         table_specs = {
-            "onephase": ("onephase", "dv_prefix_table", "One-phase DV prefix table"),
-            "twophase": ("twophase", "dv_prefix_egress_state", "Two-phase DV prefix egress state"),
+            "onephase": ("onephase", "dv_prefix_table", "One-phase prefix-to-router mappings"),
+            "twophase": ("twophase", "dv_prefix_egress_state", "Two-phase prefix-to-router mappings"),
         }
 
         for axis, (role, title) in zip(axes, role_specs):
@@ -586,7 +585,7 @@ def plot_core_edge_prefix_state_by_role(results_by_phase, out_dir, source_label,
 
         axes[0].set_ylabel("Average entries per node")
         axes[0].legend(loc="upper left")
-        fig.suptitle(f"{_topology_profile(topology_key)['study_label']}: Phase-Specific Prefix State", y=1.02)
+        fig.suptitle(f"{_topology_profile(topology_key)['study_label']}: Prefix-to-Router Mappings by Role", y=1.02)
         fig.tight_layout()
         path = os.path.join(out_dir, _plot_files(topology_key)["prefix_state"])
         fig.savefig(path, dpi=180, bbox_inches="tight")
@@ -649,7 +648,7 @@ def plot_core_edge_forwarding_delta_by_role(results_by_phase, out_dir, source_la
 
         axes[0].set_ylabel("Average entry delta from 0-prefix run")
         axes[0].legend(loc="upper left")
-        fig.suptitle(f"{_topology_profile(topology_key)['study_label']}: Prefix-Driven Forwarder State Growth", y=1.02)
+        fig.suptitle(f"{_topology_profile(topology_key)['study_label']}: Prefix-Driven Local Forwarder State Growth", y=1.02)
         fig.tight_layout()
         path = os.path.join(out_dir, _plot_files(topology_key)["forwarder_growth"])
         fig.savefig(path, dpi=180, bbox_inches="tight")
@@ -779,25 +778,27 @@ def write_core_edge_summary(results_by_phase, data_dir, out_dir,
         "### Control traffic breakdown",
         f"![Control traffic breakdown]({rel_plot(plot_files['control_breakdown'])})",
         "",
-        "### Phase-specific prefix state by role",
-        f"![Phase-specific prefix state by role]({rel_plot(plot_files['prefix_state'])})",
+        "### Prefix-to-router mappings by role",
+        f"![Prefix-to-router mappings by role]({rel_plot(plot_files['prefix_state'])})",
+        "This plot shows network-wide prefix-to-router mappings, not just the local prefixes stored in a node's PET/FIB slice.",
         "",
-        "### Prefix-driven forwarder state growth",
-        f"![Prefix-driven forwarder state growth]({rel_plot(plot_files['forwarder_growth'])})",
+        "### Prefix-driven local forwarder state growth",
+        f"![Prefix-driven local forwarder state growth]({rel_plot(plot_files['forwarder_growth'])})",
+        "This plot shows local forwarding state growth per node, so the two-phase PET line is intentionally not the network-wide mapping table.",
         "",
         "### Average table entries per core and edge node",
         f"![Average table entries per core and edge node]({rel_plot(plot_files['table_role_average'])})",
         "",
         "### Forwarding-focused average table entries per core and edge node",
         f"![Forwarding-focused average table entries per core and edge node]({rel_plot(plot_files['table_role_average_reduced'])})",
-        "Hidden tables: Forwarder RIB, DV neighbors, DV RIB, one-phase DV prefix table, and two-phase DV prefix egress state.",
+        "Hidden tables: Forwarder RIB, DV neighbors, DV RIB, and one-phase prefix-to-router mappings.",
         "",
         "### Total table entries by phase and table",
         f"![Total table entries by phase and table]({rel_plot(plot_files['table_stack'])})",
         "",
         "### Forwarding-focused total table entries by phase and table",
         f"![Forwarding-focused total table entries by phase and table]({rel_plot(plot_files['table_stack_reduced'])})",
-        "Hidden tables: Forwarder RIB, DV neighbors, DV RIB, one-phase DV prefix table, and two-phase DV prefix egress state.",
+        "Hidden tables: Forwarder RIB, DV neighbors, DV RIB, and one-phase prefix-to-router mappings.",
         "",
         "## Run Metrics",
         "",
@@ -833,7 +834,7 @@ def write_core_edge_summary(results_by_phase, data_dir, out_dir,
     twophase_prefix_edge_end = _series_value(twophase_prefix_edge, max_prefix)
     if twophase_prefix_core_end is not None or twophase_prefix_edge_end is not None:
         observations.append(
-            f"- At {max_prefix} total prefixes, two-phase DV prefix egress state reaches {0.0 if twophase_prefix_core_end is None else twophase_prefix_core_end:.1f} average entries on core routers and {0.0 if twophase_prefix_edge_end is None else twophase_prefix_edge_end:.1f} on edge routers."
+            f"- At {max_prefix} total prefixes, two-phase prefix-to-router mapping state reaches {0.0 if twophase_prefix_core_end is None else twophase_prefix_core_end:.1f} average entries on core routers and {0.0 if twophase_prefix_edge_end is None else twophase_prefix_edge_end:.1f} on edge routers."
         )
 
     onephase_fib_core_delta = _series_delta(onephase_fib_core, start_prefix, max_prefix)
@@ -847,7 +848,7 @@ def write_core_edge_summary(results_by_phase, data_dir, out_dir,
     twophase_pet_edge_delta = _series_delta(twophase_pet_edge, start_prefix, max_prefix)
     if twophase_pet_core_delta is not None or twophase_pet_edge_delta is not None:
         observations.append(
-            f"- At {max_prefix} total prefixes, two-phase forwarder PET growth is {0.0 if twophase_pet_core_delta is None else twophase_pet_core_delta:+.2f} average entries on core routers and {0.0 if twophase_pet_edge_delta is None else twophase_pet_edge_delta:+.2f} on edge routers."
+            f"- At {max_prefix} total prefixes, two-phase forwarder PET growth is {0.0 if twophase_pet_core_delta is None else twophase_pet_core_delta:+.2f} average entries on core routers and {0.0 if twophase_pet_edge_delta is None else twophase_pet_edge_delta:+.2f} on edge routers; this is local forwarding state, not the full prefix-to-router mapping view."
         )
 
     observations.append(

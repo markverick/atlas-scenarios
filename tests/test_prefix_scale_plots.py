@@ -121,7 +121,10 @@ def test_core_edge_plot_cli_generates_plots(tmp_path):
     assert "plots/core_edge_table_average_by_role_reduced.png" in summary_text
     assert "plots/core_edge_table_stack_comparison.png" in summary_text
     assert "plots/core_edge_table_stack_comparison_reduced.png" in summary_text
-    assert "Hidden tables: Forwarder RIB, DV neighbors, DV RIB, one-phase DV prefix table, and two-phase DV prefix egress state." in summary_text
+    assert "Prefix-to-router mappings by role" in summary_text
+    assert "network-wide prefix-to-router mappings" in summary_text
+    assert "local forwarding state growth" in summary_text
+    assert "Hidden tables: Forwarder RIB, DV neighbors, DV RIB, and one-phase prefix-to-router mappings." in summary_text
     assert "forwarder FIB growth" in summary_text
     assert "forwarder RIB growth" not in summary_text
 

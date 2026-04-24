@@ -455,6 +455,11 @@ def cmd_run(job_path, dry=False):
                 print(f"\n  [X] Job #{job['id']} FAILED (exit {exc.returncode}, {elapsed:.0f}s)")
                 print(f"    Resume later:  ./jobs.sh run {selector}")
             finally:
+                latest = load_state(job_path)
+                latest_entry = latest.get(key, {})
+                current_entry = state.get(key, {})
+                if latest_entry.get("status") != STATE_RUNNING and current_entry.get("status") == STATE_RUNNING:
+                    state[key] = latest_entry
                 current_job["key"] = None
                 save_state(job_path, state)
 
