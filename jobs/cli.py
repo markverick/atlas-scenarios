@@ -4,7 +4,7 @@ import shutil
 import sys
 
 from .conventions import InteractiveCancel, resolve_queue_path, selector_from_path
-from .runner import cmd_list, cmd_reset, cmd_run, cmd_status
+from .runner import cmd_list, cmd_reset, cmd_run, cmd_status, cmd_delete, _queue_is_unfinished
 from .screen_ops import cmd_attach, cmd_log, cmd_start, cmd_stop
 
 
@@ -47,6 +47,10 @@ def build_parser():
     p_reset = sub.add_parser("reset", help="Reset job(s) to pending")
     p_reset.add_argument("queue", nargs="?", help="Queue selector")
     p_reset.add_argument("job_id", nargs="?", type=int, default=None, help="Reset specific job #")
+
+    p_delete = sub.add_parser("delete", help="Delete queue state for all unfinished queues (or a specific queue)")
+    p_delete.add_argument("queue", nargs="?", help="Queue selector (omit to delete all unfinished)")
+    p_delete.add_argument("--force", action="store_true", help="Skip confirmation and kill running screen if needed")
     return parser
 
 
@@ -63,6 +67,7 @@ def select_command_interactively():
         ("attach", "Attach to running screen"),
         ("stop", "Stop a running screen"),
         ("reset", "Reset queue jobs to pending"),
+        ("delete", "Delete state for all unfinished queues"),
         ("run", "Run queue in foreground"),
         ("quit", "Exit"),
     ]
@@ -211,6 +216,8 @@ def main(argv=None):
             if command == "reset":
                 cmd_reset(queue_path, None)
                 return 0
+            if command == "delete":
+                return cmd_delete(queue_path) or 0
             parser.print_help()
             return 1
 
@@ -223,6 +230,33 @@ def main(argv=None):
         if args.command == "running":
             cmd_list(running_only=True)
             return 0
+
+        # delete with no queue selector handles all unfinished queues itself —
+        # skip resolve_queue_path so it doesn't trigger the interactive picker.
+        if args.command == "delete" and getattr(args, "queue", None) is None:
+            from .conventions import discover_catalog
+            catalog = discover_catalog()
+            targets = [
+                q["path"]
+                for exp in catalog
+                for q in exp.get("queues", [])
+                if _queue_is_unfinished(q["path"])
+            ]
+            if not targets:
+                print("No unfinished queues found.")
+                return 0
+            print("Unfinished queues to delete:")
+            for qpath in targets:
+                print(f"  {selector_from_path(qpath)}")
+            if not args.force:
+                answer = input("Delete all of the above? [y/N]: ").strip().lower()
+                if answer not in {"y", "yes"}:
+                    print("Cancelled.")
+                    return 0
+            rc = 0
+            for qpath in targets:
+                rc |= cmd_delete(qpath, force=True) or 0
+            return rc
 
         prefer_active = args.command in {"status", "log", "attach", "stop"}
         active_only = args.command in {"attach", "stop"}
@@ -249,6 +283,8 @@ def main(argv=None):
         if args.command == "reset":
             cmd_reset(queue_path, args.job_id)
             return 0
+        if args.command == "delete":
+            return cmd_delete(queue_path, force=args.force) or 0
         print(f"Unknown command: {args.command}", file=sys.stderr)
         return 1
     except InteractiveCancel:

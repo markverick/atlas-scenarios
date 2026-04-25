@@ -18,11 +18,14 @@ from .state import (
     STATE_META_KEY,
     cleanup_stale_running,
     clear_runtime_fields,
+    jobs_meta_dir,
     load_state,
     log_path,
     pid_is_alive,
     report_stale_running,
     save_state,
+    screen_exists,
+    screen_name,
     state_job_keys,
 )
 
@@ -334,6 +337,53 @@ def cmd_reset(job_path, job_id=None):
         state.pop(STATE_META_KEY, None)
         print(f"  Reset all {len(keys)} jobs to pending.")
     save_state(job_path, state)
+
+
+def _queue_is_unfinished(job_path):
+    """Return True if the queue has any job that is not STATE_DONE."""
+    state = load_state(job_path)
+    if not state:
+        return True  # no state yet = never started = unfinished
+    for key, entry in state.items():
+        if key == STATE_META_KEY:
+            continue
+        if isinstance(entry, dict) and entry.get("status") != STATE_DONE:
+            return True
+    return False
+
+
+def cmd_delete(job_path, *, force=False):
+    """Delete the queue state directory after confirmation.
+
+    Refuses to delete while the queue is running unless --force is given.
+    """
+    import shutil
+    meta_dir = jobs_meta_dir(job_path)
+    screen = screen_name(job_path)
+    if screen_exists(screen):
+        if not force:
+            print(
+                f"ERROR: queue screen '{screen}' is still running.  "
+                "Stop it first with './jobs.sh stop' or pass --force.",
+                file=sys.stderr,
+            )
+            return 1
+        # kill screen before deleting state
+        subprocess.run(["screen", "-S", screen, "-X", "quit"], capture_output=True)
+
+    if not os.path.exists(meta_dir):
+        print("  No queue state to delete.")
+        return 0
+
+    if sys.stdin.isatty() and not force:
+        answer = input(f"  Delete state directory '{meta_dir}'? [y/N]: ").strip().lower()
+        if answer not in {"y", "yes"}:
+            print("  Cancelled.")
+            return 0
+
+    shutil.rmtree(meta_dir, ignore_errors=True)
+    print(f"  Deleted: {meta_dir}")
+    return 0
 
 
 def cmd_run(job_path, dry=False):
