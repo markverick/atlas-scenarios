@@ -83,6 +83,21 @@ ensure_ns3_ready() {
         exit 1
     fi
 
+    # Sync scenario .cc files from sim/ into ns-3 examples before building,
+    # so cmake always compiles the latest sources.
+    python3 -c "
+import sys
+sys.path.insert(0, '$REPO_DIR')
+from sim._helpers import sync_scenario, sync_prefix_scale_scenario, sync_multihop_scenario, sync_routing_scenario, sync_churn_scenario
+import os
+ns3_dir = '$NS3_DIR'
+sync_scenario(ns3_dir)
+sync_prefix_scale_scenario(ns3_dir)
+sync_multihop_scenario(ns3_dir)
+sync_routing_scenario(ns3_dir)
+sync_churn_scenario(ns3_dir)
+"
+
     if [[ "$phase" == "onephase" ]]; then
         local cmake_cache="$NS3_DIR/cmake-cache-op"
         local build_out="$NS3_DIR/build-op"
