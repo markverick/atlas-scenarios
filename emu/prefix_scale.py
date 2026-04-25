@@ -101,12 +101,22 @@ def run_trial(phase, prefix_count, *, delay_ms=10, bw_mbps=10, cores=0,
 
     ndn, roles = setup_core_edge(delay_ms, bw_mbps, ndnd_bin=ndnd_bin, cores=cores)
     edge_node_names = roles["edge"]
+    core_node_names = roles["core"]
 
     cap_tag, cap_paths = start_tcpdump(ndn.net.hosts, prefix="ndnd_pscap")
     cap_start = time.time()
 
+    # In twophase, core nodes must not replicate prefix egress state into their
+    # local PET -- they are transit routers, not egress points.  The emulation
+    # demonstrates that this flag does not prevent prefix propagation to edge
+    # nodes via the DV routing mechanism.
+    node_dv_configs = None
+    if ndnd_bin == 'ndnd':
+        core_cfg = {**(dv_config or {}), 'prefix_egre_state_replicate': False}
+        node_dv_configs = {name: core_cfg for name in core_node_names}
+
     dv_start = dv_util.setup(ndn, network=NETWORK, dv_config=dv_config,
-                             ndnd_bin=ndnd_bin)
+                             ndnd_bin=ndnd_bin, node_dv_configs=node_dv_configs)
 
     # Collect DV log paths for convergence analysis.
     dv_log_paths = [
