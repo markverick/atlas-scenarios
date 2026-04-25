@@ -43,6 +43,8 @@ RUN_FIELDNAMES = [
     "num_links",
     "router_reachability_s",
     "prefix_propagation_s",
+    "prefix_fetch_success",
+    "prefix_fetch_total",
     "control_packets",
     "control_bytes",
     "total_packets",
@@ -63,6 +65,40 @@ def current_phase_label():
 def ndnd_bin_for_phase(phase):
     """Return the ndnd binary name for the given phase."""
     return "ndnd-onephase" if phase == "onephase" else "ndnd"
+
+
+def verify_prefix_reachability(net, edge_node_names, announced, ndnd_bin, timeout_s=5):
+    """Fetch each announced prefix from a *different* edge node via ndnd cat.
+
+    Samples one prefix per unique originating edge node and sends an Interest
+    from a different edge node.  A successful fetch (exit 0) proves the
+    Interest traversed core nodes and Data was returned end-to-end.
+
+    Returns (success_count, total_count).
+    """
+    if not announced:
+        return 0, 0
+
+    # One prefix per unique originating host.
+    seen: dict = {}
+    for host, pfx in announced:
+        if host.name not in seen:
+            seen[host.name] = pfx
+
+    success = 0
+    total = 0
+    for orig_name, pfx in seen.items():
+        other_edges = [n for n in edge_node_names if n != orig_name]
+        if not other_edges:
+            continue
+        fetcher = net[other_edges[0]]
+        ret = fetcher.cmd(
+            f'timeout {timeout_s} {ndnd_bin} cat "{pfx}" > /dev/null 2>&1; echo $?'
+        ).strip()
+        success += int(ret == "0")
+        total += 1
+
+    return success, total
 
 
 def announce_prefixes(net, edge_node_names, prefix_count, ndnd_bin):
@@ -160,6 +196,11 @@ def run_trial(phase, prefix_count, *, delay_ms=10, bw_mbps=10, cores=0,
         if valid:
             prefix_propagation_s = round(max(valid), 4)
 
+    # Verify data-plane reachability: fetch each prefix from a remote edge node.
+    prefix_fetch_success, prefix_fetch_total = verify_prefix_reachability(
+        ndn.net, edge_node_names, announced, ndnd_bin=ndnd_bin
+    )
+
     withdraw_prefixes(announced)
     stop_tcpdump(ndn.net.hosts, cap_tag, prefix="ndnd_pscap")
     traffic = collect_traffic(cap_paths.values(), start_ts=cap_start)
@@ -171,6 +212,8 @@ def run_trial(phase, prefix_count, *, delay_ms=10, bw_mbps=10, cores=0,
         "num_links": num_links,
         "router_reachability_s": router_reachability_s,
         "prefix_propagation_s": prefix_propagation_s,
+        "prefix_fetch_success": prefix_fetch_success,
+        "prefix_fetch_total": prefix_fetch_total,
         "control_packets": traffic.routing_packets,
         "control_bytes": traffic.routing_bytes,
         "total_packets": traffic.total_packets,
@@ -265,6 +308,8 @@ def main():
                     "num_links": raw["num_links"],
                     "router_reachability_s": raw["router_reachability_s"],
                     "prefix_propagation_s": raw["prefix_propagation_s"],
+                    "prefix_fetch_success": raw["prefix_fetch_success"],
+                    "prefix_fetch_total": raw["prefix_fetch_total"],
                     "control_packets": raw["control_packets"],
                     "control_bytes": raw["control_bytes"],
                     "total_packets": raw["total_packets"],
@@ -274,6 +319,7 @@ def main():
                 runs_handle.flush()
                 info(f"  router_reachability={raw['router_reachability_s']}s"
                      f"  prefix_propagation={raw['prefix_propagation_s']}s"
+                     f"  prefix_fetch={raw['prefix_fetch_success']}/{raw['prefix_fetch_total']}"
                      f"  control_pkts={raw['control_packets']}"
                      f"  control_bytes={raw['control_bytes']}\n")
 

@@ -184,6 +184,8 @@ def _aggregate_by_prefix(rows, field, *, role=None, table_category=None, table_n
             continue
         if table_name is not None and row.get("table_name") != table_name:
             continue
+        if field not in row:
+            continue
         prefix_count = int(row["prefix_count"])
         grouped.setdefault(prefix_count, []).append(float(row[field]))
     return {prefix_count: _mean(values) for prefix_count, values in grouped.items()}
@@ -736,8 +738,8 @@ def write_core_edge_summary(results_by_phase, data_dir, out_dir,
                 role_counts[role] = int(matches[0]["node_count"])
                 break
 
-    onephase_run = {field: run_series("onephase", field) for field in ("router_reachability_s", "control_packets", "control_bytes")}
-    twophase_run = {field: run_series("twophase", field) for field in ("router_reachability_s", "control_packets", "control_bytes")}
+    onephase_run = {field: run_series("onephase", field) for field in ("router_reachability_s", "control_packets", "control_bytes", "prefix_fetch_success", "prefix_fetch_total")}
+    twophase_run = {field: run_series("twophase", field) for field in ("router_reachability_s", "control_packets", "control_bytes", "prefix_fetch_success", "prefix_fetch_total")}
 
     onephase_prefix_core = role_series("onephase", "core", "onephase", "dv_prefix_table")
     onephase_prefix_edge = role_series("onephase", "edge", "onephase", "dv_prefix_table")
@@ -802,14 +804,21 @@ def write_core_edge_summary(results_by_phase, data_dir, out_dir,
         "",
         "## Run Metrics",
         "",
-        "| total_prefixes | onephase_reachability_s | twophase_reachability_s | onephase_control_packets | twophase_control_packets | onephase_control_bytes | twophase_control_bytes |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
+        "| total_prefixes | onephase_reachability_s | twophase_reachability_s | onephase_control_packets | twophase_control_packets | onephase_control_bytes | twophase_control_bytes | onephase_fetch | twophase_fetch |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ])
+    def _fetch_str(run, pc):
+        s = run["prefix_fetch_success"].get(pc)
+        t = run["prefix_fetch_total"].get(pc)
+        if s is None or t is None:
+            return "n/a"
+        return f"{int(s)}/{int(t)}"
     for prefix_count in prefix_counts:
         lines.append(
             f"| {prefix_count} | {onephase_run['router_reachability_s'][prefix_count]:.4f} | {twophase_run['router_reachability_s'][prefix_count]:.4f} | "
             f"{int(round(onephase_run['control_packets'][prefix_count]))} | {int(round(twophase_run['control_packets'][prefix_count]))} | "
-            f"{int(round(onephase_run['control_bytes'][prefix_count]))} | {int(round(twophase_run['control_bytes'][prefix_count]))} |"
+            f"{int(round(onephase_run['control_bytes'][prefix_count]))} | {int(round(twophase_run['control_bytes'][prefix_count]))} | "
+            f"{_fetch_str(onephase_run, prefix_count)} | {_fetch_str(twophase_run, prefix_count)} |"
         )
 
     observations = ["", "## Observations", ""]
@@ -850,6 +859,34 @@ def write_core_edge_summary(results_by_phase, data_dir, out_dir,
         observations.append(
             f"- At {max_prefix} total prefixes, two-phase forwarder PET growth is {0.0 if twophase_pet_core_delta is None else twophase_pet_core_delta:+.2f} average entries on core routers and {0.0 if twophase_pet_edge_delta is None else twophase_pet_edge_delta:+.2f} on edge routers; this is local forwarding state, not the full prefix-to-router mapping view."
         )
+
+    # Prefix fetch reachability observation (data-plane proof).
+    twophase_fetch_counts = [
+        (twophase_run["prefix_fetch_success"].get(pc), twophase_run["prefix_fetch_total"].get(pc))
+        for pc in prefix_counts if twophase_run["prefix_fetch_total"].get(pc, 0)
+    ]
+    onephase_fetch_counts = [
+        (onephase_run["prefix_fetch_success"].get(pc), onephase_run["prefix_fetch_total"].get(pc))
+        for pc in prefix_counts if onephase_run["prefix_fetch_total"].get(pc, 0)
+    ]
+    if twophase_fetch_counts:
+        twophase_fetch_ok = all(s == t for s, t in twophase_fetch_counts)
+        twophase_fetch_summary = ", ".join(f"{s}/{t}" for s, t in twophase_fetch_counts)
+        if twophase_fetch_ok:
+            observations.append(
+                f"- Two-phase prefix fetch succeeded for all sampled trials ({twophase_fetch_summary}), confirming end-to-end data-plane reachability across core nodes with prefix_egre_state_replicate=false."
+            )
+        else:
+            observations.append(
+                f"- Two-phase prefix fetch results ({twophase_fetch_summary}): some fetches failed — check core node routing configuration."
+            )
+    if onephase_fetch_counts:
+        onephase_fetch_ok = all(s == t for s, t in onephase_fetch_counts)
+        onephase_fetch_summary = ", ".join(f"{s}/{t}" for s, t in onephase_fetch_counts)
+        if onephase_fetch_ok:
+            observations.append(
+                f"- One-phase prefix fetch succeeded for all sampled trials ({onephase_fetch_summary})."
+            )
 
     observations.append(
         f"- Two-phase control traffic is higher than one-phase at every measured prefix count in this run: packets range from {twophase_packet_min} to {twophase_packet_max} in two-phase versus {onephase_packet_min} to {onephase_packet_max} in one-phase."
