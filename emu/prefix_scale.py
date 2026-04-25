@@ -121,8 +121,8 @@ def run_trial(phase, prefix_count, *, delay_ms=10, bw_mbps=10, cores=0,
                          network=NETWORK, start=dv_start, ndnd_bin=ndnd_bin)
         router_reachability_s = parse_router_reachable_logs(
             dv_log_paths, num_nodes=num_nodes)
-    except Exception:
-        info("WARNING: routing did not converge within deadline\n")
+    except Exception as exc:
+        info(f"WARNING: routing did not converge within deadline: {exc}\n")
 
     # Announce prefixes from edge nodes after routing converges.
     announced = announce_prefixes(ndn.net, edge_node_names, prefix_count,
