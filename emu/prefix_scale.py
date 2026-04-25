@@ -225,6 +225,17 @@ def main():
     with open(os.path.join(args.out, "metadata.json"), "w") as handle:
         json.dump(metadata, handle, indent=2, sort_keys=True)
 
+    # Write a header-only role_table_summary.csv so the plot renderer finds
+    # the expected file.  Table-level metrics (FIB/PET/RIB sizes) require
+    # NS-3 instrumentation and are not collected during emulation runs.
+    role_summary_path = os.path.join(args.out, "role_table_summary.csv")
+    role_summary_fields = [
+        "phase", "trial", "prefix_count", "role", "table_category",
+        "table_name", "node_count", "total_entries", "avg_entries", "max_entries",
+    ]
+    with open(role_summary_path, "w", newline="") as rh:
+        csv.DictWriter(rh, fieldnames=role_summary_fields).writeheader()
+
     runs_path = os.path.join(args.out, "runs.csv")
     with open(runs_path, "w", newline="") as runs_handle:
         writer = csv.DictWriter(runs_handle, fieldnames=RUN_FIELDNAMES)
