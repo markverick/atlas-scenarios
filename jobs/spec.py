@@ -121,3 +121,22 @@ def build_run_context(job_path, spec, state, *, selector, stem):
         "run_context": context,
     }
     return context
+
+
+def queue_requires_sudo(job_path):
+    """Return True if any job in the queue invokes 'run.sh emu …' (needs root).
+
+    Pure-sim queues (only 'sim', 'build', 'as-user' cmds) return False so
+    they can be started without sudo.
+    """
+    try:
+        data = load_job_spec(job_path)
+    except Exception:
+        return True  # safe default: assume root needed
+    for job in data.get("jobs", []):
+        cmd = job.get("cmd", "")
+        parts = cmd.split()
+        # "run.sh emu" or "run.sh --env X emu" — "emu" appears as a bare word
+        if "run.sh" in cmd and "emu" in parts:
+            return True
+    return False

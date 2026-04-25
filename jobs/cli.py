@@ -6,6 +6,7 @@ import sys
 from .conventions import InteractiveCancel, resolve_queue_path, selector_from_path
 from .runner import cmd_list, cmd_reset, cmd_run, cmd_status, cmd_delete, _queue_is_unfinished
 from .screen_ops import cmd_attach, cmd_log, cmd_start, cmd_stop
+from .spec import queue_requires_sudo
 
 
 def build_parser():
@@ -139,10 +140,6 @@ def maybe_watch_started_queue(job_path, *, watch_status=None, default=True):
         cmd_status(job_path, watch=True, interval_s=1.0)
 
 
-def command_requires_sudo(command):
-    return command in {"start", "run", "attach", "stop", "log"}
-
-
 def exec_with_sudo(cli_args):
     if shutil.which("sudo") is None:
         print("ERROR: sudo is not installed.", file=sys.stderr)
@@ -196,7 +193,7 @@ def main(argv=None):
             queue_selector = selector_from_path(queue_path)
             if command == "start":
                 fresh = True
-                if os.geteuid() != 0 and command_requires_sudo(command):
+                if os.geteuid() != 0 and queue_requires_sudo(queue_path):
                     cli_args = [command, queue_selector]
                     if fresh:
                         cli_args.append("--fresh")
@@ -206,18 +203,18 @@ def main(argv=None):
                 maybe_watch_started_queue(queue_path, watch_status=True)
                 return 0
             if command == "attach":
-                if os.geteuid() != 0 and command_requires_sudo(command):
+                if os.geteuid() != 0 and queue_requires_sudo(queue_path):
                     exec_with_sudo([command, queue_selector])
                 cmd_attach(queue_path)
                 return 0
             if command == "stop":
-                if os.geteuid() != 0 and command_requires_sudo(command):
+                if os.geteuid() != 0 and queue_requires_sudo(queue_path):
                     exec_with_sudo([command, queue_selector])
                 cmd_stop(queue_path)
                 return 0
             if command == "log":
                 follow = False
-                if os.geteuid() != 0 and command_requires_sudo(command):
+                if os.geteuid() != 0 and queue_requires_sudo(queue_path):
                     cli_args = [command, queue_selector]
                     if follow:
                         cli_args.append("--follow")
@@ -226,7 +223,7 @@ def main(argv=None):
                 return 0
             if command == "run":
                 dry = False
-                if os.geteuid() != 0 and command_requires_sudo(command):
+                if os.geteuid() != 0 and queue_requires_sudo(queue_path):
                     cli_args = [command, queue_selector]
                     if dry:
                         cli_args.append("--dry")
@@ -242,9 +239,6 @@ def main(argv=None):
                 return 0
             parser.print_help()
             return 1
-
-        if os.geteuid() != 0 and command_requires_sudo(args.command):
-            exec_with_sudo(argv)
 
         if args.command == "list":
             cmd_list(running_only=args.running)
@@ -283,6 +277,16 @@ def main(argv=None):
         prefer_active = args.command in {"status", "log", "attach", "stop"}
         active_only = args.command in {"attach", "stop"}
         queue_path = resolve_queue_path(getattr(args, "queue", None), prefer_active=prefer_active, active_only=active_only)
+        queue_selector = selector_from_path(queue_path)
+
+        # Escalate to root for emu queues (MiniNDN requires root for network namespaces)
+        if os.geteuid() != 0 and args.command in {"start", "run", "attach", "stop", "log"} and queue_requires_sudo(queue_path):
+            escalate_argv = argv[:]
+            if getattr(args, "queue", None) is None:
+                # Inject resolved selector so the sudo re-exec doesn't prompt again
+                escalate_argv = [args.command, queue_selector] + argv[1:]
+            exec_with_sudo(escalate_argv)
+
         if args.command == "start":
             cmd_start(queue_path, dry=args.dry, fresh=args.fresh)
             if not args.dry:
