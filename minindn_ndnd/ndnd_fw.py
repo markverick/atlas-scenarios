@@ -6,7 +6,7 @@ from minindn.apps.application import Application
 
 
 class NDNd_FW(Application):
-    def __init__(self, node, config={}, logLevel='INFO', threads=2, ndnd_bin='ndnd'):
+    def __init__(self, node, config={}, logLevel='INFO', threads=2, ndnd_bin='ndnd', network='/minindn'):
         Application.__init__(self, node)
         self.ndnd_bin = ndnd_bin
 
@@ -37,6 +37,11 @@ class NDNd_FW(Application):
             },
             'fw': {
                 'threads': threads,
+                # Two-phase PET forwarding needs the local router identity so
+                # that forwarding hints for cert fetches are recognized as the
+                # local producer region and the cert name is used for FIB
+                # lookup instead of the hint name.
+                'router_name': f'{network}/{node.name}',
             },
         }
 
