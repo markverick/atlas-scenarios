@@ -25,6 +25,7 @@ from .state import (
     report_stale_running,
     save_state,
     screen_exists,
+    screen_kill,
     screen_name,
     state_job_keys,
 )
@@ -368,8 +369,8 @@ def cmd_delete(job_path, *, force=False):
                 file=sys.stderr,
             )
             return 1
-        # kill screen before deleting state
-        subprocess.run(["screen", "-S", screen, "-X", "quit"], capture_output=True)
+        # kill screen before deleting state — may be owned by root or current user
+        screen_kill(screen)
 
     if not os.path.exists(meta_dir):
         print("  No queue state to delete.")

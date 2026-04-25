@@ -69,6 +69,28 @@ def screen_exists(name):
     return False
 
 
+def screen_kill(name):
+    """Kill all screen sessions with the given name, for both current user and root.
+
+    Screens started with sudo are owned by root and invisible to a normal user's
+    'screen -ls', and vice versa.  Try both contexts so either is cleaned up.
+    Returns True if at least one session was found and killed.
+    """
+    killed = False
+    # Contexts to try: (ls_cmd, quit_cmd)
+    contexts = [(["screen", "-ls"], ["screen", "-S", name, "-X", "quit"])]
+    if os.geteuid() != 0 and shutil.which("sudo") is not None:
+        contexts.append(
+            (["sudo", "-n", "screen", "-ls"], ["sudo", "-n", "screen", "-S", name, "-X", "quit"])
+        )
+    for ls_cmd, quit_cmd in contexts:
+        ls = subprocess.run(ls_cmd, capture_output=True, text=True)
+        if f".{name}\t" in ls.stdout:
+            subprocess.run(quit_cmd, capture_output=True)
+            killed = True
+    return killed
+
+
 def load_state(job_path):
     path = state_path(job_path)
     for attempt in range(5):

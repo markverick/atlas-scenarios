@@ -83,7 +83,7 @@ def cmd_stop(job_path):
         if os.geteuid() != 0:
             print(f"  If started with sudo: sudo ./jobs.sh stop {selector}")
         return
-    subprocess.run(["screen", "-S", name, "-X", "quit"], check=True)
+    screen_kill(name)
     print(f"  Stopped screen '{name}' for {selector}.")
 
 
