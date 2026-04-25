@@ -122,7 +122,6 @@ TABLE_ORDER = [
     ("common", "forwarder_fib"),
     ("onephase", "dv_prefix_table"),
     ("twophase", "forwarder_pet"),
-    ("twophase", "forwarder_multicast_fib"),
     ("twophase", "dv_prefix_egress_state"),
 ]
 
@@ -131,6 +130,7 @@ REDUCED_TABLE_HIDDEN_KEYS = {
     ("common", "dv_rib"),
     ("common", "forwarder_rib"),
     ("onephase", "dv_prefix_table"),
+    ("twophase", "dv_prefix_egress_state"),
 }
 
 REDUCED_TABLE_ORDER = [key for key in TABLE_ORDER if key not in REDUCED_TABLE_HIDDEN_KEYS]
@@ -142,7 +142,6 @@ TABLE_STYLES = {
     ("common", "forwarder_fib"): ("Forwarder FIB", "#2E8B57"),
     ("onephase", "dv_prefix_table"): ("One-phase prefix-to-router mappings", "#8172B2"),
     ("twophase", "forwarder_pet"): ("Two-phase forwarder PET", "#DD8452"),
-    ("twophase", "forwarder_multicast_fib"): ("Two-phase multicast FIB", "#CCB974"),
     ("twophase", "dv_prefix_egress_state"): ("Two-phase prefix-to-router mappings", "#C44E52"),
 }
 
@@ -370,14 +369,8 @@ def _plot_table_stack_comparison(results_by_phase, out_dir, *, table_order,
         axis.grid(True, axis="y", alpha=0.25)
         axis.set_axisbelow(True)
 
-        phase_handles = [
-            plt.Line2D([0], [0], color=PHASE_STYLES["onephase"]["color"], linewidth=8, label="One-phase bar"),
-            plt.Line2D([0], [0], color=PHASE_STYLES["twophase"]["color"], linewidth=8, label="Two-phase bar"),
-        ]
         table_handle_list = [legend_handles[label] for label in legend_handles]
         table_label_list = list(legend_handles.keys())
-        phase_legend = axis.legend(handles=phase_handles, loc="upper left")
-        axis.add_artist(phase_legend)
         axis.legend(table_handle_list, table_label_list, loc="upper center", bbox_to_anchor=(0.5, -0.16), ncol=2)
 
         fig.suptitle(f"{_topology_profile(topology_key)['study_label']}: {title}", y=1.02)
@@ -472,13 +465,6 @@ def _plot_table_average_by_role(results_by_phase, out_dir, *, table_order,
             axis.set_axisbelow(True)
 
         axes[0].set_ylabel("Average table entries per node")
-
-        phase_handles = [
-            plt.Line2D([0], [0], color=PHASE_STYLES["onephase"]["color"], linewidth=8, label="One-phase bar"),
-            plt.Line2D([0], [0], color=PHASE_STYLES["twophase"]["color"], linewidth=8, label="Two-phase bar"),
-        ]
-        phase_legend = axes[0].legend(handles=phase_handles, loc="upper left")
-        axes[0].add_artist(phase_legend)
 
         table_handle_list = [legend_handles[label] for label in legend_handles]
         table_label_list = list(legend_handles.keys())
@@ -780,10 +766,6 @@ def write_core_edge_summary(results_by_phase, data_dir, out_dir,
         "### Control traffic breakdown",
         f"![Control traffic breakdown]({rel_plot(plot_files['control_breakdown'])})",
         "",
-        "### Prefix-to-router mappings by role",
-        f"![Prefix-to-router mappings by role]({rel_plot(plot_files['prefix_state'])})",
-        "This plot shows network-wide prefix-to-router mappings, not just the local prefixes stored in a node's PET/FIB slice.",
-        "",
         "### Prefix-driven local forwarder state growth",
         f"![Prefix-driven local forwarder state growth]({rel_plot(plot_files['forwarder_growth'])})",
         "This plot shows local forwarding state growth per node, so the two-phase PET line is intentionally not the network-wide mapping table.",
@@ -902,6 +884,245 @@ def write_core_edge_summary(results_by_phase, data_dir, out_dir,
         handle.write("\n".join(lines) + "\n")
     print(f"  Saved {path}")
     return path
+
+
+def write_core_edge_xlsx(results_by_phase, data_dir, out_dir):
+    """Write a multi-sheet XLSX workbook for spreadsheet import.
+
+    Sheets:
+    - runs         : one row per (phase, trial, prefix_count) with all run-level metrics.
+    - node_tables  : one row per (phase, trial, prefix_count, node) with each table as a column.
+    - role_summary : one row per (phase, trial, prefix_count, role) with avg/max/total per table.
+    """
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+    import csv as _csv
+
+    HEADER_FILL = PatternFill("solid", fgColor="3A7ABF")
+    HEADER_FONT = Font(bold=True, color="FFFFFF")
+    ONEPHASE_FILL = PatternFill("solid", fgColor="DDEEFF")
+    TWOPHASE_FILL = PatternFill("solid", fgColor="FFF0E0")
+
+    phase_fill = {"onephase": ONEPHASE_FILL, "twophase": TWOPHASE_FILL}
+
+    def _write_header(ws, headers):
+        ws.append(headers)
+        for cell in ws[1]:
+            cell.font = HEADER_FONT
+            cell.fill = HEADER_FILL
+            cell.alignment = Alignment(horizontal="center")
+
+    def _autofit(ws):
+        for col in ws.columns:
+            max_len = max((len(str(cell.value or "")) for cell in col), default=0)
+            ws.column_dimensions[get_column_letter(col[0].column)].width = max(10, min(max_len + 2, 40))
+
+    def _phase_fill_row(ws, row_idx, phase):
+        fill = phase_fill.get(phase)
+        if fill:
+            for cell in ws[row_idx]:
+                if cell.fill.fill_type == "none":
+                    cell.fill = fill
+
+    # ── load node_table_metrics.csv for each phase ──────────────────────────
+    node_rows = []
+    for phase in ("onephase", "twophase"):
+        path = os.path.join(data_dir, phase, "node_table_metrics.csv")
+        if os.path.exists(path):
+            with open(path, newline="") as f:
+                for r in _csv.DictReader(f):
+                    r.setdefault("phase", phase)
+                    node_rows.append(r)
+
+    # ── ordered table names ──────────────────────────────────────────────────
+    table_col_names = []
+    seen = set()
+    for key in TABLE_ORDER:
+        if key not in seen:
+            table_col_names.append(key)
+            seen.add(key)
+    table_names = [name for _cat, name in table_col_names]
+
+    wb = Workbook()
+
+    # ════════════════════════════════════════════════════════════════
+    # Sheet 1: runs
+    # ════════════════════════════════════════════════════════════════
+    ws_runs = wb.active
+    ws_runs.title = "runs"
+    run_fields = [
+        "num_nodes", "num_links",
+        "router_reachability_s", "prefix_propagation_s",
+        "control_packets", "control_bytes",
+        "total_packets", "total_bytes",
+    ]
+    _write_header(ws_runs, ["phase", "trial", "prefix_count"] + run_fields)
+    for phase in ("onephase", "twophase"):
+        for row in sorted(results_by_phase[phase]["runs"], key=lambda r: (r.get("trial", "1"), int(r.get("prefix_count", 0)))):
+            def _coerce(v):
+                if v is None or v == "":
+                    return ""
+                try:
+                    return float(v) if "." in str(v) else int(v)
+                except (ValueError, TypeError):
+                    return v
+            values = [row.get("phase", phase), row.get("trial", "1"), int(row.get("prefix_count", 0))]
+            values += [_coerce(row.get(f, "")) for f in run_fields]
+            ws_runs.append(values)
+            _phase_fill_row(ws_runs, ws_runs.max_row, phase)
+    _autofit(ws_runs)
+
+    # ════════════════════════════════════════════════════════════════
+    # Sheet 2: node_tables — per-node, wide format
+    # ════════════════════════════════════════════════════════════════
+    ws_nodes = wb.create_sheet("node_tables")
+    node_headers = ["phase", "trial", "prefix_count", "node", "role"] + table_names
+    _write_header(ws_nodes, node_headers)
+
+    # Build index: (phase, trial, prefix_count, node, table_name) -> entry_count
+    node_idx = {}
+    for r in node_rows:
+        k = (r.get("phase"), r.get("trial"), r.get("prefix_count"), r.get("node"), r.get("table_name"))
+        node_idx[k] = r.get("entry_count", "")
+
+    # Collect unique (phase, trial, prefix_count, node, role) combos
+    node_combos = {}
+    for r in node_rows:
+        k = (r.get("phase"), r.get("trial"), r.get("prefix_count"), r.get("node"))
+        if k not in node_combos:
+            node_combos[k] = r.get("role", "")
+
+    for (phase, trial, prefix_count, node), role in sorted(
+        node_combos.items(),
+        key=lambda x: (x[0][0], x[0][1], int(x[0][2] or 0), x[0][3]),
+    ):
+        row_vals = [phase, trial, int(prefix_count or 0), node, role]
+        for name in table_names:
+            raw = node_idx.get((phase, trial, prefix_count, node, name), "")
+            try:
+                raw = int(raw)
+            except (ValueError, TypeError):
+                pass
+            row_vals.append(raw)
+        ws_nodes.append(row_vals)
+        _phase_fill_row(ws_nodes, ws_nodes.max_row, phase)
+    _autofit(ws_nodes)
+
+    # ════════════════════════════════════════════════════════════════
+    # Sheet 3: role_summary — per-role aggregates, wide format
+    # ════════════════════════════════════════════════════════════════
+    ws_role = wb.create_sheet("role_summary")
+    role_cols = []
+    for name in table_names:
+        role_cols += [f"{name}_avg", f"{name}_max", f"{name}_total", f"{name}_node_count"]
+    _write_header(ws_role, ["phase", "trial", "prefix_count", "role"] + role_cols)
+
+    # Index: (phase, trial, prefix_count, role, table_name) -> row
+    role_idx = {}
+    for phase in ("onephase", "twophase"):
+        for r in results_by_phase[phase]["role_table_summary"]:
+            k = (r.get("phase", phase), r.get("trial"), r.get("prefix_count"), r.get("role"), r.get("table_name"))
+            role_idx[k] = r
+
+    role_combos = set()
+    for phase in ("onephase", "twophase"):
+        for r in results_by_phase[phase]["role_table_summary"]:
+            role_combos.add((r.get("phase", phase), r.get("trial"), r.get("prefix_count"), r.get("role")))
+        for r in results_by_phase[phase]["runs"]:
+            for role in ("core", "edge"):
+                role_combos.add((r.get("phase", phase), r.get("trial", "1"), r.get("prefix_count"), role))
+
+    for (phase, trial, prefix_count, role) in sorted(role_combos, key=lambda x: (x[0], x[1], int(x[2] or 0), x[3])):
+        row_vals = [phase, trial, int(prefix_count or 0), role]
+        for name in table_names:
+            tr = role_idx.get((phase, trial, prefix_count, role, name), {})
+            def _num(v):
+                try: return float(v) if "." in str(v) else int(v)
+                except (ValueError, TypeError): return v
+            row_vals += [_num(tr.get("avg_entries", "")), _num(tr.get("max_entries", "")),
+                         _num(tr.get("total_entries", "")), _num(tr.get("node_count", ""))]
+        ws_role.append(row_vals)
+        _phase_fill_row(ws_role, ws_role.max_row, phase)
+    _autofit(ws_role)
+
+    path = os.path.join(out_dir, "summary.xlsx")
+    wb.save(path)
+    print(f"  Saved {path}")
+
+
+def write_core_edge_csv(results_by_phase, out_dir):
+    """Write a wide-format CSV combining runs and per-role table data for spreadsheet import."""
+    import csv as _csv
+
+    run_fields = [
+        "num_nodes", "num_links",
+        "router_reachability_s", "prefix_propagation_s",
+        "control_packets", "control_bytes",
+        "total_packets", "total_bytes",
+    ]
+
+    # Index runs by (phase, trial, prefix_count)
+    runs_index = {}
+    for phase in ("onephase", "twophase"):
+        for row in results_by_phase[phase]["runs"]:
+            k = (row.get("phase", phase), row.get("trial", "1"), row.get("prefix_count"))
+            runs_index[k] = row
+
+    # Index table rows by (phase, trial, prefix_count, role, table_category, table_name)
+    table_index = {}
+    for phase in ("onephase", "twophase"):
+        for row in results_by_phase[phase]["role_table_summary"]:
+            k = (
+                row.get("phase", phase), row.get("trial"), row.get("prefix_count"),
+                row.get("role"), row.get("table_category"), row.get("table_name"),
+            )
+            table_index[k] = row
+
+    # Collect all (phase, trial, prefix_count, role) combos
+    combos = set()
+    for phase in ("onephase", "twophase"):
+        for row in results_by_phase[phase]["role_table_summary"]:
+            combos.add((row.get("phase", phase), row.get("trial"), row.get("prefix_count"), row.get("role")))
+        for row in results_by_phase[phase]["runs"]:
+            p = row.get("phase", phase)
+            t = row.get("trial", "1")
+            pc = row.get("prefix_count")
+            for role in ("core", "edge"):
+                combos.add((p, t, pc, role))
+    combos = sorted(combos)
+
+    # Build table column headers in TABLE_ORDER order
+    table_col_names = []  # (cat, name) tuples in order
+    seen = set()
+    for key in TABLE_ORDER:
+        if key not in seen:
+            table_col_names.append(key)
+            seen.add(key)
+
+    table_col_headers = []
+    for _cat, name in table_col_names:
+        table_col_headers += [f"{name}_avg", f"{name}_max", f"{name}_total", f"{name}_node_count"]
+
+    fieldnames = ["phase", "trial", "prefix_count", "role"] + run_fields + table_col_headers
+
+    path = os.path.join(out_dir, "summary.csv")
+    with open(path, "w", newline="") as f:
+        writer = _csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        for (phase, trial, prefix_count, role) in combos:
+            run_row = runs_index.get((phase, trial, prefix_count), {})
+            out_row = {"phase": phase, "trial": trial, "prefix_count": prefix_count, "role": role}
+            for field in run_fields:
+                out_row[field] = run_row.get(field, "")
+            for cat, name in table_col_names:
+                trow = table_index.get((phase, trial, prefix_count, role, cat, name), {})
+                out_row[f"{name}_avg"] = trow.get("avg_entries", "")
+                out_row[f"{name}_max"] = trow.get("max_entries", "")
+                out_row[f"{name}_total"] = trow.get("total_entries", "")
+                out_row[f"{name}_node_count"] = trow.get("node_count", "")
+            writer.writerow(out_row)
+    print(f"  Saved {path}")
 
 
 def plot_churn_comparison(rows, out_dir, source_label):

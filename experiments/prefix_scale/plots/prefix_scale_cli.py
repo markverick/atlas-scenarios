@@ -27,6 +27,8 @@ from .prefix_scale_plots import (
     plot_sim_vs_emu,
     plot_svs_suppression_compare,
     write_core_edge_summary,
+    write_core_edge_csv,
+    write_core_edge_xlsx,
 )
 
 
@@ -81,13 +83,15 @@ def main(argv=None):
         plot_core_edge_topology(out_dir, topology_key=topology_key)
         plot_core_edge_run_comparison(results_by_phase, out_dir, source_label, topology_key=topology_key)
         plot_core_edge_control_breakdown(args.data, out_dir, source_label, topology_key=topology_key)
-        plot_core_edge_prefix_state_by_role(results_by_phase, out_dir, source_label, topology_key=topology_key)
+        # plot_core_edge_prefix_state_by_role(results_by_phase, out_dir, source_label, topology_key=topology_key)
         plot_core_edge_forwarding_delta_by_role(results_by_phase, out_dir, source_label, topology_key=topology_key)
         plot_core_edge_table_average_by_role(results_by_phase, out_dir, source_label, topology_key=topology_key)
         plot_core_edge_table_average_by_role_reduced(results_by_phase, out_dir, source_label, topology_key=topology_key)
         plot_core_edge_table_stack_comparison(results_by_phase, out_dir, source_label, topology_key=topology_key)
         plot_core_edge_table_stack_comparison_reduced(results_by_phase, out_dir, source_label, topology_key=topology_key)
         write_core_edge_summary(results_by_phase, os.path.abspath(args.data), out_dir, topology_key=topology_key)
+        write_core_edge_csv(results_by_phase, out_dir)
+        write_core_edge_xlsx(results_by_phase, os.path.abspath(args.data), out_dir)
         if args.data2:
             print("WARNING: --data2 is not used for the core/edge table-study layout")
         print("Done.")

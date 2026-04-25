@@ -125,7 +125,7 @@ main(int argc, char* argv[])
                 std::string nodeName = Names::FindName(node);
                 auto stack = node->GetObject<NdndStack>();
                 std::string prefix = "/data/" + nodeName + "/pfx" + std::to_string(i);
-                stack->AnnouncePrefixToDv(prefix);
+                stack->RegisterProducer(prefix);
             }
         });
     }
