@@ -166,6 +166,30 @@ def main(argv=None):
                 cmd_list(running_only=True)
                 return 0
 
+            if command == "delete":
+                from .conventions import discover_catalog
+                catalog = discover_catalog()
+                targets = [
+                    q["path"]
+                    for exp in catalog
+                    for q in exp.get("queues", [])
+                    if _queue_is_unfinished(q["path"])
+                ]
+                if not targets:
+                    print("No unfinished queues found.")
+                    return 0
+                print("Unfinished queues to delete (running screens will be stopped):")
+                for qpath in targets:
+                    print(f"  {selector_from_path(qpath)}")
+                answer = input("Delete all of the above? [y/N]: ").strip().lower()
+                if answer not in {"y", "yes"}:
+                    print("Cancelled.")
+                    return 0
+                rc = 0
+                for qpath in targets:
+                    rc |= cmd_delete(qpath, force=True) or 0
+                return rc
+
             prefer_active = command in {"status", "log", "attach", "stop"}
             active_only = command in {"attach", "stop"}
             queue_path = resolve_queue_path(None, prefer_active=prefer_active, active_only=active_only)
@@ -216,8 +240,6 @@ def main(argv=None):
             if command == "reset":
                 cmd_reset(queue_path, None)
                 return 0
-            if command == "delete":
-                return cmd_delete(queue_path) or 0
             parser.print_help()
             return 1
 
