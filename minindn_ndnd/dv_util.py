@@ -50,6 +50,8 @@ def _is_converged(nodes, network=DEFAULT_NETWORK, ndnd_bin='ndnd') -> bool:
     for node in nodes:
         routes = node.cmd(f'{ndnd_bin} fw route-list')
         for other in nodes:
+            if other.name == node.name:
+                continue  # self-route is not installed in FIB (always local)
             if f'{network}/{other.name}' not in routes:
                 info(f'Routing not converged on {node.name} for {other.name}\n')
                 return False

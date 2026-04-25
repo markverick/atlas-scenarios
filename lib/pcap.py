@@ -171,7 +171,9 @@ def parse_pcap(pcap_path, start_ts=None, end_ts=None):
                 break
             if start_ts is not None:
                 pkt_ts = ts_sec + ts_usec / 1e6
-                if pkt_ts < start_ts or pkt_ts >= end_ts:
+                if pkt_ts < start_ts:
+                    continue
+                if end_ts is not None and pkt_ts >= end_ts:
                     continue
             payload = _extract_udp_payload(frame, linktype)
             if payload is None:
