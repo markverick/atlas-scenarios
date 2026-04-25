@@ -119,12 +119,6 @@ def run_trial(phase, prefix_count, *, delay_ms=10, bw_mbps=10, cores=0,
     try:
         dv_util.converge(ndn.net.hosts, deadline=120,
                          network=NETWORK, start=dv_start, ndnd_bin=ndnd_bin)
-        # Allow a brief window for DV log messages to be flushed to disk before
-        # parsing them.  The Go DV binary may write "Router is now reachable"
-        # log entries slightly after the FIB route is installed (which is what
-        # is_converged() polls), so without this sleep the file can be read
-        # before all messages have been written.
-        time.sleep(1.0)
         router_reachability_s = parse_router_reachable_logs(
             dv_log_paths, num_nodes=num_nodes)
     except Exception as exc:
