@@ -160,14 +160,17 @@ build_ndnd_onephase() {
     local hash="51774b8"
     local out="$DEPS_DIR/bin/ndnd-onephase"
     local work_dir
-    work_dir="$(mktemp -d)"
-    chmod 755 "$work_dir"  # allow atlas user to read/execute the worktree
+    # Create the temp dir as atlas user so git worktree entries (written into
+    # .git/modules/ndnd/worktrees/) are also atlas-owned.  Running git as root
+    # creates root-owned worktree metadata and blocks atlas user from creating
+    # subsequent worktrees (needed by the sim build.sh).
+    work_dir="$(run_as_atlas_user mktemp -d)"
     echo "[emu] Building ndnd-onephase daemon from $NDND_SRC at $hash (go: $go_bin)"
     mkdir -p "$DEPS_DIR/bin"
-    git -C "$NDND_SRC" worktree add --detach "$work_dir" "$hash"
-    (cd "$work_dir" && run_as_atlas_user env "GOPATH=$GOPATH_DIR" "GOFLAGS=-mod=mod" "$go_bin" build -buildvcs=false -o "$out" ./cmd/ndnd/)
-    git -C "$NDND_SRC" worktree remove --force "$work_dir" 2>/dev/null || true
-    rm -rf "$work_dir" 2>/dev/null || true
+    run_as_atlas_user git -C "$NDND_SRC" worktree add --detach "$work_dir" "$hash"
+    (cd "$work_dir" && run_as_atlas_user env "GOWORK=off" "GOPATH=$GOPATH_DIR" "GOFLAGS=-mod=mod" "$go_bin" build -buildvcs=false -o "$out" ./cmd/ndnd/)
+    run_as_atlas_user git -C "$NDND_SRC" worktree remove --force "$work_dir" 2>/dev/null || true
+    run_as_atlas_user rm -rf "$work_dir" 2>/dev/null || true
     pkill -9 -x ndnd-onephase 2>/dev/null || true
     sleep 0.3
     if [[ "$RUN_UID" -eq 0 ]]; then
