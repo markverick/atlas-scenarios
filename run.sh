@@ -152,6 +152,30 @@ build_ndnd() {
     fi
 }
 
+# Build the onephase ndnd daemon from the pristine ndnd@main@51774b8 commit
+# using a temporary git worktree.  Installs to /usr/local/bin/ndnd-onephase.
+build_ndnd_onephase() {
+    local go_bin
+    go_bin="$(find_go_bin)"
+    local hash="51774b8"
+    local out="$DEPS_DIR/bin/ndnd-onephase"
+    local work_dir
+    work_dir="$(mktemp -d)"
+    echo "[emu] Building ndnd-onephase daemon from $NDND_SRC at $hash (go: $go_bin)"
+    mkdir -p "$DEPS_DIR/bin"
+    git -C "$NDND_SRC" worktree add --detach "$work_dir" "$hash"
+    (cd "$work_dir" && run_as_atlas_user env "GOPATH=$GOPATH_DIR" "GOFLAGS=-mod=mod" "$go_bin" build -buildvcs=false -o "$out" ./cmd/ndnd/)
+    git -C "$NDND_SRC" worktree remove --force "$work_dir" 2>/dev/null || true
+    rm -rf "$work_dir" 2>/dev/null || true
+    pkill -9 -x ndnd-onephase 2>/dev/null || true
+    sleep 0.3
+    if [[ "$RUN_UID" -eq 0 ]]; then
+        cp "$out" /usr/local/bin/ndnd-onephase
+    else
+        sudo cp "$out" /usr/local/bin/ndnd-onephase
+    fi
+}
+
 # Build emu/ndnd-traffic from .transformed-ndnd-<phase> (cmd/traffic/ is added
 # by the overlay and does not exist in pristine upstream ndnd).
 build_ndnd_traffic() {
@@ -175,6 +199,7 @@ Commands:
   emu [--no-build] demo      Run 3-node file transfer demo (needs sudo)
   emu [--no-build] scalability [opts]  Run NxN grid scalability test (needs sudo)
   emu [--no-build] routing [opts]      Run routing-only traffic measurement (needs sudo)
+  emu [--no-build] prefix_scale [opts] Run core/edge prefix-scale study (needs sudo)
   sim [--no-build] demo [opts]         Run 3-node ndndSIM demo
   sim [--no-build] scalability [opts]  Run NxN grid ndndSIM scalability test
   sim [--no-build] routing [opts]      Run routing-only ndndSIM traffic measurement
@@ -239,6 +264,7 @@ case "$1" in
         echo "[build] Building all binaries (env: $ENV_PHASE)"
         ensure_ns3_ready "$ENV_PHASE"
         build_ndnd
+        build_ndnd_onephase
         build_ndnd_traffic "$ENV_PHASE"
         fix_results_owner
         echo "[build] Done"
@@ -253,9 +279,14 @@ case "$1" in
         [[ "$subcmd" != *.py ]] && subcmd="${subcmd}.py"
         cleanup_minindn
         if ! $no_build; then
-            build_ndnd
+            if [[ "$ENV_PHASE" == "onephase" ]]; then
+                build_ndnd_onephase
+            else
+                build_ndnd
+            fi
             build_ndnd_traffic "$ENV_PHASE"
         fi
+        export NDND_PHASE="$ENV_PHASE"
 
         rc=0
         python3 "$REPO_DIR/emu/$subcmd" "$@" || rc=$?

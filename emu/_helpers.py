@@ -22,10 +22,27 @@ from minindn.apps.app_manager import AppManager
 from minindn_ndnd import dv_util
 from minindn_ndnd.ndnd_fw import NDNd_FW
 
-from lib.topology import build_grid_topo, grid_stats, build_conf_topo, conf_stats
+from lib.topology import build_grid_topo, grid_stats, build_conf_topo, conf_stats, \
+    build_core_edge_topo, core_edge_stats, core_edge_roles
 
 NETWORK = "/minindn"
 NDND_TRAFFIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ndnd-traffic")
+
+
+def setup_core_edge(delay_ms, bw_mbps, ndnd_bin='ndnd', cores=0):
+    """Set up MiniNDN for the fixed 10-node core/edge topology.
+
+    Returns (ndn, roles) where roles is {'core': [...], 'edge': [...]}.
+    """
+    Minindn.cleanUp()
+    topo, _nodes = build_core_edge_topo(delay=f"{delay_ms}ms", bw=bw_mbps)
+    ndn = Minindn(topo=topo, controller=None)
+    ndn.start()
+    if cores > 0:
+        for host in ndn.net.hosts:
+            host.setCPUs(cores=cores)
+    AppManager(ndn, ndn.net.hosts, NDNd_FW, ndnd_bin=ndnd_bin)
+    return ndn, core_edge_roles()
 
 
 def setup_grid(grid_size, delay_ms, bw_mbps, cores=0):

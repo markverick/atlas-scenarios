@@ -8,7 +8,7 @@ from minindn.apps.app_manager import AppManager
 from minindn_ndnd.ndnd_dv import NDNd_DV, DEFAULT_NETWORK
 
 
-def setup(ndn: Minindn, network=DEFAULT_NETWORK, dv_config=None) -> float:
+def setup(ndn: Minindn, network=DEFAULT_NETWORK, dv_config=None, ndnd_bin='ndnd') -> float:
     """Start DV routing on all nodes (initializes trust, creates keys).
 
     Returns the wall-clock timestamp of when DV apps were started, so
@@ -16,14 +16,14 @@ def setup(ndn: Minindn, network=DEFAULT_NETWORK, dv_config=None) -> float:
     """
     time.sleep(1)  # wait for fw to start
 
-    NDNd_DV.init_trust(network)
+    NDNd_DV.init_trust(network, ndnd_bin=ndnd_bin)
     info('Starting ndn-dv on nodes\n')
     AppManager(ndn, ndn.net.hosts, NDNd_DV, network=network,
-               dv_config=dv_config)
+               dv_config=dv_config, ndnd_bin=ndnd_bin)
     return time.time()
 
 
-def converge(nodes, deadline=30, network=DEFAULT_NETWORK, start=None) -> float:
+def converge(nodes, deadline=30, network=DEFAULT_NETWORK, start=None, ndnd_bin='ndnd') -> float:
     """Wait for DV routing to converge on all nodes.
 
     Args:
@@ -38,7 +38,7 @@ def converge(nodes, deadline=30, network=DEFAULT_NETWORK, start=None) -> float:
     info('Waiting for routing to converge\n')
     while time.time() - start < deadline:
         time.sleep(0.05)
-        if _is_converged(nodes, network=network):
+        if _is_converged(nodes, network=network, ndnd_bin=ndnd_bin):
             total = round(time.time() - start, 2)
             info(f'Routing converged in {total} seconds\n')
             return total
@@ -46,9 +46,9 @@ def converge(nodes, deadline=30, network=DEFAULT_NETWORK, start=None) -> float:
     raise Exception('Routing did not converge')
 
 
-def _is_converged(nodes, network=DEFAULT_NETWORK) -> bool:
+def _is_converged(nodes, network=DEFAULT_NETWORK, ndnd_bin='ndnd') -> bool:
     for node in nodes:
-        routes = node.cmd('ndnd fw route-list')
+        routes = node.cmd(f'{ndnd_bin} fw route-list')
         for other in nodes:
             if f'{network}/{other.name}' not in routes:
                 info(f'Routing not converged on {node.name} for {other.name}\n')

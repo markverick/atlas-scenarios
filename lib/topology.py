@@ -17,6 +17,22 @@ import os as _os
 import re as _re
 
 
+def build_core_edge_topo(delay="10ms", bw=10):
+    """Create a Mininet topology for the fixed 10-node core/edge network.
+
+    Returns (topo, nodes_dict) where nodes_dict maps node name to host name.
+    """
+    from mininet.topo import Topo
+
+    topo = Topo()
+    nodes = {}
+    for name in core_edge_nodes():
+        nodes[name] = topo.addHost(name)
+    for src, dst in core_edge_links():
+        topo.addLink(nodes[src], nodes[dst], delay=delay, bw=bw)
+    return topo, nodes
+
+
 def build_grid_topo(n, delay="10ms", bw=10):
     """Create an NxN Mininet grid topology for emulation.
 

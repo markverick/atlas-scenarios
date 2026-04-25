@@ -6,11 +6,12 @@ from minindn.apps.application import Application
 
 
 class NDNd_FW(Application):
-    def __init__(self, node, config={}, logLevel='INFO', threads=2):
+    def __init__(self, node, config={}, logLevel='INFO', threads=2, ndnd_bin='ndnd'):
         Application.__init__(self, node)
+        self.ndnd_bin = ndnd_bin
 
-        if not shutil.which('ndnd'):
-            raise Exception('ndnd not found in PATH, did you install it?')
+        if not shutil.which(ndnd_bin):
+            raise Exception(f'{ndnd_bin} not found in PATH, did you install it?')
 
         self.logFile = 'yanfd.log'
         logLevel = node.params['params'].get('nfd-log-level', logLevel)
@@ -50,5 +51,5 @@ class NDNd_FW(Application):
             client_conf_file.write(f"transport=unix://{self.sockFile}\n")
 
     def start(self):
-        Application.start(self, f'ndnd fw run {self.confFile}',
+        Application.start(self, f'{self.ndnd_bin} fw run {self.confFile}',
                           logfile=self.logFile, envDict=self.envDict)
