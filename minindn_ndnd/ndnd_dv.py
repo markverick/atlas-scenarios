@@ -59,7 +59,7 @@ class NDNd_DV(Application):
                 raise Exception(f'Client trust schema file not found: {CLIENT_LVS_SCHEMA} (is NDND_SRC set?)')
             cfg['dv']['trust_schema'] = ROUTING_LVS_SCHEMA
             cfg['dv']['prefix_insertion_keychain'] = router_keychain
-            cfg['dv']['prefix_insertion_trust_anchors'] = []
+            cfg['dv']['prefix_insertion_trust_anchors'] = [TRUST_ROOT_NAME]
             cfg['dv']['prefix_insertion_trust_schema'] = CLIENT_LVS_SCHEMA
 
         if dv_config:
