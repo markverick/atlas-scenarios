@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import shutil
 
@@ -8,6 +9,20 @@ DEFAULT_NETWORK = '/minindn'
 
 TRUST_ROOT_NAME = None
 TRUST_ROOT_PATH = '/tmp/mn-dv-root'
+
+# twophase (dv2 branch) requires LVS trust schema files baked into the ndnd
+# source tree.  We locate them via the NDND_SRC env var (exported by run.sh).
+# onephase (main branch) uses a simpler trust model and does not need them.
+def _twophase_schemas():
+    """Return (routing_schema, client_schema) paths for twophase, or (None, None)."""
+    ndnd_src = os.environ.get("NDND_SRC", "")
+    if not ndnd_src:
+        return None, None
+    routing = os.path.join(ndnd_src, "dv", "config", "schema.tlv")
+    client = os.path.join(ndnd_src, "e2e", "client_lvs_minindn.tlv")
+    if os.path.exists(routing) and os.path.exists(client):
+        return routing, client
+    return None, None
 
 
 class NDNd_DV(Application):
@@ -27,15 +42,31 @@ class NDNd_DV(Application):
 
         self.init_keys()
 
+        router_keychain = f'dir://{self.homeDir}/dv-keys'
         cfg = {
             'dv': {
                 'network': network,
                 'router': f"{network}/{node.name}",
-                'keychain': f'dir://{self.homeDir}/dv-keys',
+                'keychain': router_keychain,
                 'trust_anchors': [TRUST_ROOT_NAME],
                 'neighbors': list(self.neighbors()),
             }
         }
+
+        # twophase (dv2) uses LVS schema-based trust validation for both routing
+        # advertisements and prefix insertion.  Without these fields every
+        # neighbor advertisement is rejected ("key locator is nil") and routing
+        # never converges.  onephase (main) does not use schema-based trust.
+        is_twophase = (ndnd_bin == 'ndnd')
+        if is_twophase:
+            routing_schema, client_schema = _twophase_schemas()
+            if routing_schema:
+                cfg['dv']['trust_schema'] = routing_schema
+            if client_schema:
+                cfg['dv']['prefix_insertion_keychain'] = router_keychain
+                cfg['dv']['prefix_insertion_trust_anchors'] = [TRUST_ROOT_NAME]
+                cfg['dv']['prefix_insertion_trust_schema'] = client_schema
+
         if dv_config:
             cfg['dv'].update(dv_config)
             # Prevent overriding per-node identity fields

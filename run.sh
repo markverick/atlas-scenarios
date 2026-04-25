@@ -291,6 +291,7 @@ case "$1" in
             build_ndnd_traffic "$ENV_PHASE"
         fi
         export NDND_PHASE="$ENV_PHASE"
+        export NDND_SRC="$NDND_SRC"
 
         rc=0
         python3 "$REPO_DIR/emu/$subcmd" "$@" || rc=$?
