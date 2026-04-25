@@ -161,6 +161,7 @@ build_ndnd_onephase() {
     local out="$DEPS_DIR/bin/ndnd-onephase"
     local work_dir
     work_dir="$(mktemp -d)"
+    chmod 755 "$work_dir"  # allow atlas user to read/execute the worktree
     echo "[emu] Building ndnd-onephase daemon from $NDND_SRC at $hash (go: $go_bin)"
     mkdir -p "$DEPS_DIR/bin"
     git -C "$NDND_SRC" worktree add --detach "$work_dir" "$hash"

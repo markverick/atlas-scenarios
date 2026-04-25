@@ -192,6 +192,7 @@ def main():
     parser.add_argument("--out", default="results/emu_prefix_scale",
                         help="Output directory (default: results/emu_prefix_scale)")
     args = parser.parse_args()
+    sys.argv = [sys.argv[0]]  # prevent MiniNDN from re-parsing our flags
 
     phase = current_phase_label()
     info(f"Prefix-scale emulation: phase={phase}, "
