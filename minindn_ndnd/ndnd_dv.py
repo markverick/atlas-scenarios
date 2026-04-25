@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import shutil
+from pathlib import Path
 
 from minindn.apps.application import Application
 
@@ -10,19 +11,12 @@ DEFAULT_NETWORK = '/minindn'
 TRUST_ROOT_NAME = None
 TRUST_ROOT_PATH = '/tmp/mn-dv-root'
 
-# twophase (dv2 branch) requires LVS trust schema files baked into the ndnd
-# source tree.  We locate them via the NDND_SRC env var (exported by run.sh).
-# onephase (main branch) uses a simpler trust model and does not need them.
-def _twophase_schemas():
-    """Return (routing_schema, client_schema) paths for twophase, or (None, None)."""
-    ndnd_src = os.environ.get("NDND_SRC", "")
-    if not ndnd_src:
-        return None, None
-    routing = os.path.join(ndnd_src, "dv", "config", "schema.tlv")
-    client = os.path.join(ndnd_src, "e2e", "client_lvs_minindn.tlv")
-    if os.path.exists(routing) and os.path.exists(client):
-        return routing, client
-    return None, None
+# Schema files live inside the ndnd source tree, located via NDND_SRC (set by
+# run.sh).  This mirrors how the CI's e2e/dv.py resolves them via
+# Path(__file__).parent — the only difference is we are not inside that tree.
+_NDND_SRC = os.environ.get('NDND_SRC', '')
+ROUTING_LVS_SCHEMA = str(Path(_NDND_SRC) / 'dv' / 'config' / 'schema.tlv') if _NDND_SRC else None
+CLIENT_LVS_SCHEMA  = str(Path(_NDND_SRC) / 'e2e' / 'client_lvs_minindn.tlv') if _NDND_SRC else None
 
 
 class NDNd_DV(Application):
@@ -59,13 +53,14 @@ class NDNd_DV(Application):
         # never converges.  onephase (main) does not use schema-based trust.
         is_twophase = (ndnd_bin == 'ndnd')
         if is_twophase:
-            routing_schema, client_schema = _twophase_schemas()
-            if routing_schema:
-                cfg['dv']['trust_schema'] = routing_schema
-            if client_schema:
-                cfg['dv']['prefix_insertion_keychain'] = router_keychain
-                cfg['dv']['prefix_insertion_trust_anchors'] = [TRUST_ROOT_NAME]
-                cfg['dv']['prefix_insertion_trust_schema'] = client_schema
+            if not ROUTING_LVS_SCHEMA or not Path(ROUTING_LVS_SCHEMA).exists():
+                raise Exception(f'Routing trust schema file not found: {ROUTING_LVS_SCHEMA} (is NDND_SRC set?)')
+            if not CLIENT_LVS_SCHEMA or not Path(CLIENT_LVS_SCHEMA).exists():
+                raise Exception(f'Client trust schema file not found: {CLIENT_LVS_SCHEMA} (is NDND_SRC set?)')
+            cfg['dv']['trust_schema'] = ROUTING_LVS_SCHEMA
+            cfg['dv']['prefix_insertion_keychain'] = router_keychain
+            cfg['dv']['prefix_insertion_trust_anchors'] = []
+            cfg['dv']['prefix_insertion_trust_schema'] = CLIENT_LVS_SCHEMA
 
         if dv_config:
             cfg['dv'].update(dv_config)
