@@ -106,7 +106,7 @@ if [[ ! -d contrib/ndndSIM ]]; then
     git submodule update --init
     cd ../..
 fi
-"$REPO_DIR/sim/apply_ndndsim_patches.sh" "$DEPS_DIR/ns-3"
+
 # Install atlas scenarios into ndndSIM examples
 cp "$REPO_DIR/sim/atlas-scenario.cc"         contrib/ndndSIM/examples/ndndsim-atlas-scenario.cc
 cp "$REPO_DIR/sim/atlas-churn-scenario.cc"   contrib/ndndSIM/examples/ndndsim-atlas-churn-scenario.cc
