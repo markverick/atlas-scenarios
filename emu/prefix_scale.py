@@ -26,13 +26,19 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from lib.pcap import collect_traffic
 from lib.result_adapter import parse_router_reachable_logs, parse_dv_update_span_logs
+from lib.table_metrics import (
+    NODE_FIELDNAMES,
+    ROLE_FIELDNAMES,
+    collect_emu_table_metrics,
+    summarize_role_table_metrics,
+)
 from minindn_ndnd import dv_util
 from emu._helpers import (
     NETWORK,
     setup_core_edge,
     start_tcpdump, stop_tcpdump,
 )
-from lib.topology import core_edge_stats
+from lib.topology import core_edge_roles, core_edge_stats
 
 
 RUN_FIELDNAMES = [
@@ -112,7 +118,7 @@ def announce_prefixes(net, edge_node_names, prefix_count, ndnd_bin):
         node_name = edge_node_names[i % len(edge_node_names)]
         host = net[node_name]
         pfx = f"/data/{node_name}/pfx{i}"
-        host.cmd(f'{ndnd_bin} put --expose "{pfx}" < /dev/null &')
+        host.cmd(f'{ndnd_bin} put --expose "{pfx}" < /dev/null > /dev/null 2>&1 &')
         announced.append((host, pfx))
     if announced:
         time.sleep(0.5)
@@ -127,6 +133,10 @@ def withdraw_prefixes(announced):
             host.cmd("pkill -f 'ndnd.*put --expose' 2>/dev/null; true")
             seen_hosts.add(host.name)
     time.sleep(0.3)
+
+
+def warn_table_metrics(message):
+    info(f"{message}\n")
 
 
 def run_trial(phase, prefix_count, *, delay_ms=10, bw_mbps=10, cores=0,
@@ -196,6 +206,18 @@ def run_trial(phase, prefix_count, *, delay_ms=10, bw_mbps=10, cores=0,
         if valid:
             prefix_propagation_s = round(max(valid), 4)
 
+    role_by_node = {
+        **{name: "core" for name in core_node_names},
+        **{name: "edge" for name in edge_node_names},
+    }
+    table_rows = collect_emu_table_metrics(
+        ndn.net.hosts,
+        role_by_node,
+        phase,
+        ndnd_bin=ndnd_bin,
+        warn=warn_table_metrics,
+    )
+
     # Verify data-plane reachability: fetch each prefix from a remote edge node.
     prefix_fetch_success, prefix_fetch_total = verify_prefix_reachability(
         ndn.net, edge_node_names, announced, ndnd_bin=ndnd_bin
@@ -218,6 +240,7 @@ def run_trial(phase, prefix_count, *, delay_ms=10, bw_mbps=10, cores=0,
         "control_bytes": traffic.routing_bytes,
         "total_packets": traffic.total_packets,
         "total_bytes": traffic.total_bytes,
+        "table_rows": table_rows,
     }
 
 
@@ -261,32 +284,32 @@ def main():
     os.makedirs(args.out, exist_ok=True)
 
     num_nodes, num_links = core_edge_stats()
+    roles = core_edge_roles()
     metadata = {
         "topology": "core_edge",
         "phase": phase,
         "num_nodes": num_nodes,
         "num_links": num_links,
+        "role_counts": {role: len(nodes) for role, nodes in roles.items()},
+        "roles": roles,
         "prefix_counts": args.prefix_counts,
         "dv_config": dv_config,
     }
     with open(os.path.join(args.out, "metadata.json"), "w") as handle:
         json.dump(metadata, handle, indent=2, sort_keys=True)
 
-    # Write a header-only role_table_summary.csv so the plot renderer finds
-    # the expected file.  Table-level metrics (FIB/PET/RIB sizes) require
-    # NS-3 instrumentation and are not collected during emulation runs.
+    node_metrics_path = os.path.join(args.out, "node_table_metrics.csv")
     role_summary_path = os.path.join(args.out, "role_table_summary.csv")
-    role_summary_fields = [
-        "phase", "trial", "prefix_count", "role", "table_category",
-        "table_name", "node_count", "total_entries", "avg_entries", "max_entries",
-    ]
-    with open(role_summary_path, "w", newline="") as rh:
-        csv.DictWriter(rh, fieldnames=role_summary_fields).writeheader()
-
     runs_path = os.path.join(args.out, "runs.csv")
-    with open(runs_path, "w", newline="") as runs_handle:
+    with open(runs_path, "w", newline="") as runs_handle, \
+            open(node_metrics_path, "w", newline="") as node_handle, \
+            open(role_summary_path, "w", newline="") as role_handle:
         writer = csv.DictWriter(runs_handle, fieldnames=RUN_FIELDNAMES)
+        node_writer = csv.DictWriter(node_handle, fieldnames=NODE_FIELDNAMES)
+        role_writer = csv.DictWriter(role_handle, fieldnames=ROLE_FIELDNAMES)
         writer.writeheader()
+        node_writer.writeheader()
+        role_writer.writeheader()
 
         for prefix_count in args.prefix_counts:
             for trial in range(1, args.trials + 1):
@@ -315,11 +338,27 @@ def main():
                     "total_packets": raw["total_packets"],
                     "total_bytes": raw["total_bytes"],
                 }
+                role_rows = summarize_role_table_metrics(raw["table_rows"])
                 writer.writerow(row)
                 runs_handle.flush()
+                for node_row in raw["table_rows"]:
+                    node_writer.writerow({
+                        "phase": phase,
+                        "trial": trial,
+                        "prefix_count": prefix_count,
+                        **node_row,
+                    })
+                for role_row in role_rows:
+                    role_writer.writerow({
+                        "phase": phase,
+                        "trial": trial,
+                        "prefix_count": prefix_count,
+                        **role_row,
+                    })
                 info(f"  router_reachability={raw['router_reachability_s']}s"
                      f"  prefix_propagation={raw['prefix_propagation_s']}s"
                      f"  prefix_fetch={raw['prefix_fetch_success']}/{raw['prefix_fetch_total']}"
+                     f"  table_rows={len(raw['table_rows'])}"
                      f"  control_pkts={raw['control_packets']}"
                      f"  control_bytes={raw['control_bytes']}\n")
 

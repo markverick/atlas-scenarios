@@ -1,0 +1,272 @@
+diff --git a/go/overlay/sim/cgo_export.go b/go/overlay/sim/cgo_export.go
+index 1126202..8b606b6 100644
+--- a/go/overlay/sim/cgo_export.go
++++ b/go/overlay/sim/cgo_export.go
+@@ -624,10 +624,8 @@ func NdndSimRegisterProducer(nodeId C.uint32_t, prefixStr *C.char, prefixLen C.i
+ 		return -1
+ 	}
+ 
+-	// Install a local forwarder route so fw.Thread delivers incoming Interests
+-	// to the app face where the handler can receive them. Without this, the
+-	// forwarder drops all Interests for this prefix — they never reach the
+-	// handler registered above.
++	// Register the producer prefix with the local forwarder using the
++	// phase-appropriate mechanism so incoming Interests can reach the app face.
+ 	engine.RegisterRoute(name)
+ 
+ 	// If DV is running, announce this prefix so it propagates to neighbors
+diff --git a/go/overlay/sim/consumer_test.go b/go/overlay/sim/consumer_test.go
+index 7b1c5e3..bc986ec 100644
+--- a/go/overlay/sim/consumer_test.go
++++ b/go/overlay/sim/consumer_test.go
+@@ -118,9 +118,10 @@ func TestConsumerLoopCountsInterests(t *testing.T) {
+ 		t.Fatalf("AttachHandler: %v", err)
+ 	}
+ 
+-	// n1 needs a FIB route /ndn/test -> appFaceID so the forwarder delivers
+-	// incoming Interests to the producer app.
+-	n1.AddRoute(prefix, n1.AppFaceID(), 0)
++	// The producer node needs a phase-appropriate local route to its app face.
++	if err := n1.Engine().RegisterRoute(prefix); err != nil {
++		t.Fatalf("RegisterRoute: %v", err)
++	}
+ 
+ 	// n0 needs a FIB route /ndn/test -> face0to1 so interests leave node 0.
+ 	n0.AddRoute(prefix, face0to1, 0)
+@@ -165,7 +166,9 @@ func TestConsumerLoopStops(t *testing.T) {
+ 	}); err != nil {
+ 		t.Fatalf("AttachHandler: %v", err)
+ 	}
+-	n1.AddRoute(prefix, n1.AppFaceID(), 0)
++	if err := n1.Engine().RegisterRoute(prefix); err != nil {
++		t.Fatalf("RegisterRoute: %v", err)
++	}
+ 	n0.AddRoute(prefix, face0to1, 0)
+ 
+ 	stopped := startConsumerLoop(n0.Engine(), clock, 0, prefix, 200.0, 4*time.Second)
+diff --git a/go/overlay/sim/dv_integration_test.go b/go/overlay/sim/dv_integration_test.go
+index e5850a4..31c7ea4 100644
+--- a/go/overlay/sim/dv_integration_test.go
++++ b/go/overlay/sim/dv_integration_test.go
+@@ -234,10 +234,11 @@ func attachProducer(t *testing.T, node *Node, prefix enc.Name) *int64 {
+ 		t.Fatalf("AttachHandler: %v", err)
+ 	}
+ 
+-	// Producer application route: deliver matching Interests to the app face.
+-	// DV announcement propagates this prefix to other nodes, but the local node
+-	// still needs a route from the forwarder to its own producer handler.
+-	node.AddRoute(prefix, node.AppFaceID(), 0)
++	// Producer registration installs the phase-appropriate local forwarding
++	// entry so matching Interests reach the app face.
++	if err := node.Engine().RegisterRoute(prefix); err != nil {
++		t.Fatalf("RegisterRoute: %v", err)
++	}
+ 
+ 	return &served
+ }
+@@ -694,7 +695,9 @@ func TestDvProducerMobilityFastRecoveryStrict(t *testing.T) {
+ 	// Producer mobility: old producer leaves, new producer appears.
+ 	nodes[3].WithdrawPrefixFromDv(prefix)
+ 	nodes[3].Engine().DetachHandler(prefix)
+-	nodes[3].RemoveRoute(prefix, nodes[3].AppFaceID())
++	if err := nodes[3].Engine().UnregisterRoute(prefix); err != nil {
++		t.Fatalf("UnregisterRoute old producer: %v", err)
++	}
+ 
+ 	servedB := attachProducer(t, nodes[1], prefix)
+ 	nodes[1].AnnouncePrefixToDv(prefix, 0)
+@@ -763,7 +766,9 @@ func TestDvBranchSwitchMobilityStrict(t *testing.T) {
+ 	// Move producer from branch A to branch B.
+ 	nodes[3].WithdrawPrefixFromDv(prefix)
+ 	nodes[3].Engine().DetachHandler(prefix)
+-	nodes[3].RemoveRoute(prefix, nodes[3].AppFaceID())
++	if err := nodes[3].Engine().UnregisterRoute(prefix); err != nil {
++		t.Fatalf("UnregisterRoute old producer: %v", err)
++	}
+ 
+ 	servedB := attachProducer(t, nodes[4], prefix)
+ 	nodes[4].AnnouncePrefixToDv(prefix, 0)
+diff --git a/go/overlay/sim/engine.go b/go/overlay/sim/engine.go
+index f9de615..756ffc2 100644
+--- a/go/overlay/sim/engine.go
++++ b/go/overlay/sim/engine.go
+@@ -416,16 +416,26 @@ func (e *SimEngine) ExecMgmtCmd(module string, cmd string, args any) (any, error
+ func (e *SimEngine) SetCmdSec(signer ndn.Signer, validator func(enc.Name, enc.Wire, ndn.Signature) bool) {
+ }
+ 
+-// RegisterRoute exposes a local application prefix through the phase-appropriate
+-// forwarding tables.
++// RegisterRoute exposes a local application prefix through the same
++// phase-appropriate table used by the production engine.
++// twophase registers a PET nexthop; onephase falls back to a direct FIB route
++// because the onephase simulation build does not provide PET management.
+ func (e *SimEngine) RegisterRoute(prefix enc.Name) error {
++	if e.forwarder != nil && e.forwarder.pet != nil {
++		_, err := e.ExecMgmtCmd("pet", "add-nexthop", &mgmt.ControlArgs{Name: prefix})
++		return err
++	}
+ 	e.forwarder.AddDirectRoute(prefix, e.appFaceID, 0)
+ 	return nil
+ }
+ 
+-// UnregisterRoute removes a local application prefix from the phase-appropriate
+-// forwarding tables.
++// UnregisterRoute removes a local application prefix from the same
++// phase-appropriate table used by RegisterRoute.
+ func (e *SimEngine) UnregisterRoute(prefix enc.Name) error {
++	if e.forwarder != nil && e.forwarder.pet != nil {
++		_, err := e.ExecMgmtCmd("pet", "remove-nexthop", &mgmt.ControlArgs{Name: prefix})
++		return err
++	}
+ 	e.forwarder.RemoveDirectRoute(prefix, e.appFaceID)
+ 	return nil
+ }
+diff --git a/go/overlay/sim/engine_test.go b/go/overlay/sim/engine_test.go
+index c24718a..133ae4a 100644
+--- a/go/overlay/sim/engine_test.go
++++ b/go/overlay/sim/engine_test.go
+@@ -11,16 +11,46 @@ package sim
+ 
+ import (
+ 	"errors"
++	"reflect"
+ 	"sync/atomic"
+ 	"testing"
+ 	"time"
+ 
+ 	"github.com/named-data/ndnd/std/ndn"
++	mgmt "github.com/named-data/ndnd/std/ndn/mgmt_2022"
+ 	sig "github.com/named-data/ndnd/std/security/signer"
+ 	"github.com/named-data/ndnd/std/types/optional"
+ 	"github.com/named-data/ndnd/std/utils"
+ )
+ 
++func petHasFaceForPrefix(resp any, prefix string, faceID uint64) bool {
++	dataset := reflect.ValueOf(resp)
++	if !dataset.IsValid() || dataset.Kind() != reflect.Ptr || dataset.IsNil() {
++		return false
++	}
++	entries := dataset.Elem().FieldByName("Entries")
++	if !entries.IsValid() || entries.Kind() != reflect.Slice {
++		return false
++	}
++
++	for i := 0; i < entries.Len(); i++ {
++		entry := entries.Index(i)
++		nameField := entry.Elem().FieldByName("Name")
++		entryName, ok := nameField.Interface().(interface{ String() string })
++		if !ok || entryName.String() != prefix {
++			continue
++		}
++		nextHopRecords := entry.Elem().FieldByName("NextHopRecords")
++		for j := 0; j < nextHopRecords.Len(); j++ {
++			nh := nextHopRecords.Index(j).Elem().FieldByName("FaceId")
++			if nh.Uint() == faceID {
++				return true
++			}
++		}
++	}
++	return false
++}
++
+ // TestEngineAttachHandlerDuplicate verifies that attaching a second handler to
+ // the same prefix returns ErrMultipleHandlers.
+ func TestEngineAttachHandlerDuplicate(t *testing.T) {
+@@ -124,7 +154,9 @@ func TestEngineOnDataCanBePrefix(t *testing.T) {
+ 	// Producer serves /data/exact/suffix when asked for /data/exact (CanBePrefix).
+ 	producerPrefix := mustName(t, "/data/exact")
+ 	dataName := mustName(t, "/data/exact/suffix")
+-	n1.AddRoute(producerPrefix, n1.AppFaceID(), 0)
++	if err := n1.Engine().RegisterRoute(producerPrefix); err != nil {
++		t.Fatalf("RegisterRoute: %v", err)
++	}
+ 	n0.AddRoute(producerPrefix, face0to1, 0)
+ 
+ 	signer := sig.NewSha256Signer()
+@@ -170,3 +202,51 @@ func TestEngineOnDataCanBePrefix(t *testing.T) {
+ 		t.Fatalf("CanBePrefix Data not matched: result=%v", result.Load())
+ 	}
+ }
++
++// TestEngineRegisterRouteMatchesPhaseBehavior verifies that RegisterRoute
++// follows the production engine semantics for the active phase:
++// twophase registers only a PET nexthop, while onephase falls back to a
++// direct FIB route because PET management is unavailable there.
++func TestEngineRegisterRouteMatchesPhaseBehavior(t *testing.T) {
++	clock := NewDeterministicClock(time.Unix(0, 0))
++	node := NewNode(0, clock)
++	if err := node.Start(); err != nil {
++		t.Fatalf("Start: %v", err)
++	}
++	defer node.Stop()
++
++	prefix := mustName(t, "/test/register-route")
++	eng := node.Engine()
++
++	if err := eng.RegisterRoute(prefix); err != nil {
++		t.Fatalf("RegisterRoute: %v", err)
++	}
++
++	fibHops := node.Forwarder.Thread().Fib().FindNextHopsEnc(prefix)
++	if node.Forwarder.pet != nil {
++		if len(fibHops) != 0 {
++			t.Fatalf("twophase RegisterRoute should not install a direct FIB route, got %d nexthops", len(fibHops))
++		}
++
++		resp, err := eng.ExecMgmtCmd("pet", "list", &mgmt.ControlArgs{})
++		if err != nil {
++			t.Fatalf("pet/list: %v", err)
++		}
++		if !petHasFaceForPrefix(resp, prefix.String(), node.AppFaceID()) {
++			t.Fatalf("twophase RegisterRoute did not install PET nexthop for %s on app face %d", prefix, node.AppFaceID())
++		}
++	} else {
++		if len(fibHops) != 1 || fibHops[0].Nexthop != node.AppFaceID() {
++			t.Fatalf("onephase RegisterRoute should install one direct FIB route to app face %d, got %#v", node.AppFaceID(), fibHops)
++		}
++	}
++
++	if err := eng.UnregisterRoute(prefix); err != nil {
++		t.Fatalf("UnregisterRoute: %v", err)
++	}
++
++	fibHops = node.Forwarder.Thread().Fib().FindNextHopsEnc(prefix)
++	if len(fibHops) != 0 {
++		t.Fatalf("route still present in FIB after UnregisterRoute: %#v", fibHops)
++	}
++}
+diff --git a/go/overlay/sim/forwarder.go b/go/overlay/sim/forwarder.go
+index be233e4..07903ed 100644
+--- a/go/overlay/sim/forwarder.go
++++ b/go/overlay/sim/forwarder.go
+@@ -231,12 +231,14 @@ func (fwd *SimForwarder) SetMulticastStrategy(prefix enc.Name, strategy enc.Name
+ }
+ 
+ // AddRoute adds a route through this node's RIB so that readvertise fires.
++// This is a manual forwarding shortcut for simulation helpers and examples.
+ func (fwd *SimForwarder) AddRoute(name enc.Name, faceID uint64, cost uint64) {
+ 	fwd.AddDirectRoute(name, faceID, cost)
+ }
+ 
+ // AddDirectRoute installs a direct prefix route for simulation users.
+-// twophase mirrors the route into PET; onephase updates only the FIB.
++// twophase mirrors the route into PET so hand-wired simulation routes keep
++// working; producer registration should use Engine.RegisterRoute instead.
+ func (fwd *SimForwarder) AddDirectRoute(name enc.Name, faceID uint64, cost uint64) {
+ 	if fwd.pet != nil {
+ 		addSimPetNextHop(fwd.pet, name, faceID, cost)
+diff --git a/model/ndndsim-stack.h b/model/ndndsim-stack.h
+index 7f0ae5a..2d2a51a 100644
+--- a/model/ndndsim-stack.h
++++ b/model/ndndsim-stack.h
+@@ -58,9 +58,8 @@ class NdndStack : public Object
+     void RemoveRoute(const std::string& prefix, uint64_t faceId);
+ 
+     /**
+-     * Register a producer prefix: installs a local FIB entry (app face) and
+-     * announces the prefix to DV for propagation to remote nodes.
+-     * Matches the one-phase emulation path: rib/register → FIB + DV readvertise.
++     * Register a producer prefix using the phase-appropriate local forwarding
++     * table, then announce the prefix to DV for propagation to remote nodes.
+      */
+     void RegisterProducer(const std::string& prefix);

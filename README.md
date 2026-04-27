@@ -303,6 +303,12 @@ reads raw UDP payloads and classifies NDN packets by TLV type and name
 prefix. The capture window is filtered to `[0, window_s]` to match the
 simulation duration.
 
+The `emu/prefix_scale.py` study also samples live forwarder table state from
+each node using `ndnd fw fib-list` and, in twophase mode, `ndnd fw pet-list`.
+It writes `node_table_metrics.csv` and `role_table_summary.csv` alongside the
+run-level traffic metrics so the role-aware prefix-scale plots can be rendered
+from emulation results too.
+
 ### Simulation (ndndSIM)
 
 Each ns-3 node runs a real NDNd `fw.Thread` (FIB, PIT, CS) bridged via CGo.

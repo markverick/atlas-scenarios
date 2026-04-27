@@ -10,6 +10,12 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from lib.result_adapter import parse_conv_trace, parse_link_trace
+from lib.table_metrics import (
+    NODE_FIELDNAMES,
+    ROLE_FIELDNAMES,
+    parse_table_trace,
+    summarize_role_table_metrics,
+)
 from lib.topology import (core_edge_roles, core_edge_stats,
                           generate_ndnsim_core_edge_topo,
                           generate_ndnsim_rocketfuel_2914_topo,
@@ -33,30 +39,6 @@ RUN_FIELDNAMES = [
     "control_bytes",
     "total_packets",
     "total_bytes",
-]
-
-NODE_FIELDNAMES = [
-    "phase",
-    "trial",
-    "prefix_count",
-    "node",
-    "role",
-    "table_category",
-    "table_name",
-    "entry_count",
-]
-
-ROLE_FIELDNAMES = [
-    "phase",
-    "trial",
-    "prefix_count",
-    "role",
-    "table_category",
-    "table_name",
-    "node_count",
-    "total_entries",
-    "avg_entries",
-    "max_entries",
 ]
 
 DEFAULT_PREFIX_COUNTS = {
@@ -144,49 +126,6 @@ def effective_role_dv_configs(shared_dv_config, core_override, edge_override):
         merge_dv_configs(shared_dv_config, core_override),
         merge_dv_configs(shared_dv_config, edge_override),
     )
-
-
-def parse_table_trace(path):
-    rows = []
-    with open(path, newline="") as handle:
-        reader = csv.DictReader(handle)
-        for row in reader:
-            rows.append({
-                "node": row["node"],
-                "role": row["role"],
-                "table_category": row["table_category"],
-                "table_name": row["table_name"],
-                "entry_count": int(row["entry_count"]),
-            })
-    return rows
-
-
-def summarize_role_table_metrics(rows):
-    grouped = {}
-    for row in rows:
-        key = (row["role"], row["table_category"], row["table_name"])
-        agg = grouped.setdefault(key, {
-            "node_count": 0,
-            "total_entries": 0,
-            "max_entries": 0,
-        })
-        agg["node_count"] += 1
-        agg["total_entries"] += row["entry_count"]
-        agg["max_entries"] = max(agg["max_entries"], row["entry_count"])
-
-    summaries = []
-    for (role, table_category, table_name), agg in sorted(grouped.items()):
-        node_count = agg["node_count"]
-        summaries.append({
-            "role": role,
-            "table_category": table_category,
-            "table_name": table_name,
-            "node_count": node_count,
-            "total_entries": agg["total_entries"],
-            "avg_entries": agg["total_entries"] / node_count,
-            "max_entries": agg["max_entries"],
-        })
-    return summaries
 
 
 def default_prefix_counts(topology):

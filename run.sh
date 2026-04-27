@@ -97,6 +97,7 @@ sync_multihop_scenario(ns3_dir)
 sync_routing_scenario(ns3_dir)
 sync_churn_scenario(ns3_dir)
 "
+    run_as_atlas_user "$REPO_DIR/sim/apply_ndndsim_patches.sh" "$NS3_DIR"
 
     if [[ "$phase" == "onephase" ]]; then
         local cmake_cache="$NS3_DIR/cmake-cache-op"
