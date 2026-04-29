@@ -739,10 +739,12 @@ def write_core_edge_summary(results_by_phase, data_dir, out_dir,
 
     start_prefix = min(prefix_counts)
     max_prefix = max(prefix_counts)
-    onephase_packet_min = int(round(min(onephase_run["control_packets"].values())))
-    onephase_packet_max = int(round(max(onephase_run["control_packets"].values())))
-    twophase_packet_min = int(round(min(twophase_run["control_packets"].values())))
-    twophase_packet_max = int(round(max(twophase_run["control_packets"].values())))
+    _op = onephase_run["control_packets"]
+    _tp = twophase_run["control_packets"]
+    onephase_packet_min = int(round(min(_op.values()))) if _op else None
+    onephase_packet_max = int(round(max(_op.values()))) if _op else None
+    twophase_packet_min = int(round(min(_tp.values()))) if _tp else None
+    twophase_packet_max = int(round(max(_tp.values()))) if _tp else None
     total_nodes = role_counts.get("core", 0) + role_counts.get("edge", 0)
     lines = [
         f"# {profile['summary_title']}",
@@ -795,11 +797,18 @@ def write_core_edge_summary(results_by_phase, data_dir, out_dir,
         if s is None or t is None:
             return "n/a"
         return f"{int(s)}/{int(t)}"
+    def _fmt_run_val(run, field, pc, fmt="{:.4f}"):
+        v = run[field].get(pc)
+        if v is None:
+            return "n/a"
+        if fmt == "int":
+            return str(int(round(v)))
+        return fmt.format(v)
     for prefix_count in prefix_counts:
         lines.append(
-            f"| {prefix_count} | {onephase_run['router_reachability_s'][prefix_count]:.4f} | {twophase_run['router_reachability_s'][prefix_count]:.4f} | "
-            f"{int(round(onephase_run['control_packets'][prefix_count]))} | {int(round(twophase_run['control_packets'][prefix_count]))} | "
-            f"{int(round(onephase_run['control_bytes'][prefix_count]))} | {int(round(twophase_run['control_bytes'][prefix_count]))} | "
+            f"| {prefix_count} | {_fmt_run_val(onephase_run, 'router_reachability_s', prefix_count)} | {_fmt_run_val(twophase_run, 'router_reachability_s', prefix_count)} | "
+            f"{_fmt_run_val(onephase_run, 'control_packets', prefix_count, 'int')} | {_fmt_run_val(twophase_run, 'control_packets', prefix_count, 'int')} | "
+            f"{_fmt_run_val(onephase_run, 'control_bytes', prefix_count, 'int')} | {_fmt_run_val(twophase_run, 'control_bytes', prefix_count, 'int')} | "
             f"{_fetch_str(onephase_run, prefix_count)} | {_fetch_str(twophase_run, prefix_count)} |"
         )
 
@@ -870,9 +879,18 @@ def write_core_edge_summary(results_by_phase, data_dir, out_dir,
                 f"- One-phase prefix fetch succeeded for all sampled trials ({onephase_fetch_summary})."
             )
 
-    observations.append(
-        f"- Two-phase control traffic is higher than one-phase at every measured prefix count in this run: packets range from {twophase_packet_min} to {twophase_packet_max} in two-phase versus {onephase_packet_min} to {onephase_packet_max} in one-phase."
-    )
+    if twophase_packet_min is not None and onephase_packet_min is not None:
+        observations.append(
+            f"- Two-phase control traffic is higher than one-phase at every measured prefix count in this run: packets range from {twophase_packet_min} to {twophase_packet_max} in two-phase versus {onephase_packet_min} to {onephase_packet_max} in one-phase."
+        )
+    elif twophase_packet_min is not None:
+        observations.append(
+            f"- Two-phase control traffic: packets range from {twophase_packet_min} to {twophase_packet_max} across measured prefix counts."
+        )
+    elif onephase_packet_min is not None:
+        observations.append(
+            f"- One-phase control traffic: packets range from {onephase_packet_min} to {onephase_packet_max} across measured prefix counts."
+        )
     observations.append(
         "- Control traffic is not monotonic with prefix count, and the visible swings come mainly from PrefixSync rather than DV adverts. Treat this run as a qualitative comparison, not as evidence of a strictly monotonic scaling law."
     )

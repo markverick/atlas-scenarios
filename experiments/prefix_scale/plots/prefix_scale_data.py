@@ -32,7 +32,24 @@ def load_churn_csv(path):
     return _load_csv(path)
 
 
-def has_core_edge_result_layout(data_dir):
+def _find_stage_dirs(data_dir):
+    """Return sorted list of (path, name) for all stage* subdirs that contain runs.csv."""
+    try:
+        entries = sorted(os.listdir(data_dir))
+    except OSError:
+        return []
+    result = []
+    for name in entries:
+        if not name.startswith("stage"):
+            continue
+        path = os.path.join(data_dir, name)
+        if os.path.isdir(path) and os.path.exists(os.path.join(path, "runs.csv")):
+            result.append((path, name))
+    return result
+
+
+def _has_classic_result_layout(data_dir):
+    """True if data_dir has the classic {phase}/ subdirectory layout."""
     for phase in ("onephase", "twophase"):
         phase_dir = os.path.join(data_dir, phase)
         if not os.path.isdir(phase_dir):
@@ -44,24 +61,77 @@ def has_core_edge_result_layout(data_dir):
     return True
 
 
-def load_core_edge_results(data_dir):
-    if not has_core_edge_result_layout(data_dir):
-        raise FileNotFoundError(f"core/edge result layout not found under {data_dir}")
+def _has_3stage_result_layout(data_dir):
+    """True if data_dir has the 3-stage layout: stage*/ subdirs with required CSVs."""
+    stage_dirs = _find_stage_dirs(data_dir)
+    if not stage_dirs:
+        return False
+    return all(
+        os.path.exists(os.path.join(path, "role_table_summary.csv"))
+        for path, _ in stage_dirs
+    )
 
-    results = {}
-    for phase in ("onephase", "twophase"):
-        phase_dir = os.path.join(data_dir, phase)
-        results[phase] = {
-            "runs": _load_csv(os.path.join(phase_dir, "runs.csv")),
-            "role_table_summary": _load_csv(os.path.join(phase_dir, "role_table_summary.csv")),
-        }
-    return results
+
+def has_core_edge_result_layout(data_dir):
+    return _has_classic_result_layout(data_dir) or _has_3stage_result_layout(data_dir)
+
+
+def _load_3stage_results(data_dir):
+    """Aggregate 3-stage results from stage* subdirs into a phase-keyed dict.
+
+    Always includes both 'onephase' and 'twophase' keys so callers don't need
+    to guard against missing phases.  Phases with no data will have empty lists.
+    """
+    by_phase = {
+        "onephase": {"runs": [], "role_table_summary": []},
+        "twophase": {"runs": [], "role_table_summary": []},
+    }
+    for stage_dir, _ in _find_stage_dirs(data_dir):
+        runs = _load_csv(os.path.join(stage_dir, "runs.csv"))
+        role_summary = _load_csv(os.path.join(stage_dir, "role_table_summary.csv"))
+        for row in runs:
+            phase = row.get("phase", "")
+            if phase in by_phase:
+                by_phase[phase]["runs"].append(row)
+        for row in role_summary:
+            phase = row.get("phase", "")
+            if phase in by_phase:
+                by_phase[phase]["role_table_summary"].append(row)
+    return by_phase
+
+
+def load_core_edge_results(data_dir):
+    if _has_classic_result_layout(data_dir):
+        results = {}
+        for phase in ("onephase", "twophase"):
+            phase_dir = os.path.join(data_dir, phase)
+            results[phase] = {
+                "runs": _load_csv(os.path.join(phase_dir, "runs.csv")),
+                "role_table_summary": _load_csv(os.path.join(phase_dir, "role_table_summary.csv")),
+            }
+        return results
+
+    if _has_3stage_result_layout(data_dir):
+        return _load_3stage_results(data_dir)
+
+    raise FileNotFoundError(f"core/edge result layout not found under {data_dir}")
 
 
 def detect_role_table_topology(data_dir):
     topologies = set()
+    # Classic layout: check {phase}/metadata.json
     for phase in ("onephase", "twophase"):
         metadata_path = os.path.join(data_dir, phase, "metadata.json")
+        if not os.path.exists(metadata_path):
+            continue
+        with open(metadata_path) as handle:
+            metadata = json.load(handle)
+        topology = metadata.get("topology")
+        if topology:
+            topologies.add(topology)
+    # 3-stage layout: check stage*/metadata.json
+    for stage_dir, _ in _find_stage_dirs(data_dir):
+        metadata_path = os.path.join(stage_dir, "metadata.json")
         if not os.path.exists(metadata_path):
             continue
         with open(metadata_path) as handle:
@@ -119,16 +189,16 @@ def load_core_edge_link_trace_summaries(data_dir):
     ]
     results = {"onephase": {}, "twophase": {}}
 
-    for phase in results:
-        phase_dir = os.path.join(data_dir, phase)
-        if not os.path.isdir(phase_dir):
-            continue
-        for name in os.listdir(phase_dir):
+    def _scan_dir_for_traces(scan_dir):
+        if not os.path.isdir(scan_dir):
+            return
+        for name in os.listdir(scan_dir):
             match = _CORE_EDGE_LINK_TRACE_RE.fullmatch(name)
             if not match:
                 continue
+            phase = match.group(1)
             prefix_count = int(match.group(2))
-            path = os.path.join(phase_dir, name)
+            path = os.path.join(scan_dir, name)
             totals = {field: 0 for field in fields}
             with open(path) as handle:
                 reader = csv.DictReader(handle)
@@ -136,6 +206,15 @@ def load_core_edge_link_trace_summaries(data_dir):
                     for field in fields:
                         totals[field] += int(row.get(field, 0) or 0)
             results[phase].setdefault(prefix_count, []).append(totals)
+
+    # Classic layout: scan {data_dir}/{phase}/
+    for phase in results:
+        _scan_dir_for_traces(os.path.join(data_dir, phase))
+
+    # 3-stage layout: scan stage*/ dirs directly
+    for stage_dir, _ in _find_stage_dirs(data_dir):
+        _scan_dir_for_traces(stage_dir)
+
     return results
 
 
