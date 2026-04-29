@@ -14,11 +14,11 @@
     },
     {
       "name": "sim twophase rocketfuel 2914 0..500",
-      "cmd": "./run.sh sim --no-build prefix_scale --topology rocketfuel_2914 --prefix-counts 0 100 200 300 400 500 --core-disable-prefix-egress-replication --out {run_root}/twophase"
+      "cmd": "./run.sh sim --no-build prefix_scale --topology rocketfuel_2914 --prefix-counts 0 100 200 300 400 500 --core-disable-prefix-egress-replication --adv-interval 1000 --dead-interval 3000 --window 15 --out {run_root}/twophase"
     },
     {
       "name": "sim onephase rocketfuel 2914 0..500",
-      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_2914 --prefix-counts 0 100 200 300 400 500 --out {run_root}/onephase"
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_2914 --prefix-counts 0 100 200 300 400 500 --adv-interval 1000 --dead-interval 3000 --window 15 --out {run_root}/onephase"
     },
     {
       "name": "render rocketfuel 2914 plots and summary",

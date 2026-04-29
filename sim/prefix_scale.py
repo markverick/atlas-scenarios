@@ -224,6 +224,25 @@ def main(argv=None):
             "prefix-egress state is not replicated into PET"
         ),
     )
+    parser.add_argument(
+        "--snap-export",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Export DV routing state snapshot to PATH after routing converges. "
+            "Useful for Stage 1 of a 3-stage pipeline (use with --prefix-counts 0)."
+        ),
+    )
+    parser.add_argument(
+        "--snap-import",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Import DV routing state snapshot from PATH before the simulation "
+            "starts, skipping DV convergence wait. "
+            "Useful for Stage 2/3 of a 3-stage pipeline."
+        ),
+    )
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
 
     phase = current_phase_label()
@@ -313,6 +332,8 @@ def main(argv=None):
                     core_dv_config=core_dv_config,
                     edge_dv_config=edge_dv_config,
                     num_prefixes=prefix_count,
+                    export_snap=args.snap_export,
+                    import_snap=args.snap_import,
                     run_log=run_log,
                 )
 
