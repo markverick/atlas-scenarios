@@ -323,26 +323,27 @@ def main(argv=None):
                 )
                 # For stage-2 runs (snap-import + prefixes announced), use
                 # NdndSimGetConvergenceMetric to stop the simulation once prefix
-                # tables have stabilised — but only for twophase.
+                # tables have converged — for both phases.
                 #
                 #   twophase (stableWindow = 2×adv_interval):
                 #     NdndSimGetConvergenceMetric() sums forwarder_pet entries.
                 #     PET is updated synchronously with DV prefix events, so the
-                #     count is a reliable convergence signal.
+                #     count stabilises exactly when convergence is complete.
+                #     Stop once count > baseline and unchanged for stableWindow s.
                 #
-                #   onephase (stableWindow = 0 → checker disabled):
-                #     In onephase, FIB installation goes through the nfdc async
-                #     queue (DV event → nfdc channel → FIB), so the forwarder_fib
-                #     count lags and any polling-based signal fires prematurely.
-                #     The hard --simTime ceiling (set conservatively in the queue
-                #     JSON) is the only reliable stop criterion here.
+                #   onephase (stableWindow = 0 → target-count checker):
+                #     Every node gains exactly numPrefixes new FIB entries when
+                #     fully converged, so target = baseline + numPrefixes×numNodes.
+                #     Baseline is read on the first poll tick (after t=0 DES
+                #     events have fired), so it is always accurate regardless of
+                #     topology size or SVS timing.
                 stable_window: float | None = None
                 if args.snap_import and prefix_count > 0:
                     if phase == "twophase":
                         adv_interval_ms = args.adv_interval if args.adv_interval > 0 else 1000
                         stable_window = round(2 * adv_interval_ms / 1000.0, 3)
                     else:
-                        stable_window = 0.0  # disable event-driven checker for onephase
+                        stable_window = 0.0  # target-count checker for onephase
                 run_prefix_scale_scenario(
                     ns3_dir,
                     topo=topo_rel,
