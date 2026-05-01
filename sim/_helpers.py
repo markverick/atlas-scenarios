@@ -475,14 +475,19 @@ def run_prefix_scale_scenario(ns3_dir, *, topo, edge_nodes, sim_time=40.0,
                               core_dv_config=None, edge_dv_config=None,
                               network="/minindn", num_prefixes=0,
                               export_snap=None, import_snap=None,
+                              stable_window=None,
                               run_log=None):
     """Build ns-3 and run the generic prefix-scale table scenario.
 
     Args:
-        export_snap: If set, export DV routing state to this JSON file after
-                     routing convergence (Stage 1 use case).
-        import_snap: If set, import DV routing state from this JSON file before
-                     the simulation starts (Stage 2/3 use case).
+        export_snap:    If set, export DV routing state to this JSON file after
+                        routing convergence (Stage 1 use case).
+        import_snap:    If set, import DV routing state from this JSON file before
+                        the simulation starts (Stage 2/3 use case).
+        stable_window:  Stability window in seconds for the event-driven prefix
+                        convergence checker (Stage 2 with import_snap + num_prefixes).
+                        Must be >= 2 * DV adv_interval to avoid stopping during
+                        inter-advertisement gaps.  Defaults to 2.0s if not set.
     """
     if not edge_nodes:
         raise ValueError("edge_nodes must not be empty")
@@ -521,6 +526,8 @@ def run_prefix_scale_scenario(ns3_dir, *, topo, edge_nodes, sim_time=40.0,
         run_args.append(f"--exportSnap={os.path.abspath(export_snap)}")
     if import_snap:
         run_args.append(f"--importSnap={os.path.abspath(import_snap)}")
+    if stable_window is not None:
+        run_args.append(f"--stableWindow={stable_window}")
 
     _run_exe(_find_scenario_exe(ns3_dir, PREFIX_SCALE_TARGET_NAME),
              run_args, run_log)
