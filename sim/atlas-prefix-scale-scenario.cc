@@ -173,6 +173,9 @@ main(int argc, char* argv[])
             RegisterRoutingConvergedCallback([exportSnap]() {
                 int rc = NdndSimExportSnapshot(exportSnap.c_str());
                 NS_ABORT_MSG_IF(rc != 0, "NdndSimExportSnapshot failed for: " << exportSnap);
+                // Stop immediately after snapshot export: no prefixes to propagate,
+                // so there is no reason to continue simulating past DV convergence.
+                Simulator::Stop();
             });
         }
     }
