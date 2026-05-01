@@ -193,7 +193,9 @@ def main(argv=None):
     parser.add_argument("--bw", type=int, default=10,
                         help="Per-link bandwidth in Mbps (default: 10)")
     parser.add_argument("--window", type=float, default=40.0,
-                        help="Simulation duration in seconds (default: 40)")
+                        help="Maximum simulation duration in seconds (default: 40). "
+                             "Stage-2 runs (--snap-import with prefixes) stop early "
+                             "once prefix propagation converges.")
     parser.add_argument("--out", default="results/sim_prefix_scale",
                         help="Output directory (default: results/sim_prefix_scale)")
     parser.add_argument("--cores", type=int, default=0,

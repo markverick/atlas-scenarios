@@ -143,6 +143,33 @@ main(int argc, char* argv[])
                     stack->RegisterProducer(prefix);
                 }
             });
+
+            // Stop the simulation once prefix propagation has converged rather
+            // than running for a fixed window.  We poll NdndSimGetPrefixRemoteAddCount
+            // every traceInterval: when the count has not increased for two
+            // consecutive rounds (and is non-zero, meaning at least one prefix
+            // has been received), propagation has stabilised.
+            auto lastCount = std::make_shared<int64_t>(0);
+            auto stableRounds = std::make_shared<int>(0);
+            auto checkerPtr = std::make_shared<std::function<void()>>();
+            *checkerPtr = [checkerPtr, lastCount, stableRounds, traceInterval]() {
+                int64_t count = NdndSimGetPrefixRemoteAddCount();
+                if (count > 0 && count == *lastCount)
+                {
+                    if (++(*stableRounds) >= 2)
+                    {
+                        Simulator::Stop();
+                        return;
+                    }
+                }
+                else
+                {
+                    *stableRounds = 0;
+                    *lastCount = count;
+                }
+                Simulator::Schedule(Seconds(traceInterval), *checkerPtr);
+            };
+            Simulator::Schedule(Seconds(traceInterval), *checkerPtr);
         }
     }
     else
