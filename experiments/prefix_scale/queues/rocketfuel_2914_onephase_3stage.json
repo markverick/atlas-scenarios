@@ -18,19 +18,19 @@
     },
     {
       "name": "stage2: prefix table measurement p500 (import DV snap)",
-      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_2914 --prefix-counts 500 --adv-interval 1000 --dead-interval 3000 --window 15 --snap-import {run_root}/snap-stage1.json --snap-export {run_root}/snap-stage2-p500.json --out {run_root}/stage2-p500"
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_2914 --prefix-counts 500 --adv-interval 1000 --dead-interval 3000 --window 300 --snap-import {run_root}/snap-stage1.json --snap-export {run_root}/snap-stage2-p500.json --out {run_root}/stage2-p500"
     },
     {
       "name": "stage2: prefix table measurement p1000 (import DV snap)",
-      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_2914 --prefix-counts 1000 --adv-interval 1000 --dead-interval 3000 --window 15 --snap-import {run_root}/snap-stage1.json --snap-export {run_root}/snap-stage2-p1000.json --out {run_root}/stage2-p1000"
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_2914 --prefix-counts 1000 --adv-interval 1000 --dead-interval 3000 --window 300 --snap-import {run_root}/snap-stage1.json --snap-export {run_root}/snap-stage2-p1000.json --out {run_root}/stage2-p1000"
     },
     {
       "name": "stage2: prefix table measurement p1500 (import DV snap)",
-      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_2914 --prefix-counts 1500 --adv-interval 1000 --dead-interval 3000 --window 15 --snap-import {run_root}/snap-stage1.json --snap-export {run_root}/snap-stage2-p1500.json --out {run_root}/stage2-p1500"
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_2914 --prefix-counts 1500 --adv-interval 1000 --dead-interval 3000 --window 300 --snap-import {run_root}/snap-stage1.json --snap-export {run_root}/snap-stage2-p1500.json --out {run_root}/stage2-p1500"
     },
     {
       "name": "stage2: prefix table measurement p2000 (import DV snap)",
-      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_2914 --prefix-counts 2000 --adv-interval 1000 --dead-interval 3000 --window 15 --snap-import {run_root}/snap-stage1.json --snap-export {run_root}/snap-stage2-p2000.json --out {run_root}/stage2-p2000"
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_2914 --prefix-counts 2000 --adv-interval 1000 --dead-interval 3000 --window 300 --snap-import {run_root}/snap-stage1.json --snap-export {run_root}/snap-stage2-p2000.json --out {run_root}/stage2-p2000"
     },
     {
       "name": "render rocketfuel 2914 onephase plots",
