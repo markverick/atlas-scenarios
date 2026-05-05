@@ -144,7 +144,10 @@ build_ndnd() {
     (cd "$NDND_SRC" && run_as_atlas_user env "GOPATH=$GOPATH_DIR" "GOFLAGS=-mod=mod" "$go_bin" build -buildvcs=false -o "$out" ./cmd/ndnd/)
     # Kill any leftover ndnd processes so the binary isn't "text file busy"
     pkill -9 -x ndnd 2>/dev/null || true
-    sleep 0.3
+    for _ in $(seq 1 20); do
+        lsof /usr/local/bin/ndnd 2>/dev/null | grep -q . || break
+        sleep 0.5
+    done
     if [[ "$RUN_UID" -eq 0 ]]; then
         cp "$out" /usr/local/bin/ndnd
     else
@@ -172,7 +175,10 @@ build_ndnd_onephase() {
     run_as_atlas_user git -C "$NDND_SRC" worktree remove --force "$work_dir" 2>/dev/null || true
     run_as_atlas_user rm -rf "$work_dir" 2>/dev/null || true
     pkill -9 -x ndnd-onephase 2>/dev/null || true
-    sleep 0.3
+    for _ in $(seq 1 20); do
+        lsof /usr/local/bin/ndnd-onephase 2>/dev/null | grep -q . || break
+        sleep 0.5
+    done
     if [[ "$RUN_UID" -eq 0 ]]; then
         cp "$out" /usr/local/bin/ndnd-onephase
     else
