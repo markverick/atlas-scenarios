@@ -41,10 +41,26 @@ def _queue_display_name(queue):
     return queue.get("name") or queue.get("selector", "").split("/", 1)[-1]
 
 
+# Known core/edge node counts per topology name.
+# Keyed by the topology field value used in queue JSON files.
+_TOPOLOGY_NODE_COUNTS = {
+    "core_edge":       (6, 4),
+    "rocketfuel_1755": (111, 61),
+    "rocketfuel_4755": (10, 1),
+    "rocketfuel_2914": (453, 507),
+}
+
+
 def _queue_meta_bits(queue):
     meta = []
-    if queue.get("topology"):
-        meta.append(f"topology={queue['topology']}")
+    topo = queue.get("topology")
+    if topo:
+        counts = _TOPOLOGY_NODE_COUNTS.get(topo)
+        if counts:
+            core, edge = counts
+            meta.append(f"{topo} ({core}c+{edge}e)")
+        else:
+            meta.append(f"topology={topo}")
     if queue.get("mode"):
         meta.append(f"mode={queue['mode']}")
     return meta
@@ -131,21 +147,13 @@ def select_active_queue_interactively(active_queues):
     print("Running queues:\n")
     for index, queue in enumerate(active_queues, start=1):
         counts = queue["counts"]
-        status_bits = [
-            f"running={counts[STATE_RUNNING]}",
-            f"done={counts[STATE_DONE]}",
-            f"pending={counts[STATE_PENDING]}",
-        ]
+        status_bits = f"run={counts[STATE_RUNNING]} done={counts[STATE_DONE]} pend={counts[STATE_PENDING]}"
         if counts[STATE_FAILED]:
-            status_bits.append(f"failed={counts[STATE_FAILED]}")
-        print(f"  {index:>2}. {_queue_display_name(queue)}")
-        print(f"      status: {'  '.join(status_bits)}")
-        if queue.get("run_root"):
-            print(f"      run_root: {queue['run_root']}")
-        print("")
+            status_bits += f" fail={counts[STATE_FAILED]}"
+        print(f"  {index:>2}. {_queue_display_name(queue)}  [{status_bits}]")
 
     while True:
-        queue_choice = _interactive_input("\nSelect running queue number (or 'q' to cancel): ").strip()
+        queue_choice = _interactive_input("\nQueue number (q=cancel): ").strip()
         if queue_choice.lower() in {"q", "quit", "exit"}:
             raise InteractiveCancel()
         if queue_choice.isdigit():
@@ -163,20 +171,13 @@ def select_queue_interactively(catalog):
         print("ERROR: no experiment queues found under experiments/.", file=sys.stderr)
         sys.exit(1)
 
-    print("Experiments:\n")
+    print("\nExperiments:\n")
     for index, entry in enumerate(catalog, start=1):
-        print(f"  {index:>2}. {entry['experiment']}")
-        if entry["queues"]:
-            queue_names = ", ".join(_queue_display_name(queue) for queue in entry["queues"])
-            print(f"      queues: {queue_names}")
-        for queue in entry["queues"]:
-            meta = _queue_meta_bits(queue)
-            suffix = f"  [{', '.join(meta)}]" if meta else ""
-            print(f"      - {_queue_display_name(queue)}{suffix}")
-        print("")
+        n_queues = len(entry["queues"])
+        print(f"  {index:>2}. {entry['experiment']}  ({n_queues} queue{'s' if n_queues != 1 else ''})")
 
     while True:
-        exp_choice = _interactive_input("\nSelect experiment number (or 'q' to cancel): ").strip()
+        exp_choice = _interactive_input("\nExperiment number (q=cancel): ").strip()
         if exp_choice.lower() in {"q", "quit", "exit"}:
             raise InteractiveCancel()
         if exp_choice.isdigit():
@@ -190,18 +191,14 @@ def select_queue_interactively(catalog):
         print(f"ERROR: experiment '{experiment['experiment']}' has no queues.", file=sys.stderr)
         sys.exit(1)
 
-    print("")
+    print(f"\n  {experiment['experiment']} queues:\n")
     for index, queue in enumerate(experiment["queues"], start=1):
-        print(f"  {index:>2}. {_queue_display_name(queue)}")
-        if queue.get("description"):
-            print(f"      {queue['description']}")
         meta = _queue_meta_bits(queue)
-        if meta:
-            print(f"      {'  '.join(meta)}")
-        print("")
+        suffix = f"  [{', '.join(meta)}]" if meta else ""
+        print(f"  {index:>2}. {_queue_display_name(queue)}{suffix}")
 
     while True:
-        queue_choice = _interactive_input("\nSelect queue number (or 'q' to cancel): ").strip()
+        queue_choice = _interactive_input("\nQueue number (q=cancel): ").strip()
         if queue_choice.lower() in {"q", "quit", "exit"}:
             raise InteractiveCancel()
         if queue_choice.isdigit():

@@ -137,6 +137,57 @@ def core_edge_stats():
     return len(core_edge_nodes()), len(core_edge_links())
 
 
+def rocketfuel_1755_path():
+    """Return the path to the checked-in Rocketfuel AS 1755 maps file."""
+    return _rocketfuel_repo_path(
+        "experiments",
+        "prefix_scale",
+        "topologies",
+        "rocketfuel_1755.cch",
+    )
+
+
+def _rocketfuel_1755_graph(maps_path=None):
+    return parse_rocketfuel_cch_maps(
+        maps_path or rocketfuel_1755_path(),
+        component_mode="largest",
+    )
+
+
+def rocketfuel_1755_roles(maps_path=None):
+    """Return core/edge node-role lists for the Rocketfuel AS 1755 map."""
+    return _rocketfuel_roles_from_graph(_rocketfuel_1755_graph(maps_path))
+
+
+def rocketfuel_1755_links(maps_path=None):
+    """Return ndnSIM link pairs for the Rocketfuel AS 1755 map."""
+    return _rocketfuel_links_from_graph(_rocketfuel_1755_graph(maps_path))
+
+
+def rocketfuel_1755_positions(maps_path=None):
+    """Return deterministic drawing positions for the Rocketfuel AS 1755 map."""
+    return _rocketfuel_positions_from_graph(_rocketfuel_1755_graph(maps_path))
+
+
+def rocketfuel_1755_stats(maps_path=None):
+    """Return (num_nodes, num_links) for the Rocketfuel AS 1755 map."""
+    return _rocketfuel_stats_from_graph(_rocketfuel_1755_graph(maps_path))
+
+
+def generate_ndnsim_rocketfuel_1755_topo(maps_path=None, bw="10Mbps",
+                                         delay_ms=10, path=None,
+                                         queue_size=100):
+    """Write an ndnSIM topology file for the Rocketfuel AS 1755 map."""
+    return _generate_ndnsim_rocketfuel_topo(
+        _rocketfuel_1755_graph(maps_path),
+        label="Rocketfuel AS 1755 largest connected component",
+        bw=bw,
+        delay_ms=delay_ms,
+        path=path,
+        queue_size=queue_size,
+    )
+
+
 def generate_ndnsim_core_edge_topo(bw="10Mbps", delay_ms=10, path=None, queue_size=100):
     """Write an ndnSIM topology file for the fixed 10-node core/edge topology."""
     positions = core_edge_positions()

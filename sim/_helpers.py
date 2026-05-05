@@ -471,11 +471,12 @@ def run_routing_scenario(ns3_dir, *, topo, sim_time=30.0, cores=0,
 
 def run_prefix_scale_scenario(ns3_dir, *, topo, edge_nodes, sim_time=40.0,
                               cores=0, conv_trace=None, link_trace=None,
-                              table_trace=None, dv_config=None,
+                              table_trace=None, drop_trace=None, dv_config=None,
                               core_dv_config=None, edge_dv_config=None,
                               network="/minindn", num_prefixes=0,
                               export_snap=None, import_snap=None,
-                              stable_window=None,
+                              stable_window=None, target_nodes=0,
+                              announce_gap_ms=0.0,
                               run_log=None):
     """Build ns-3 and run the generic prefix-scale table scenario.
 
@@ -484,10 +485,12 @@ def run_prefix_scale_scenario(ns3_dir, *, topo, edge_nodes, sim_time=40.0,
                         routing convergence (Stage 1 use case).
         import_snap:    If set, import DV routing state from this JSON file before
                         the simulation starts (Stage 2/3 use case).
-        stable_window:  Stability window in seconds for the event-driven prefix
-                        convergence checker (Stage 2 with import_snap + num_prefixes).
-                        Must be >= 2 * DV adv_interval to avoid stopping during
-                        inter-advertisement gaps.  Defaults to 2.0s if not set.
+        stable_window:      Stability window in seconds for the event-driven prefix
+                            convergence checker (Stage 2 with import_snap + num_prefixes).
+                            Must be >= 2 * DV adv_interval to avoid stopping during
+                            inter-advertisement gaps.  Defaults to 2.0s if not set.
+        announce_gap_ms:    Gap in milliseconds between successive edge-node prefix
+                            announcements.  0 (default) = all nodes announce at once.
     """
     if not edge_nodes:
         raise ValueError("edge_nodes must not be empty")
@@ -512,6 +515,8 @@ def run_prefix_scale_scenario(ns3_dir, *, topo, edge_nodes, sim_time=40.0,
         run_args.append(f"--linkTrace={link_trace}")
     if table_trace:
         run_args.append(f"--tableTrace={table_trace}")
+    if drop_trace:
+        run_args.append(f"--dropTrace={drop_trace}")
     if dv_config:
         run_args.append(f"--dvConfig={json.dumps(dv_config, separators=(',', ':'))}")
     if core_dv_config:
@@ -528,6 +533,10 @@ def run_prefix_scale_scenario(ns3_dir, *, topo, edge_nodes, sim_time=40.0,
         run_args.append(f"--importSnap={os.path.abspath(import_snap)}")
     if stable_window is not None:
         run_args.append(f"--stableWindow={stable_window}")
+    if target_nodes > 0:
+        run_args.append(f"--targetNodes={target_nodes}")
+    if announce_gap_ms:
+        run_args.append(f"--announceGap={announce_gap_ms}")
 
     _run_exe(_find_scenario_exe(ns3_dir, PREFIX_SCALE_TARGET_NAME),
              run_args, run_log)

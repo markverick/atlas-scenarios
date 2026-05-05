@@ -4,7 +4,7 @@
   "name": "sprint_p50_burst",
   "experiment": "prefix_scale",
   "topology": "sprint",
-  "mode": "one_phase",
+  "mode": "onephase",
   "description": "Sprint p=50 burst measurement — sim and emu, no churn events, 60s window",
   "run_root_template": "experiments/prefix_scale/results/sprint_p50_burst/{timestamp}",
   "jobs": [

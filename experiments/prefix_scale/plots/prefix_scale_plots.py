@@ -10,6 +10,8 @@ import numpy as np
 from lib.topology import (core_edge_links, core_edge_positions, core_edge_roles,
                           rocketfuel_2914_links, rocketfuel_2914_positions,
                           rocketfuel_2914_roles,
+                          rocketfuel_1755_links, rocketfuel_1755_positions,
+                          rocketfuel_1755_roles,
                           rocketfuel_sample_4755_links,
                           rocketfuel_sample_4755_positions,
                           rocketfuel_sample_4755_roles)
@@ -49,6 +51,18 @@ ROCKETFUEL_4755_PLOT_FILES = {
     "table_role_average_reduced": "rocketfuel_4755_table_average_by_role_reduced.png",
     "table_stack": "rocketfuel_4755_table_stack_comparison.png",
     "table_stack_reduced": "rocketfuel_4755_table_stack_comparison_reduced.png",
+}
+
+ROCKETFUEL_1755_PLOT_FILES = {
+    "topology": "rocketfuel_1755_topology.png",
+    "run_comparison": "rocketfuel_1755_run_comparison.png",
+    "control_breakdown": "rocketfuel_1755_control_breakdown.png",
+    "prefix_state": "rocketfuel_1755_prefix_state_by_role.png",
+    "forwarder_growth": "rocketfuel_1755_forwarding_delta_by_role.png",
+    "table_role_average": "rocketfuel_1755_table_average_by_role.png",
+    "table_role_average_reduced": "rocketfuel_1755_table_average_by_role_reduced.png",
+    "table_stack": "rocketfuel_1755_table_stack_comparison.png",
+    "table_stack_reduced": "rocketfuel_1755_table_stack_comparison_reduced.png",
 }
 
 ROCKETFUEL_2914_PLOT_FILES = {
@@ -95,6 +109,18 @@ TOPOLOGY_PLOT_PROFILES = {
         "positions": rocketfuel_sample_4755_positions,
         "roles": rocketfuel_sample_4755_roles,
         "node_fontsize": 8,
+    },
+    "rocketfuel_1755": {
+        "study_label": "Rocketfuel 1755 Prefix Scaling",
+        "summary_title": "Rocketfuel 1755 Prefix-Scale Summary",
+        "topology_title": "Rocketfuel AS 1755 (EBONE) largest connected component used by the prefix-scale study",
+        "topology_heading": "Rocketfuel 1755 topology",
+        "plot_files": ROCKETFUEL_1755_PLOT_FILES,
+        "links": rocketfuel_1755_links,
+        "positions": rocketfuel_1755_positions,
+        "roles": rocketfuel_1755_roles,
+        "node_fontsize": 7,
+        "summary_note": "This topology uses the largest connected `r0` component from the public Rocketfuel AS 1755 cch map.",
     },
     "rocketfuel_2914": {
         "study_label": "Rocketfuel 2914 Prefix Scaling",

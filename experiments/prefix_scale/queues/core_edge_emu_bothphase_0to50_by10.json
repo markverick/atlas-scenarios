@@ -22,7 +22,7 @@
     },
     {
       "name": "render core-edge plots and summary",
-      "cmd": "./run.sh as-user python3 experiments/prefix_scale/plot.py --data {run_root}"
+      "cmd": "./run.sh as-user python3 experiments/prefix_scale/plot.py --source-label emu --data {run_root}"
     }
   ]
 }

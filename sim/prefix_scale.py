@@ -19,9 +19,12 @@ from lib.table_metrics import (
 from lib.topology import (core_edge_roles, core_edge_stats,
                           generate_ndnsim_core_edge_topo,
                           generate_ndnsim_rocketfuel_2914_topo,
+                          generate_ndnsim_rocketfuel_1755_topo,
                           generate_ndnsim_rocketfuel_sample_4755_topo,
                           rocketfuel_2914_roles,
                           rocketfuel_2914_stats,
+                          rocketfuel_1755_roles,
+                          rocketfuel_1755_stats,
                           rocketfuel_sample_4755_path,
                           rocketfuel_sample_4755_roles,
                           rocketfuel_sample_4755_stats)
@@ -45,6 +48,7 @@ DEFAULT_PREFIX_COUNTS = {
     "core_edge": [0, 1, 2, 3, 4, 5],
     "rocketfuel_2914": [0, 100, 200, 300, 400, 500],
     "rocketfuel_4755": [0, 100, 200, 300, 400, 500],
+    "rocketfuel_1755": [0, 500, 1000, 1500, 2000],
 }
 
 
@@ -132,16 +136,27 @@ def default_prefix_counts(topology):
     return list(DEFAULT_PREFIX_COUNTS[topology])
 
 
-def prepare_prefix_scale_topology(topology, *, ns3_dir, topo_dir, bw_mbps, delay_ms):
+def prepare_prefix_scale_topology(topology, *, ns3_dir, topo_dir, bw_mbps, delay_ms, queue_size=100):
     if topology == "core_edge":
         topo_path = os.path.join(topo_dir, "topo-core-edge-atlas.txt")
         generate_ndnsim_core_edge_topo(
             bw=f"{bw_mbps}Mbps",
             delay_ms=delay_ms,
             path=topo_path,
+            queue_size=queue_size,
         )
         roles = core_edge_roles()
         num_nodes, num_links = core_edge_stats()
+    elif topology == "rocketfuel_1755":
+        topo_path = os.path.join(topo_dir, "topo-rocketfuel-1755-atlas.txt")
+        generate_ndnsim_rocketfuel_1755_topo(
+            bw=f"{bw_mbps}Mbps",
+            delay_ms=delay_ms,
+            path=topo_path,
+            queue_size=queue_size,
+        )
+        roles = rocketfuel_1755_roles()
+        num_nodes, num_links = rocketfuel_1755_stats()
     elif topology == "rocketfuel_4755":
         maps_path = rocketfuel_sample_4755_path(ns3_dir)
         topo_path = os.path.join(topo_dir, "topo-rocketfuel-4755-atlas.txt")
@@ -150,6 +165,7 @@ def prepare_prefix_scale_topology(topology, *, ns3_dir, topo_dir, bw_mbps, delay
             bw=f"{bw_mbps}Mbps",
             delay_ms=delay_ms,
             path=topo_path,
+            queue_size=queue_size,
         )
         roles = rocketfuel_sample_4755_roles(maps_path)
         num_nodes, num_links = rocketfuel_sample_4755_stats(maps_path)
@@ -159,6 +175,7 @@ def prepare_prefix_scale_topology(topology, *, ns3_dir, topo_dir, bw_mbps, delay
             bw=f"{bw_mbps}Mbps",
             delay_ms=delay_ms,
             path=topo_path,
+            queue_size=queue_size,
         )
         roles = rocketfuel_2914_roles()
         num_nodes, num_links = rocketfuel_2914_stats()
@@ -192,6 +209,11 @@ def main(argv=None):
                         help="Per-link delay in ms (default: 10)")
     parser.add_argument("--bw", type=int, default=10,
                         help="Per-link bandwidth in Mbps (default: 10)")
+    parser.add_argument("--queue-size", type=int, default=100,
+                        help="Per-link queue size in packets (default: 100)")
+    parser.add_argument("--announce-gap", type=float, default=0.0,
+                        help="Gap in ms between successive edge-node prefix announcements "
+                             "(0 = all nodes announce simultaneously, default: 0)")
     parser.add_argument("--window", type=float, default=40.0,
                         help="Maximum simulation duration in seconds (default: 40). "
                              "Stage-2 runs (--snap-import with prefixes) stop early "
@@ -273,6 +295,7 @@ def main(argv=None):
         topo_dir=topo_dir,
         bw_mbps=args.bw,
         delay_ms=args.delay,
+        queue_size=args.queue_size,
     )
     topo_rel = topology["topo_rel"]
     roles = topology["roles"]
@@ -315,6 +338,7 @@ def main(argv=None):
                 conv_file = os.path.abspath(os.path.join(args.out, f"conv-{tag}.txt"))
                 link_csv = os.path.abspath(os.path.join(args.out, f"link-trace-{tag}.csv"))
                 table_csv = os.path.abspath(os.path.join(args.out, f"tables-{tag}.csv"))
+                drop_file = os.path.abspath(os.path.join(args.out, f"drops-{tag}.txt"))
                 run_log = os.path.abspath(os.path.join(args.out, f"run-{tag}.log"))
 
                 print(
@@ -325,25 +349,32 @@ def main(argv=None):
                 # NdndSimGetConvergenceMetric to stop the simulation once prefix
                 # tables have converged — for both phases.
                 #
-                #   twophase (stableWindow = 2×adv_interval):
-                #     NdndSimGetConvergenceMetric() sums forwarder_pet entries.
-                #     PET is updated synchronously with DV prefix events, so the
-                #     count stabilises exactly when convergence is complete.
-                #     Stop once count > baseline and unchanged for stableWindow s.
+                #   twophase (stableWindow = adv_interval_s + epsilon):
+                #     Advertisement-silence checker: stops once no DV heartbeat
+                #     has fired for stableWindow seconds AND the convergence
+                #     metric has risen above baseline.  Works regardless of
+                #     topology diameter — adv_interval + 0.1 s is always enough.
                 #
-                #   onephase (stableWindow = 0 → target-count checker):
+                #   onephase (stableWindow = 0, targetNodes = 0 → numNodes):
                 #     Every node gains exactly numPrefixes new FIB entries when
                 #     fully converged, so target = baseline + numPrefixes×numNodes.
-                #     Baseline is read on the first poll tick (after t=0 DES
-                #     events have fired), so it is always accurate regardless of
-                #     topology size or SVS timing.
                 stable_window: float | None = None
-                if args.snap_import and prefix_count > 0:
-                    if phase == "twophase":
-                        adv_interval_ms = args.adv_interval if args.adv_interval > 0 else 1000
-                        stable_window = round(2 * adv_interval_ms / 1000.0, 3)
+                target_nodes: int = 0
+                if args.snap_import:
+                    if prefix_count > 0:
+                        if phase == "twophase":
+                            # adv_interval_ms defaults to 1000 ms when unset (0)
+                            adv_ms = args.adv_interval if args.adv_interval > 0 else 1000
+                            stable_window = adv_ms / 1000.0 + 0.1
+                        else:
+                            stable_window = 0.0  # target-count checker
+                        # onephase: target_nodes=0 → C++ uses nodes.GetN()
                     else:
-                        stable_window = 0.0  # target-count checker for onephase
+                        # p0: stable-only checker. Use a short window (1 poll = 1
+                        # traceInterval) so it fires well before the snap-grace
+                        # period (dead-interval = 3s) expires and DV starts
+                        # removing unheard neighbors from the FIB.
+                        stable_window = 0.05  # 1 × default traceInterval
                 run_prefix_scale_scenario(
                     ns3_dir,
                     topo=topo_rel,
@@ -353,6 +384,7 @@ def main(argv=None):
                     conv_trace=conv_file,
                     link_trace=link_csv,
                     table_trace=table_csv,
+                    drop_trace=drop_file,
                     dv_config=dv_config,
                     core_dv_config=core_dv_config,
                     edge_dv_config=edge_dv_config,
@@ -360,6 +392,8 @@ def main(argv=None):
                     export_snap=args.snap_export,
                     import_snap=args.snap_import,
                     stable_window=stable_window,
+                    target_nodes=target_nodes,
+                    announce_gap_ms=args.announce_gap,
                     run_log=run_log,
                 )
 

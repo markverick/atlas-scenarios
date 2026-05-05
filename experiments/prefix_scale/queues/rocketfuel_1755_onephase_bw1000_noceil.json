@@ -1,0 +1,36 @@
+{
+  "_comment": "1Gbps, realistic queue (1000 pkts ≈ BDP at 1Gbps/10ms), no simTime ceiling. Target-count checker stops the sim when FIB fully converges. sudo ./jobs.sh start --fresh prefix_scale/rocketfuel_1755_onephase_bw1000_noceil",
+  "selector": "prefix_scale/rocketfuel_1755_onephase_bw1000_noceil",
+  "name": "rocketfuel_1755_onephase_bw1000_noceil",
+  "experiment": "prefix_scale",
+  "topology": "rocketfuel_1755",
+  "mode": "onephase",
+  "description": "rocketfuel_1755 onephase bw=1000 Mbps, queue=1000 pkts (≈BDP), no simTime ceiling. Runs until FIB fully converges.",
+  "run_root_template": "experiments/prefix_scale/results/rocketfuel_1755_onephase_bw1000_noceil/{timestamp}",
+  "jobs": [
+    {
+      "name": "build onephase",
+      "cmd": "./run.sh --env onephase build"
+    },
+    {
+      "name": "stage1: DV convergence snapshot (bw=1000)",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 0 --bw 1000 --queue-size 1000 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-export {run_root}/snap-stage1.json --out {run_root}/stage1"
+    },
+    {
+      "name": "stage2: p0 baseline FIB count",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 0 --bw 1000 --queue-size 1000 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-stage1.json --out {run_root}/stage2-p0"
+    },
+    {
+      "name": "stage2: p2000 bw=1000 no ceiling",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 2000 --bw 1000 --queue-size 1000 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-stage1.json --out {run_root}/stage2-p2000"
+    },
+    {
+      "name": "plot: prefix scale",
+      "cmd": "./run.sh as-user python3 experiments/prefix_scale/plot.py --data {run_root} --source-label sim"
+    },
+    {
+      "name": "plot: I/O graph",
+      "cmd": "./run.sh as-user python3 experiments/prefix_scale/make_run_io_graph.py --data {run_root} --bw 1000"
+    }
+  ]
+}

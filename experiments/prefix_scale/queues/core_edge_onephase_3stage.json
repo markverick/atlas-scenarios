@@ -34,7 +34,7 @@
     },
     {
       "name": "render core_edge onephase plots",
-      "cmd": "./run.sh as-user python3 experiments/prefix_scale/plot.py --data {run_root}"
+      "cmd": "./run.sh as-user python3 experiments/prefix_scale/plot.py --source-label sim --data {run_root}"
     }
   ]
 }

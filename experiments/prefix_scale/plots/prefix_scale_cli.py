@@ -37,12 +37,26 @@ def build_parser():
     parser.add_argument("--data", required=True, help="Directory with prefix-scale results")
     parser.add_argument("--data2", default=None, help="Second data dir for sim-vs-emu comparison")
     parser.add_argument("--out", default=None, help="Output directory for plots")
+    parser.add_argument("--source-label", dest="source_label", default=None,
+                        choices=["sim", "emu", "Simulation", "Emulation"],
+                        help="Source label for plot titles (sim or emu)")
     return parser
+
+
+def _resolve_source_label(args):
+    if args.source_label:
+        label = args.source_label
+        if label == "sim":
+            return "Simulation"
+        if label == "emu":
+            return "Emulation"
+        return label
+    return source_label_from_dir(args.data)
 
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
-    source_label = source_label_from_dir(args.data)
+    source_label = _resolve_source_label(args)
     out_dir = args.out or os.path.join(os.path.abspath(args.data), "plots")
     os.makedirs(out_dir, exist_ok=True)
 
@@ -60,18 +74,28 @@ def main(argv=None):
         if args.data2:
             csv_path_2 = os.path.join(args.data2, "churn.csv")
             if not os.path.exists(csv_path_2):
-                print(f"WARNING: {csv_path_2} not found, skipping sim-vs-emu comparison")
+                raise FileNotFoundError(f"--data2 churn.csv not found: {csv_path_2}")
+            rows_2 = load_churn_csv(csv_path_2)
+            base1 = os.path.basename(os.path.abspath(args.data))
+            base2 = os.path.basename(os.path.abspath(args.data2))
+            data1_is_sim = "sim" in base1
+            data1_is_emu = "emu" in base1
+            data2_is_sim = "sim" in base2
+            data2_is_emu = "emu" in base2
+            if data1_is_sim and data2_is_emu:
+                sim_rows, emu_rows = rows, rows_2
+                sim_dir, emu_dir = args.data, args.data2
+            elif data1_is_emu and data2_is_sim:
+                sim_rows, emu_rows = rows_2, rows
+                sim_dir, emu_dir = args.data2, args.data
             else:
-                rows_2 = load_churn_csv(csv_path_2)
-                if "sim" in os.path.basename(os.path.abspath(args.data)):
-                    sim_rows, emu_rows = rows, rows_2
-                    sim_dir, emu_dir = args.data, args.data2
-                else:
-                    sim_rows, emu_rows = rows_2, rows
-                    sim_dir, emu_dir = args.data2, args.data
-                plot_sim_vs_emu(sim_rows, emu_rows, out_dir)
-                plot_io_cdf_compare(sim_dir, emu_dir, out_dir)
-                plot_svs_suppression_compare(sim_dir, emu_dir, out_dir)
+                raise ValueError(
+                    f"cannot determine sim/emu roles from directory names: "
+                    f"{base1!r} vs {base2!r} (expected one to contain 'sim' and the other 'emu')"
+                )
+            plot_sim_vs_emu(sim_rows, emu_rows, out_dir)
+            plot_io_cdf_compare(sim_dir, emu_dir, out_dir)
+            plot_svs_suppression_compare(sim_dir, emu_dir, out_dir)
 
         print("Done.")
         return 0

@@ -25,7 +25,7 @@ def source_label_from_dir(data_dir):
         return "Simulation"
     if "emu" in base:
         return "Emulation"
-    return "Results"
+    raise ValueError(f"cannot determine source label (sim/emu) from directory name: {base!r}")
 
 
 def load_churn_csv(path):
@@ -145,28 +145,7 @@ def detect_role_table_topology(data_dir):
     if len(topologies) == 1:
         return next(iter(topologies))
 
-    base = os.path.basename(os.path.abspath(data_dir))
-    if "rocketfuel_2914" in base:
-        return "rocketfuel_2914"
-    if "rocketfuel_4755" in base:
-        return "rocketfuel_4755"
-    if "core_edge" in base:
-        return "core_edge"
-
-    runs_path = os.path.join(data_dir, "onephase", "runs.csv")
-    if os.path.exists(runs_path):
-        rows = _load_csv(runs_path)
-        if rows:
-            num_nodes = int(rows[0].get("num_nodes", 0) or 0)
-            num_links = int(rows[0].get("num_links", 0) or 0)
-            if (num_nodes, num_links) == (10, 12):
-                return "core_edge"
-            if num_nodes >= 900:
-                return "rocketfuel_2914"
-            if (num_nodes, num_links) == (11, 12):
-                return "rocketfuel_4755"
-
-    raise ValueError(f"unable to detect prefix-scale topology for {data_dir}")
+    raise ValueError(f"no topology field found in any metadata.json under {data_dir}")
 
 
 _CORE_EDGE_LINK_TRACE_RE = re.compile(r"link-trace-(onephase|twophase)-p(\d+)-t(\d+)\.csv$")

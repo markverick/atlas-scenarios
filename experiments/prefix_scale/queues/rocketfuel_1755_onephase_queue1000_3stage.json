@@ -1,0 +1,28 @@
+{
+  "_comment": "Queue-size hypothesis test: rocketfuel_1755 onephase at bw=10 Mbps, pipeline=20 (baseline), queue_size=1000 (10x default). If queue overflow is the root cause of DV heartbeat drops, a larger queue should reduce anomalies. Run with: sudo ./jobs.sh start --fresh prefix_scale/rocketfuel_1755_onephase_queue1000_3stage",
+  "selector": "prefix_scale/rocketfuel_1755_onephase_queue1000_3stage",
+  "name": "rocketfuel_1755_onephase_queue1000_3stage",
+  "experiment": "prefix_scale",
+  "topology": "rocketfuel_1755",
+  "mode": "onephase",
+  "description": "rocketfuel_1755 onephase at bw=10 Mbps with queue_size=1000 (vs baseline 100). Tests whether per-link queue overflow causes the DV heartbeat drops.",
+  "run_root_template": "experiments/prefix_scale/results/rocketfuel_1755_onephase_queue1000_3stage/{timestamp}",
+  "jobs": [
+    {
+      "name": "build onephase",
+      "cmd": "./run.sh --env onephase build"
+    },
+    {
+      "name": "stage1: DV convergence snapshot (onephase, 0 prefixes, bw=10, queue=1000)",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 0 --bw 10 --queue-size 1000 --adv-interval 1000 --dead-interval 3000 --window 300 --snap-export {run_root}/snap-stage1.json --out {run_root}/stage1"
+    },
+    {
+      "name": "stage2: onephase prefix table measurement p0 (import DV snap, bw=10, queue=1000)",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 0 --bw 10 --queue-size 1000 --adv-interval 1000 --dead-interval 3000 --window 300 --snap-import {run_root}/snap-stage1.json --out {run_root}/stage2-p0"
+    },
+    {
+      "name": "stage2: onephase prefix table measurement p2000 (import DV snap, bw=10, queue=1000)",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 2000 --bw 10 --queue-size 1000 --adv-interval 1000 --dead-interval 3000 --window 300 --snap-import {run_root}/snap-stage1.json --out {run_root}/stage2-p2000"
+    }
+  ]
+}

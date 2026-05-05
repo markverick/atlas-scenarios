@@ -4,7 +4,7 @@ import subprocess
 import sys
 
 from .runner import cmd_reset, queue_context, queue_ref
-from .state import log_path, screen_exists, screen_name, state_path
+from .state import log_path, screen_exists, screen_kill, screen_name, state_path
 
 
 def cmd_start(job_path, dry=False, fresh=False):
