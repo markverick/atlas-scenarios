@@ -26,7 +26,7 @@
     },
     {
       "name": "stage2: onephase prefix table measurement p0 (import DV snap)",
-      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 0 --adv-interval 1000 --dead-interval 3000 --window 300 --snap-import {run_root}/snap-stage1-onephase.json --snap-export {run_root}/snap-stage2-p0-onephase.json --out {run_root}/stage2-p0-onephase"
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 0 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-stage1-onephase.json --snap-export {run_root}/snap-stage2-p0-onephase.json --out {run_root}/stage2-p0-onephase"
     },
     {
       "name": "stage2: twophase prefix table measurement p500 (import DV snap)",
@@ -34,7 +34,7 @@
     },
     {
       "name": "stage2: onephase prefix table measurement p500 (import DV snap)",
-      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 500 --adv-interval 1000 --dead-interval 3000 --window 300 --snap-import {run_root}/snap-stage1-onephase.json --snap-export {run_root}/snap-stage2-p500-onephase.json --out {run_root}/stage2-p500-onephase"
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 500 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-stage1-onephase.json --snap-export {run_root}/snap-stage2-p500-onephase.json --out {run_root}/stage2-p500-onephase"
     },
     {
       "name": "stage2: twophase prefix table measurement p1000 (import DV snap)",
@@ -42,7 +42,7 @@
     },
     {
       "name": "stage2: onephase prefix table measurement p1000 (import DV snap)",
-      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 1000 --adv-interval 1000 --dead-interval 3000 --window 300 --snap-import {run_root}/snap-stage1-onephase.json --snap-export {run_root}/snap-stage2-p1000-onephase.json --out {run_root}/stage2-p1000-onephase"
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 1000 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-stage1-onephase.json --snap-export {run_root}/snap-stage2-p1000-onephase.json --out {run_root}/stage2-p1000-onephase"
     },
     {
       "name": "stage2: twophase prefix table measurement p1500 (import DV snap)",
@@ -50,7 +50,7 @@
     },
     {
       "name": "stage2: onephase prefix table measurement p1500 (import DV snap)",
-      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 1500 --adv-interval 1000 --dead-interval 3000 --window 300 --snap-import {run_root}/snap-stage1-onephase.json --snap-export {run_root}/snap-stage2-p1500-onephase.json --out {run_root}/stage2-p1500-onephase"
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 1500 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-stage1-onephase.json --snap-export {run_root}/snap-stage2-p1500-onephase.json --out {run_root}/stage2-p1500-onephase"
     },
     {
       "name": "stage2: twophase prefix table measurement p2000 (import DV snap)",
@@ -58,7 +58,7 @@
     },
     {
       "name": "stage2: onephase prefix table measurement p2000 (import DV snap)",
-      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 2000 --adv-interval 1000 --dead-interval 3000 --window 300 --snap-import {run_root}/snap-stage1-onephase.json --snap-export {run_root}/snap-stage2-p2000-onephase.json --out {run_root}/stage2-p2000-onephase"
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 2000 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-stage1-onephase.json --snap-export {run_root}/snap-stage2-p2000-onephase.json --out {run_root}/stage2-p2000-onephase"
     },
     {
       "name": "render rocketfuel_1755 bothphase plots",
