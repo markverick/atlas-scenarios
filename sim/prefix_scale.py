@@ -267,6 +267,19 @@ def main(argv=None):
             "Useful for Stage 2/3 of a 3-stage pipeline."
         ),
     )
+    parser.add_argument(
+        "--conv-window",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        help=(
+            "Override the auto-computed convergence stable-window (seconds). "
+            "When set, uses the prefix-activity-silence checker (stableWindow > 0) "
+            "instead of the target-count checker, stopping once no prefix SVS "
+            "Data packet has been received by any node for SECONDS. "
+            "Set to SVS periodic-timeout + epsilon (e.g. pfx_sync_interval + 0.2s)."
+        ),
+    )
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
 
     phase = current_phase_label()
@@ -349,32 +362,47 @@ def main(argv=None):
                 # NdndSimGetConvergenceMetric to stop the simulation once prefix
                 # tables have converged — for both phases.
                 #
-                #   twophase (stableWindow = adv_interval_s + epsilon):
-                #     Advertisement-silence checker: stops once no DV heartbeat
-                #     has fired for stableWindow seconds AND the convergence
-                #     metric has risen above baseline.  Works regardless of
-                #     topology diameter — adv_interval + 0.1 s is always enough.
-                #
-                #   onephase (stableWindow = 0, targetNodes = 0 → numNodes):
-                #     Every node gains exactly numPrefixes new FIB entries when
-                #     fully converged, so target = baseline + numPrefixes×numNodes.
+                #   twophase/onephase (stableWindow = 0, targetNodes set):
+                #     Target-count checker: stop when the global metric sum has
+                #     risen by exactly numPrefixes × targetNodes.
                 stable_window: float | None = None
                 target_nodes: int = 0
                 if args.snap_import:
+                    adv_ms = args.adv_interval if args.adv_interval > 0 else 1000
                     if prefix_count > 0:
-                        if phase == "twophase":
-                            # adv_interval_ms defaults to 1000 ms when unset (0)
-                            adv_ms = args.adv_interval if args.adv_interval > 0 else 1000
-                            stable_window = adv_ms / 1000.0 + 0.1
+                        if args.conv_window is not None:
+                            # Explicit override: use silence-based checker.
+                            # target_nodes stays 0 so C++ picks the silence path.
+                            stable_window = args.conv_window
+                        elif phase == "twophase":
+                            # Target-count checker: stop when the global PET sum
+                            # has risen by exactly num_prefixes × num_edge_nodes.
+                            # The stability-window approach can fire up to one
+                            # adv_interval too early when the last wave of prefix
+                            # advertisements is still in-flight for the node at
+                            # the far end of the propagation front.
+                            stable_window = 0.0
+                            target_nodes = len(roles["edge"])
                         else:
                             stable_window = 0.0  # target-count checker
                         # onephase: target_nodes=0 → C++ uses nodes.GetN()
                     else:
-                        # p0: stable-only checker. Use a short window (1 poll = 1
-                        # traceInterval) so it fires well before the snap-grace
-                        # period (dead-interval = 3s) expires and DV starts
-                        # removing unheard neighbors from the FIB.
-                        stable_window = 0.05  # 1 × default traceInterval
+                        # p=0 baseline after snap-import: measurement approach
+                        # depends on phase.
+                        #
+                        # twophase: The PET is populated by DV route processing.
+                        # After snap-import, DV may not have re-derived all PET
+                        # entries until the first heartbeat cycle (≈adv_interval).
+                        # Wait adv_interval + ε so both p=0 and p=N measurements
+                        # are taken after the same settled DV state.
+                        #
+                        # onephase: The FIB is restored directly from the snap.
+                        # No DV re-convergence is needed; a single poll (0.05 s)
+                        # is sufficient and avoids running extra heartbeat rounds.
+                        if phase == "twophase":
+                            stable_window = adv_ms / 1000.0 + 0.1
+                        else:
+                            stable_window = 0.05  # 1 × default traceInterval
                 run_prefix_scale_scenario(
                     ns3_dir,
                     topo=topo_rel,
