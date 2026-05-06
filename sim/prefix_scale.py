@@ -367,7 +367,11 @@ def main(argv=None):
                 #     risen by exactly numPrefixes × targetNodes.
                 stable_window: float | None = None
                 target_nodes: int = 0
-                if args.snap_import:
+                if args.conv_window is not None and not args.snap_import:
+                    # Explicit override for stage-1 (no snap-import): use
+                    # silence-based checker to let DV fully settle before snap.
+                    stable_window = args.conv_window
+                elif args.snap_import:
                     adv_ms = args.adv_interval if args.adv_interval > 0 else 1000
                     if prefix_count > 0:
                         if args.conv_window is not None:
@@ -399,7 +403,9 @@ def main(argv=None):
                         # onephase: The FIB is restored directly from the snap.
                         # No DV re-convergence is needed; a single poll (0.05 s)
                         # is sufficient and avoids running extra heartbeat rounds.
-                        if phase == "twophase":
+                        if args.conv_window is not None:
+                            stable_window = args.conv_window
+                        elif phase == "twophase":
                             stable_window = adv_ms / 1000.0 + 0.1
                         else:
                             stable_window = 0.05  # 1 × default traceInterval
