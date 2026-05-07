@@ -1,0 +1,28 @@
+{
+  "_comment": "Single-stage prefix-scale study for twophase+onephase on Rocketfuel AS 1755 (172 nodes: 111 core + 61 edge, 381 links). No snapshot: each run starts from scratch — DV converges first via RegisterRoutingConvergedCallback, then edge nodes announce prefixes, then tables are read at simTime. Run with: sudo ./jobs.sh start --fresh prefix_scale/rocketfuel_1755_bothphase_nosnap",
+  "selector": "prefix_scale/rocketfuel_1755_bothphase_nosnap",
+  "name": "rocketfuel_1755_bothphase_nosnap",
+  "experiment": "prefix_scale",
+  "topology": "rocketfuel_1755",
+  "mode": "twophase+onephase",
+  "description": "Single-stage Rocketfuel AS 1755 prefix-scale table study (twophase+onephase): DV convergence and prefix announcement happen in one simulation run per prefix count. No snapshot import/export.",
+  "run_root_template": "experiments/prefix_scale/results/rocketfuel_1755_bothphase_nosnap/{timestamp}",
+  "jobs": [
+    {
+      "name": "build twophase and onephase",
+      "cmd": "./run.sh build && ./run.sh --env onephase build"
+    },
+    {
+      "name": "sim twophase rocketfuel_1755 0..2000 by 500",
+      "cmd": "./run.sh sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 0 500 1000 1500 2000 --core-disable-prefix-egress-replication --adv-interval 1000 --dead-interval 3000 --window 300 --out {run_root}/twophase"
+    },
+    {
+      "name": "sim onephase rocketfuel_1755 0..2000 by 500",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 0 500 1000 1500 2000 --adv-interval 1000 --dead-interval 3000 --window 300 --out {run_root}/onephase"
+    },
+    {
+      "name": "render rocketfuel_1755 bothphase plots",
+      "cmd": "./run.sh as-user python3 experiments/prefix_scale/plot.py --source-label sim --data {run_root}"
+    }
+  ]
+}
