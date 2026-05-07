@@ -475,7 +475,7 @@ def run_prefix_scale_scenario(ns3_dir, *, topo, edge_nodes, sim_time=40.0,
                               core_dv_config=None, edge_dv_config=None,
                               network="/minindn", num_prefixes=0,
                               export_snap=None, import_snap=None,
-                              stable_window=None, target_nodes=0,
+                              stable_window=None,
                               announce_gap_ms=0.0,
                               run_log=None):
     """Build ns-3 and run the generic prefix-scale table scenario.
@@ -533,8 +533,6 @@ def run_prefix_scale_scenario(ns3_dir, *, topo, edge_nodes, sim_time=40.0,
         run_args.append(f"--importSnap={os.path.abspath(import_snap)}")
     if stable_window is not None:
         run_args.append(f"--stableWindow={stable_window}")
-    if target_nodes > 0:
-        run_args.append(f"--targetNodes={target_nodes}")
     if announce_gap_ms:
         run_args.append(f"--announceGap={announce_gap_ms}")
 

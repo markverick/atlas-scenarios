@@ -358,57 +358,20 @@ def main(argv=None):
                     f"\n=== Prefix scale: topology {args.topology}, phase {phase}, "
                     f"prefixes {prefix_count}, trial {trial} ==="
                 )
-                # For stage-2 runs (snap-import + prefixes announced), use
-                # NdndSimGetConvergenceMetric to stop the simulation once prefix
-                # tables have converged — for both phases.
-                #
-                #   twophase/onephase (stableWindow = 0, targetNodes set):
-                #     Target-count checker: stop when the global metric sum has
-                #     risen by exactly numPrefixes × targetNodes.
+                # SVS-delivery-silence checker: stop once no PES SVS delivery
+                # has occurred for stableWindow seconds.  Unified for both phases
+                # and all prefix counts.  Default = 5 × adv_interval + 0.2 s,
+                # matching the empirical working value for rocketfuel topologies.
                 stable_window: float | None = None
-                target_nodes: int = 0
                 if args.conv_window is not None and not args.snap_import:
-                    # Explicit override for stage-1 (no snap-import): use
-                    # silence-based checker to let DV fully settle before snap.
+                    # Explicit override for stage-1 (no snap-import).
                     stable_window = args.conv_window
                 elif args.snap_import:
                     adv_ms = args.adv_interval if args.adv_interval > 0 else 1000
-                    if prefix_count > 0:
-                        if args.conv_window is not None:
-                            # Explicit override: use silence-based checker.
-                            # target_nodes stays 0 so C++ picks the silence path.
-                            stable_window = args.conv_window
-                        elif phase == "twophase":
-                            # Target-count checker: stop when the global PET sum
-                            # has risen by exactly num_prefixes × num_edge_nodes.
-                            # The stability-window approach can fire up to one
-                            # adv_interval too early when the last wave of prefix
-                            # advertisements is still in-flight for the node at
-                            # the far end of the propagation front.
-                            stable_window = 0.0
-                            target_nodes = len(roles["edge"])
-                        else:
-                            stable_window = 0.0  # target-count checker
-                        # onephase: target_nodes=0 → C++ uses nodes.GetN()
+                    if args.conv_window is not None:
+                        stable_window = args.conv_window
                     else:
-                        # p=0 baseline after snap-import: measurement approach
-                        # depends on phase.
-                        #
-                        # twophase: The PET is populated by DV route processing.
-                        # After snap-import, DV may not have re-derived all PET
-                        # entries until the first heartbeat cycle (≈adv_interval).
-                        # Wait adv_interval + ε so both p=0 and p=N measurements
-                        # are taken after the same settled DV state.
-                        #
-                        # onephase: The FIB is restored directly from the snap.
-                        # No DV re-convergence is needed; a single poll (0.05 s)
-                        # is sufficient and avoids running extra heartbeat rounds.
-                        if args.conv_window is not None:
-                            stable_window = args.conv_window
-                        elif phase == "twophase":
-                            stable_window = adv_ms / 1000.0 + 0.1
-                        else:
-                            stable_window = 0.05  # 1 × default traceInterval
+                        stable_window = adv_ms / 1000.0 * 5 + 0.2
                 run_prefix_scale_scenario(
                     ns3_dir,
                     topo=topo_rel,
@@ -426,7 +389,6 @@ def main(argv=None):
                     export_snap=args.snap_export,
                     import_snap=args.snap_import,
                     stable_window=stable_window,
-                    target_nodes=target_nodes,
                     announce_gap_ms=args.announce_gap,
                     run_log=run_log,
                 )

@@ -68,7 +68,6 @@ main(int argc, char* argv[])
     std::string exportSnap;
     std::string importSnap;
     std::string dropTrace;
-    int targetNodes = 0; // 0 = use all nodes (onephase); >0 overrides multiplier (twophase: edge nodes)
     double simTime = 40.0;
     double traceInterval = 0.05;
     double stableWindow = 2.0;
@@ -105,11 +104,6 @@ main(int argc, char* argv[])
                  announceGapMs);
     cmd.AddValue("dropTrace", "Output file path for total MacTxDrop count (optional)",
                  dropTrace);
-    cmd.AddValue("targetNodes",
-                 "Node count multiplier for target-count checker (stableWindow==0). "
-                 "0 (default) = use total node count (onephase). "
-                 "Set to number of edge nodes for twophase (PET is only on edge nodes).",
-                 targetNodes);
     cmd.Parse(argc, argv);
 
     NS_ABORT_MSG_IF(topoFile.empty(), "--topo is required");
@@ -159,19 +153,7 @@ main(int argc, char* argv[])
 
         if (numPrefixes > 0)
         {
-            // For the target-count checker (stableWindow == 0), delay prefix
-            // announcements so the baseline FIB count can be read cleanly.
-            // At t=0 the snapshot-import's pending RIB→FIB events fire AND the
-            // RegisterProducer calls add local FIB entries — both at the same
-            // simulated time, so there is no safe point to read a DV-only
-            // baseline after t=0 if announcements are also at t=0.
-            // Delaying announcements to t=announceDelay (0.5 s) lets us read
-            // the true DV-only FIB sum at t=announceDelay-traceInterval, well
-            // before any prefix entries exist.  The stability-window checker
-            // (stableWindow > 0) is unaffected because it detects convergence
-            // by watching the metric rise and stabilise, not by knowing the
-            // exact target count.
-            const double announceDelay = (stableWindow == 0.0) ? 0.5 : 0.0;
+            const double announceDelay = 0.0;
             const double gapS = announceGapMs / 1000.0;
             // Schedule each prefix individually, staggered by edge-node index.
             // Prefix i is assigned round-robin to edgeNodes[i % N], so it fires
@@ -189,63 +171,40 @@ main(int argc, char* argv[])
                 });
             }
 
-            // Install an event-driven stop condition based on stableWindow:
+            // SVS-delivery-silence checker: stop once no PES SVS publication has
+            // been delivered to any node for stableWindow seconds.
             //
-            //   stableWindow > 0  →  advertisement-silence checker (twophase):
-            //     Stops once no DV heartbeat has fired for stableWindow seconds
-            //     AND the convergence metric has risen above its baseline.
-            //     Set stableWindow = adv_interval + epsilon (e.g. 1.1 s for a
-            //     1 s adv interval): after the last advertisement, all nodes
-            //     will have processed it within one adv_interval, so silence
-            //     for slightly longer than adv_interval is sufficient proof of
-            //     convergence regardless of topology diameter.
+            // NdndSimGetLastPfxSvsDeliveryNs() is set inside
+            // PrefixModule.simSubscribePublisher each time any node's SVS
+            // subscription callback fires, and initialized to -1 (no delivery).
             //
-            //   stableWindow == 0  →  target-count (onephase/ndnd@main):
-            //     Every node acquires exactly numPrefixes new FIB entries when
-            //     fully converged, so the global delta is
-            //       numPrefixes × numNodes.
-            //     Baseline is read on the FIRST poll tick (not before
-            //     Simulator::Run()) so all t=0 DES events have already fired
-            //     and the FIB is in a consistent initial state.  Stops as soon
-            //     as the metric reaches baseCount + targetDelta, independent of
-            //     topology size, prefix count, or SVS periodic-timeout cycles.
+            // When lastSvsNs < 0 (no delivery yet — e.g. p=0 baseline runs where
+            // no prefixes are announced) we fall back to startNs so silence is
+            // counted from the time the checker was installed instead of waiting
+            // forever for a delivery that will never come.
             //
-            //   stableWindow < 0  →  no event-driven stop; simulation runs to
-            //     the hard --simTime ceiling.
+            // stableWindow < 0  →  no event-driven stop; sim runs to --simTime.
             if (stableWindow > 0)
             {
-            // Prefix-activity-silence checker: stop once the convergence metric
-            // has risen above baseline AND no prefix SVS publication has been
-            // received by any node for silenceNs nanoseconds.
-            //
-            // We watch NdndSimGetLastPfxActivityNs() — the last sim time any
-            // node successfully fetched and applied a remote prefix Data packet
-            // — rather than the metric value itself.  The metric can stabilise
-            // while nodes are still mid-fetch (e.g. rf206 waiting for an SVS
-            // retry), but the activity timestamp advances on every Data delivery.
-            // True silence means no prefix Data is in-flight: all pending SVS
-            // fetches have completed or exhausted retries.
-            //
-            // stableWindow should be set to SVS_periodic_timeout + epsilon
-            // (typically pfx_sync_interval + a few hundred ms) so that at least
-            // one full SVS sync round can fire after the last Data arrival before
-            // we declare convergence.
             const int64_t silenceNs = static_cast<int64_t>(stableWindow * 1e9);
-            auto baseCount = std::make_shared<int64_t>(-1); // -1 = not yet captured
+            const int64_t startNs = Simulator::Now().GetNanoSeconds();
             auto checkerPtr = std::make_shared<std::function<void()>>();
-            *checkerPtr = [checkerPtr, baseCount, silenceNs, traceInterval]() {
-                int64_t raw = NdndSimGetConvergenceMetric();
-                if (*baseCount < 0)
-                {
-                    *baseCount = raw;
-                    Simulator::Schedule(Seconds(traceInterval), *checkerPtr);
-                    return;
-                }
+            *checkerPtr = [checkerPtr, silenceNs, startNs, traceInterval]() {
                 int64_t nowNs = Simulator::Now().GetNanoSeconds();
-                int64_t lastPfxNs = NdndSimGetLastPfxActivityNs();
-                // Stop once metric has risen above baseline and prefix activity
-                // has been silent for silenceNs.
-                if (raw > *baseCount && lastPfxNs > 0 && (nowNs - lastPfxNs) >= silenceNs)
+                int64_t lastSvsNs = NdndSimGetLastPfxSvsDeliveryNs();
+                // NdndSimGetLastPfxSvsDeliveryNs returns -1 in onephase because
+                // PrefixEventSvsDelivery is not wired there.  Fall back to
+                // NdndSimGetLastPfxActivityNs (fires on PrefixEventAddRemotePrefix,
+                // which is equivalent for silence-detection purposes).
+                // Only use the activity timestamp if it is strictly after the
+                // checker was installed (startNs), so the p=0 case (no activity
+                // at all) still falls back to the startNs fixed-wait path.
+                int64_t lastActNs = (lastSvsNs < 0) ? NdndSimGetLastPfxActivityNs() : -1;
+                int64_t refNs;
+                if (lastSvsNs >= 0)         refNs = lastSvsNs;  // twophase
+                else if (lastActNs > startNs) refNs = lastActNs; // onephase
+                else                          refNs = startNs;   // p=0 fixed wait
+                if ((nowNs - refNs) >= silenceNs)
                 {
                     Simulator::Stop();
                     return;
@@ -254,84 +213,29 @@ main(int argc, char* argv[])
             };
             Simulator::Schedule(Seconds(traceInterval), *checkerPtr);
             } // if (stableWindow > 0)
-            else if (stableWindow == 0.0)
-            {
-            // Target-count checker: read DV-only baseline just BEFORE the
-            // delayed prefix announcements fire (at t = announceDelay -
-            // traceInterval), then stop once the global FIB sum reaches
-            // baseCount + numPrefixes * numNodes.
-            //
-            // Why delayed baseline?  RegisterProducer fires at t=announceDelay
-            // and immediately installs local FIB entries on the announcing edge
-            // nodes (via nfdc.simExec → synchronous ExecMgmtCmd).  Reading the
-            // baseline at t=announceDelay-traceInterval guarantees:
-            //   • All snapshot-import t=0 RIB→FIB events have fired (they are
-            //     t=0 DES events; announceDelay-traceInterval >> 0).
-            //   • No prefix FIB entries yet (announcements haven't started).
-            // Target = baseCount + numPrefixes × numNodes is then exactly the
-            // fully-converged FIB sum, independent of topology size or timing.
-            const int64_t multiplier = (targetNodes > 0)
-                ? static_cast<int64_t>(targetNodes)
-                : static_cast<int64_t>(nodes.GetN());
-            const int64_t targetDelta = static_cast<int64_t>(numPrefixes) * multiplier;
-            auto baseCount = std::make_shared<int64_t>(-1);
-            const double captureTime = announceDelay - traceInterval;
-            Simulator::Schedule(Seconds(captureTime), [baseCount]() {
-                *baseCount = NdndSimGetConvergenceMetric();
-            });
-            auto checkerPtr = std::make_shared<std::function<void()>>();
-            *checkerPtr = [checkerPtr, baseCount, targetDelta, traceInterval]() {
-                if (*baseCount < 0)
-                {
-                    // Baseline not yet captured; shouldn't happen but be safe.
-                    Simulator::Schedule(Seconds(traceInterval), *checkerPtr);
-                    return;
-                }
-                int64_t raw = NdndSimGetConvergenceMetric();
-                if (raw >= *baseCount + targetDelta)
-                {
-                    Simulator::Stop();
-                    return;
-                }
-                Simulator::Schedule(Seconds(traceInterval), *checkerPtr);
-            };
-            // Start polling after announcements have fired.
-            Simulator::Schedule(Seconds(announceDelay + traceInterval), *checkerPtr);
-            } // else if (stableWindow == 0.0)
         }
         else if (stableWindow > 0)
         {
-            // p0 + snap-import: no prefix announcements, so the target-count and
-            // stability-window checkers above are skipped.  Install a simpler
-            // "stable-only" poller: stop once the FIB/PET metric has been
-            // unchanged for stableWindow seconds (no requirement to rise, since
-            // zero prefixes means PET may stay at 0 the whole time).
-            const int stableRoundsNeeded =
-                std::max(1, static_cast<int>(stableWindow / traceInterval));
-            auto lastCount = std::make_shared<int64_t>(-1);
-            auto stableRounds = std::make_shared<int>(0);
+            // p=0 + snap-import: same SVS-silence checker as p>0.
+            // No prefixes announced → lastSvsNs stays -1 and lastActNs <= startNs
+            // → refNs falls back to startNs, so the checker fires exactly
+            // stableWindow seconds after installation (clean fixed wait for DV
+            // re-convergence after snap import).
+            const int64_t silenceNs = static_cast<int64_t>(stableWindow * 1e9);
+            const int64_t startNs = Simulator::Now().GetNanoSeconds();
             auto checkerPtr = std::make_shared<std::function<void()>>();
-            *checkerPtr = [checkerPtr, lastCount, stableRounds,
-                           traceInterval, stableRoundsNeeded]() {
-                int64_t raw = NdndSimGetConvergenceMetric();
-                if (*lastCount < 0)
+            *checkerPtr = [checkerPtr, silenceNs, startNs, traceInterval]() {
+                int64_t nowNs = Simulator::Now().GetNanoSeconds();
+                int64_t lastSvsNs = NdndSimGetLastPfxSvsDeliveryNs();
+                int64_t lastActNs = (lastSvsNs < 0) ? NdndSimGetLastPfxActivityNs() : -1;
+                int64_t refNs;
+                if (lastSvsNs >= 0)           refNs = lastSvsNs;
+                else if (lastActNs > startNs) refNs = lastActNs;
+                else                          refNs = startNs;
+                if ((nowNs - refNs) >= silenceNs)
                 {
-                    *lastCount = raw;
-                    Simulator::Schedule(Seconds(traceInterval), *checkerPtr);
+                    Simulator::Stop();
                     return;
-                }
-                if (raw == *lastCount)
-                {
-                    if (++(*stableRounds) >= stableRoundsNeeded)
-                    {
-                        Simulator::Stop();
-                        return;
-                    }
-                }
-                else
-                {
-                    *stableRounds = 0;
-                    *lastCount = raw;
                 }
                 Simulator::Schedule(Seconds(traceInterval), *checkerPtr);
             };
