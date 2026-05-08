@@ -84,11 +84,12 @@ def load_jobs(path, context=None):
 
 
 def build_run_context(job_path, spec, state, *, selector, stem):
+    """Return (context, dirty) where dirty=True if state["__meta__"] was updated."""
     meta = state.get("__meta__", {})
     cached = meta.get("run_context")
     current_template = spec.get("run_root_template")
     if cached and meta.get("run_root_template") == current_template:
-        return cached
+        return cached, False
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     context = {
@@ -120,7 +121,7 @@ def build_run_context(job_path, spec, state, *, selector, stem):
         "run_root_template": current_template,
         "run_context": context,
     }
-    return context
+    return context, True
 
 
 def queue_requires_sudo(job_path):

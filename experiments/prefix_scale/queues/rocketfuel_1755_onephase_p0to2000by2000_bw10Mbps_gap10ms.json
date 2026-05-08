@@ -1,0 +1,32 @@
+{
+  "_comment": "Announce-gap hypothesis test: rocketfuel_1755 onephase at bw=10 Mbps, queue=100 (defaults). Runs gap=0 and gap=10ms side-by-side from the same snapshot. sudo ./jobs.sh start --fresh prefix_scale/rocketfuel_1755_onephase_gap10_3stage",
+  "selector": "prefix_scale/rocketfuel_1755_onephase_p0to2000by2000_bw10Mbps_gap10ms",
+  "name": "rocketfuel_1755_onephase_p0to2000by2000_bw10Mbps_gap10ms",
+  "experiment": "prefix_scale",
+  "topology": "rocketfuel_1755",
+  "mode": "onephase",
+  "description": "rocketfuel_1755 onephase bw=10 Mbps. Compares gap=0 (simultaneous burst) vs gap=10ms (staggered 600ms wave) from the same snapshot.",
+  "run_root_template": "experiments/prefix_scale/results/rocketfuel_1755_onephase_p0to2000by2000_bw10Mbps_gap10ms/{timestamp}",
+  "jobs": [
+    {
+      "name": "build onephase",
+      "cmd": "./run.sh --env onephase build"
+    },
+    {
+      "name": "stage1: DV convergence snapshot (bw=10)",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 0 --bw 10 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-export {run_root}/snap-stage1.json --out {run_root}/stage1"
+    },
+    {
+      "name": "stage2: p0 baseline FIB count",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 0 --bw 10 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-stage1.json --out {run_root}/stage2-p0"
+    },
+    {
+      "name": "stage2: p2000 gap=0 (simultaneous burst)",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 2000 --bw 10 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-stage1.json --out {run_root}/stage2-p2000-gap0"
+    },
+    {
+      "name": "stage2: p2000 gap=10ms (staggered announce)",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 2000 --bw 10 --adv-interval 1000 --dead-interval 3000 --window 86400 --announce-gap 10 --snap-import {run_root}/snap-stage1.json --out {run_root}/stage2-p2000-gap10"
+    }
+  ]
+}

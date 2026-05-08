@@ -1,0 +1,28 @@
+{
+  "_comment": "Hypothesis test: SVS MaxPipelineSize=10 (production default) on rocketfuel_1755 at bw=10 Mbps. Baseline has pipeline=20 and sub-linear FIB. If pipeline size contributes, reducing to 10 should partially or fully fix convergence. Run with: sudo ./jobs.sh start --fresh prefix_scale/rocketfuel_1755_onephase_pipeline10_3stage",
+  "selector": "prefix_scale/rocketfuel_1755_onephase_p0to2000by2000_pipeline10",
+  "name": "rocketfuel_1755_onephase_p0to2000by2000_pipeline10",
+  "experiment": "prefix_scale",
+  "topology": "rocketfuel_1755",
+  "mode": "onephase",
+  "description": "rocketfuel_1755 onephase at bw=10 Mbps with SVS pipeline=10 (vs baseline pipeline=20). Tests whether MaxPipelineSize contributes to congestion-driven FIB sub-linearity.",
+  "run_root_template": "experiments/prefix_scale/results/rocketfuel_1755_onephase_p0to2000by2000_pipeline10/{timestamp}",
+  "jobs": [
+    {
+      "name": "build onephase",
+      "cmd": "./run.sh --env onephase build"
+    },
+    {
+      "name": "stage1: DV convergence snapshot (onephase, 0 prefixes, bw=10)",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 0 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-export {run_root}/snap-stage1.json --out {run_root}/stage1"
+    },
+    {
+      "name": "stage2: onephase prefix table measurement p0 (import DV snap, bw=10, pipeline=10)",
+      "cmd": "NDNDSIM_SVS_PIPELINE=10 ./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 0 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-stage1.json --out {run_root}/stage2-p0"
+    },
+    {
+      "name": "stage2: onephase prefix table measurement p2000 (import DV snap, bw=10, pipeline=10)",
+      "cmd": "NDNDSIM_SVS_PIPELINE=10 ./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 2000 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-stage1.json --out {run_root}/stage2-p2000"
+    }
+  ]
+}

@@ -40,7 +40,7 @@ def test_queue_file_loads(path):
     spec = load_job_spec(path)
     state = {}
     selector = spec.get("selector") or selector_from_path(path, root=REPO_DIR)
-    context = build_run_context(path, spec, state, selector=selector, stem=queue_stem(path))
+    context, _ = build_run_context(path, spec, state, selector=selector, stem=queue_stem(path))
     jobs = load_jobs(path, context)
     assert len(jobs) > 0
     for j in jobs:

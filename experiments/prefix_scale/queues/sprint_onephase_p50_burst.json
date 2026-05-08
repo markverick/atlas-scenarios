@@ -1,0 +1,24 @@
+{
+  "_comment": "Sprint p=50 burst test: no churn, just measure initial PfxSync convergence duration. Run with: sudo ./jobs.sh start --fresh prefix_scale/sprint_p50_burst",
+  "selector": "prefix_scale/sprint_onephase_p50_burst",
+  "name": "sprint_onephase_p50_burst",
+  "experiment": "prefix_scale",
+  "topology": "sprint",
+  "mode": "onephase",
+  "description": "Sprint p=50 burst measurement — sim and emu, no churn events, 60s window",
+  "run_root_template": "experiments/prefix_scale/results/sprint_onephase_p50_burst/{timestamp}",
+  "jobs": [
+    {
+      "name": "build",
+      "cmd": "./run.sh build"
+    },
+    {
+      "name": "sim one_phase p50",
+      "cmd": "./run.sh sim --no-build churn.py --config experiments/prefix_scale/scenarios/sprint_onephase_sim_p50_burst.json --out {run_root}/sim --mode one_phase --prefixes 50 --append"
+    },
+    {
+      "name": "emu one_phase p50",
+      "cmd": "./run.sh emu --no-build churn.py --config experiments/prefix_scale/scenarios/sprint_onephase_emu_p50_burst.json --out {run_root}/emu --mode one_phase --prefixes 50 --append"
+    }
+  ]
+}

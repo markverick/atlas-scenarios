@@ -1,0 +1,36 @@
+{
+  "_comment": "Hypothesis test: p0 snap-import jobs should stop via stable-only checker, not run to --window ceiling. Uses core_edge (9 nodes) for fast turnaround. Both phases tested. sudo ./jobs.sh start --fresh prefix_scale/core_edge_p0_earlystop_test",
+  "selector": "prefix_scale/core_edge_onephase_p0_bw10Mbps_test",
+  "name": "core_edge_onephase_p0_bw10Mbps_test",
+  "experiment": "prefix_scale",
+  "topology": "core_edge",
+  "mode": "twophase+onephase",
+  "description": "Verifies that p0 snap-import runs exit via the stable-only convergence checker rather than burning to the --window ceiling (set to 3600s as a canary).",
+  "run_root_template": "experiments/prefix_scale/results/core_edge_onephase_p0_bw10Mbps_test/{timestamp}",
+  "jobs": [
+    {
+      "name": "build twophase and onephase",
+      "cmd": "./run.sh build && ./run.sh --env onephase build"
+    },
+    {
+      "name": "stage1: DV snapshot (twophase)",
+      "cmd": "./run.sh sim --no-build prefix_scale --topology core_edge --prefix-counts 0 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-export {run_root}/snap-twophase.json --out {run_root}/stage1-twophase"
+    },
+    {
+      "name": "stage1: DV snapshot (onephase)",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology core_edge --prefix-counts 0 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-export {run_root}/snap-onephase.json --out {run_root}/stage1-onephase"
+    },
+    {
+      "name": "stage2: p0 (twophase) -- should stop in ~2s sim, NOT 3600s",
+      "cmd": "./run.sh sim --no-build prefix_scale --topology core_edge --prefix-counts 0 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-twophase.json --out {run_root}/stage2-p0-twophase"
+    },
+    {
+      "name": "stage2: p0 (onephase) -- should stop in ~2s sim, NOT 3600s",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology core_edge --prefix-counts 0 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-onephase.json --out {run_root}/stage2-p0-onephase"
+    },
+    {
+      "name": "plot: I/O graph",
+      "cmd": "./run.sh as-user python3 experiments/prefix_scale/make_run_io_graph.py --data {run_root} --bw 10"
+    }
+  ]
+}

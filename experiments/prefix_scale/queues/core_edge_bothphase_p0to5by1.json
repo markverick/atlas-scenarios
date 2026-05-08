@@ -1,0 +1,76 @@
+{
+  "_comment": "3-stage ndndSIM prefix-scale study for twophase+onephase on core_edge (prefix counts: 0, 1, 2, 3, 4, 5). Stage 1: DV convergence → snapshot per phase. Stage 2: import snap → announce prefixes → record tables. Run with: sudo ./jobs.sh start --fresh prefix_scale/core_edge_bothphase_0to5_tables",
+  "selector": "prefix_scale/core_edge_bothphase_p0to5by1",
+  "name": "core_edge_bothphase_p0to5by1",
+  "experiment": "prefix_scale",
+  "topology": "core_edge",
+  "mode": "twophase+onephase",
+  "description": "3-stage core_edge prefix-scale table study (twophase+onephase): stage 1 DV convergence snapshot per phase, stage 2 p=0|1|2|3|4|5 table measurement.",
+  "run_root_template": "experiments/prefix_scale/results/core_edge_bothphase_p0to5by1/{timestamp}",
+  "jobs": [
+    {
+      "name": "build twophase and onephase",
+      "cmd": "./run.sh build && ./run.sh --env onephase build"
+    },
+    {
+      "name": "stage1 [twophase]: p=0 DV routing converge → 5.2s silence → export snap",
+      "cmd": "./run.sh sim --no-build prefix_scale --topology core_edge --prefix-counts 0 --core-disable-prefix-egress-replication --window 86400 --conv-window 4.2 --snap-export {run_root}/snap-stage1-twophase.json --out {run_root}/stage1-twophase"
+    },
+    {
+      "name": "stage1 [onephase]: p=0 DV routing converge → 5.2s silence → export snap",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology core_edge --prefix-counts 0 --window 86400 --conv-window 4.2 --snap-export {run_root}/snap-stage1-onephase.json --out {run_root}/stage1-onephase"
+    },
+    {
+      "name": "stage2 [twophase, p=0]: import snap → 5.2s silence (baseline) → record tables",
+      "cmd": "./run.sh sim --no-build prefix_scale --topology core_edge --prefix-counts 0 --core-disable-prefix-egress-replication --window 86400 --conv-window 5.2 --snap-export {run_root}/snap-stage2-p0-twophase.json --snap-import {run_root}/snap-stage1-twophase.json --out {run_root}/stage2-p0-twophase"
+    },
+    {
+      "name": "stage2 [onephase, p=0]: import snap → 5.2s silence (baseline) → record tables",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology core_edge --prefix-counts 0 --window 86400 --conv-window 5.2 --snap-export {run_root}/snap-stage2-p0-onephase.json --snap-import {run_root}/snap-stage1-onephase.json --out {run_root}/stage2-p0-onephase"
+    },
+    {
+      "name": "stage2 [twophase, p=1]: import snap → announce 1 pfx → 5.2s silence → record tables",
+      "cmd": "./run.sh sim --no-build prefix_scale --topology core_edge --prefix-counts 1 --core-disable-prefix-egress-replication --window 86400 --snap-export {run_root}/snap-stage2-p1-twophase.json --snap-import {run_root}/snap-stage1-twophase.json --out {run_root}/stage2-p1-twophase"
+    },
+    {
+      "name": "stage2 [onephase, p=1]: import snap → announce 1 pfx → 5.2s silence → record tables",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology core_edge --prefix-counts 1 --window 86400 --snap-export {run_root}/snap-stage2-p1-onephase.json --snap-import {run_root}/snap-stage1-onephase.json --out {run_root}/stage2-p1-onephase"
+    },
+    {
+      "name": "stage2 [twophase, p=2]: import snap → announce 2 pfx → 5.2s silence → record tables",
+      "cmd": "./run.sh sim --no-build prefix_scale --topology core_edge --prefix-counts 2 --core-disable-prefix-egress-replication --window 86400 --snap-export {run_root}/snap-stage2-p2-twophase.json --snap-import {run_root}/snap-stage1-twophase.json --out {run_root}/stage2-p2-twophase"
+    },
+    {
+      "name": "stage2 [onephase, p=2]: import snap → announce 2 pfx → 5.2s silence → record tables",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology core_edge --prefix-counts 2 --window 86400 --snap-export {run_root}/snap-stage2-p2-onephase.json --snap-import {run_root}/snap-stage1-onephase.json --out {run_root}/stage2-p2-onephase"
+    },
+    {
+      "name": "stage2 [twophase, p=3]: import snap → announce 3 pfx → 5.2s silence → record tables",
+      "cmd": "./run.sh sim --no-build prefix_scale --topology core_edge --prefix-counts 3 --core-disable-prefix-egress-replication --window 86400 --snap-export {run_root}/snap-stage2-p3-twophase.json --snap-import {run_root}/snap-stage1-twophase.json --out {run_root}/stage2-p3-twophase"
+    },
+    {
+      "name": "stage2 [onephase, p=3]: import snap → announce 3 pfx → 5.2s silence → record tables",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology core_edge --prefix-counts 3 --window 86400 --snap-export {run_root}/snap-stage2-p3-onephase.json --snap-import {run_root}/snap-stage1-onephase.json --out {run_root}/stage2-p3-onephase"
+    },
+    {
+      "name": "stage2 [twophase, p=4]: import snap → announce 4 pfx → 5.2s silence → record tables",
+      "cmd": "./run.sh sim --no-build prefix_scale --topology core_edge --prefix-counts 4 --core-disable-prefix-egress-replication --window 86400 --snap-export {run_root}/snap-stage2-p4-twophase.json --snap-import {run_root}/snap-stage1-twophase.json --out {run_root}/stage2-p4-twophase"
+    },
+    {
+      "name": "stage2 [onephase, p=4]: import snap → announce 4 pfx → 5.2s silence → record tables",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology core_edge --prefix-counts 4 --window 86400 --snap-export {run_root}/snap-stage2-p4-onephase.json --snap-import {run_root}/snap-stage1-onephase.json --out {run_root}/stage2-p4-onephase"
+    },
+    {
+      "name": "stage2 [twophase, p=5]: import snap → announce 5 pfx → 5.2s silence → record tables",
+      "cmd": "./run.sh sim --no-build prefix_scale --topology core_edge --prefix-counts 5 --core-disable-prefix-egress-replication --window 86400 --snap-export {run_root}/snap-stage2-p5-twophase.json --snap-import {run_root}/snap-stage1-twophase.json --out {run_root}/stage2-p5-twophase"
+    },
+    {
+      "name": "stage2 [onephase, p=5]: import snap → announce 5 pfx → 5.2s silence → record tables",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology core_edge --prefix-counts 5 --window 86400 --snap-export {run_root}/snap-stage2-p5-onephase.json --snap-import {run_root}/snap-stage1-onephase.json --out {run_root}/stage2-p5-onephase"
+    },
+    {
+      "name": "render core-edge plots and summary",
+      "cmd": "./run.sh as-user python3 experiments/prefix_scale/plot.py --source-label sim --data {run_root}"
+    }
+  ]
+}

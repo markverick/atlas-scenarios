@@ -39,8 +39,9 @@ def queue_context(job_path):
     state = load_state(job_path)
     spec = load_job_spec(job_path)
     selector = spec.get("selector") or queue_ref(job_path)
-    context = build_run_context(job_path, spec, state, selector=selector, stem=queue_stem(job_path))
-    save_state(job_path, state)
+    context, dirty = build_run_context(job_path, spec, state, selector=selector, stem=queue_stem(job_path))
+    if dirty:
+        save_state(job_path, state)
     return spec, state, context, selector
 
 
