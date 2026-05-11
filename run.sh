@@ -143,10 +143,13 @@ build_ndnd() {
     mkdir -p "$DEPS_DIR/bin"
     (cd "$NDND_SRC" && run_as_atlas_user env "GOPATH=$GOPATH_DIR" "GOFLAGS=-mod=mod" "$go_bin" build -buildvcs=false -o "$out" ./cmd/ndnd/)
     # Kill any leftover ndnd processes so the binary isn't "text file busy"
-    pkill -9 -x ndnd 2>/dev/null || true
-    for _ in $(seq 1 20); do
-        lsof /usr/local/bin/ndnd 2>/dev/null | grep -q . || break
-        sleep 0.5
+    # Retry until file is free (processes may respawn if emulation is still running)
+    for _ in $(seq 1 30); do
+        pkill -9 -x ndnd 2>/dev/null || true
+        sleep 0.3
+        if ! lsof /usr/local/bin/ndnd 2>/dev/null | grep -q .; then
+            break
+        fi
     done
     if [[ "$RUN_UID" -eq 0 ]]; then
         cp "$out" /usr/local/bin/ndnd

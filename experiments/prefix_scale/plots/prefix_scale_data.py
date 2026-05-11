@@ -86,7 +86,11 @@ def _load_3stage_results(data_dir):
         "onephase": {"runs": [], "role_table_summary": []},
         "twophase": {"runs": [], "role_table_summary": []},
     }
-    for stage_dir, _ in _find_stage_dirs(data_dir):
+    for stage_dir, stage_name in _find_stage_dirs(data_dir):
+        # Skip stage1: it's the pre-prefix baseline, not a measurement point.
+        # stage2-p* directories are the actual measurement stages.
+        if stage_name.startswith("stage1"):
+            continue
         runs = _load_csv(os.path.join(stage_dir, "runs.csv"))
         role_summary = _load_csv(os.path.join(stage_dir, "role_table_summary.csv"))
         for row in runs:
