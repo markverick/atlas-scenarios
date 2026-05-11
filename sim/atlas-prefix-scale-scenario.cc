@@ -192,18 +192,14 @@ main(int argc, char* argv[])
             *checkerPtr = [checkerPtr, silenceNs, startNs, traceInterval]() {
                 int64_t nowNs = Simulator::Now().GetNanoSeconds();
                 int64_t lastSvsNs = NdndSimGetLastPfxSvsDeliveryNs();
-                // NdndSimGetLastPfxSvsDeliveryNs returns -1 in onephase because
-                // PrefixEventSvsDelivery is not wired there.  Fall back to
-                // NdndSimGetLastPfxActivityNs (fires on PrefixEventAddRemotePrefix,
-                // which is equivalent for silence-detection purposes).
-                // Only use the activity timestamp if it is strictly after the
-                // checker was installed (startNs), so the p=0 case (no activity
-                // at all) still falls back to the startNs fixed-wait path.
-                int64_t lastActNs = (lastSvsNs < 0) ? NdndSimGetLastPfxActivityNs() : -1;
-                int64_t refNs;
-                if (lastSvsNs >= 0)         refNs = lastSvsNs;  // twophase
-                else if (lastActNs > startNs) refNs = lastActNs; // onephase
-                else                          refNs = startNs;   // p=0 fixed wait
+                // NdndSimGetLastPfxSvsDeliveryNs returns -1 before the first prefix
+                // SVS delivery.  The p=0 case (no prefixes at all) falls back to
+                // startNs so the checker doesn't wait forever for deliveries that
+                // will never come.
+                int64_t refNs = startNs;
+                if (lastSvsNs >= 0) {
+                    refNs = lastSvsNs;
+                }
                 if ((nowNs - refNs) >= silenceNs)
                 {
                     Simulator::Stop();
@@ -217,8 +213,8 @@ main(int argc, char* argv[])
         else if (stableWindow > 0)
         {
             // p=0 + snap-import: same SVS-silence checker as p>0.
-            // No prefixes announced → lastSvsNs stays -1 and lastActNs <= startNs
-            // → refNs falls back to startNs, so the checker fires exactly
+            // No prefixes announced → lastSvsNs stays -1, refNs falls back to startNs,
+            // so the checker fires exactly
             // stableWindow seconds after installation (clean fixed wait for DV
             // re-convergence after snap import).
             const int64_t silenceNs = static_cast<int64_t>(stableWindow * 1e9);
@@ -227,11 +223,10 @@ main(int argc, char* argv[])
             *checkerPtr = [checkerPtr, silenceNs, startNs, traceInterval]() {
                 int64_t nowNs = Simulator::Now().GetNanoSeconds();
                 int64_t lastSvsNs = NdndSimGetLastPfxSvsDeliveryNs();
-                int64_t lastActNs = (lastSvsNs < 0) ? NdndSimGetLastPfxActivityNs() : -1;
-                int64_t refNs;
-                if (lastSvsNs >= 0)           refNs = lastSvsNs;
-                else if (lastActNs > startNs) refNs = lastActNs;
-                else                          refNs = startNs;
+                int64_t refNs = startNs;
+                if (lastSvsNs >= 0) {
+                    refNs = lastSvsNs;
+                }
                 if ((nowNs - refNs) >= silenceNs)
                 {
                     Simulator::Stop();
@@ -244,64 +239,122 @@ main(int argc, char* argv[])
     }
     else
     {
-        // Normal path: wait for DV routing to converge, then announce prefixes
-        // and optionally export a snapshot.
-        if (numPrefixes > 0)
+        // Normal path: wait for DV routing to converge using in-flight advertisement
+        // detection, then announce prefixes and optionally export a snapshot.
+        if (stableWindow > 0)
         {
-            RegisterRoutingConvergedCallback([edgeNodes, numPrefixes, exportSnap]() {
-                if (!exportSnap.empty())
-                {
-                    int rc = NdndSimExportSnapshot(exportSnap.c_str());
-                    NS_ABORT_MSG_IF(rc != 0,
-                                    "NdndSimExportSnapshot failed for: " << exportSnap);
+            const int64_t silenceNs = static_cast<int64_t>(stableWindow * 1e9);
+            const int64_t startNs = Simulator::Now().GetNanoSeconds();
+            auto dvConverged = std::make_shared<bool>(false);
+            auto checkerPtr = std::make_shared<std::function<void()>>();
+            *checkerPtr = [checkerPtr, silenceNs, startNs, traceInterval, dvConverged,
+                           stableWindow, edgeNodes, numPrefixes, exportSnap]() {
+                int64_t nowNs = Simulator::Now().GetNanoSeconds();
+                int64_t lastAdvNs = NdndSimGetLastDvAdvReceiptNs();
+                // p=0 safety net: if no advertisements have been received yet,
+                // fall back to startNs so the checker fires after stableWindow.
+                int64_t refNs = startNs;
+                if (lastAdvNs >= 0) {
+                    refNs = lastAdvNs;
                 }
-                for (int i = 0; i < numPrefixes; ++i)
+                if ((nowNs - refNs) >= silenceNs)
                 {
-                    Ptr<Node> node = edgeNodes.at(static_cast<size_t>(i) % edgeNodes.size());
-                    std::string nodeName = Names::FindName(node);
-                    auto stack = node->GetObject<NdndStack>();
-                    std::string prefix = "/data/" + nodeName + "/pfx" + std::to_string(i);
-                    stack->RegisterProducer(prefix);
-                }
-            });
-        }
-        else if (!exportSnap.empty())
-        {
-            // After DV routing converges, keep running until the SVS-ALO
-            // metric (PET sum for twophase, FIB sum for onephase) stabilises.
-            // Stopping immediately at routing convergence would capture an
-            // underconverged PET/PfxEntries state on larger topologies where
-            // SVS propagation takes longer than DV convergence.  The same
-            // stability-window poller used in stage-2 is reused here so the
-            // snapshot timing is correct regardless of topology size or delay.
-            RegisterRoutingConvergedCallback([exportSnap, stableWindow, traceInterval]() {
-                auto lastMetric = std::make_shared<int64_t>(-1);
-                auto stableFor  = std::make_shared<double>(0.0);
-                auto checkerPtr = std::make_shared<std::function<void()>>();
-                *checkerPtr = [checkerPtr, exportSnap, stableWindow, traceInterval,
-                                lastMetric, stableFor]() {
-                    int64_t cur = NdndSimGetConvergenceMetric();
-                    if (cur == *lastMetric)
-                    {
-                        *stableFor += traceInterval;
-                    }
-                    else
-                    {
-                        *lastMetric = cur;
-                        *stableFor  = 0.0;
-                    }
-                    if (*stableFor >= stableWindow)
+                    *dvConverged = true;
+                    // DV convergence detected: export snapshot and/or announce prefixes.
+                    if (!exportSnap.empty())
                     {
                         int rc = NdndSimExportSnapshot(exportSnap.c_str());
                         NS_ABORT_MSG_IF(rc != 0,
                                         "NdndSimExportSnapshot failed for: " << exportSnap);
-                        Simulator::Stop();
+                    }
+                    if (numPrefixes > 0)
+                    {
+                        for (int i = 0; i < numPrefixes; ++i)
+                        {
+                            Ptr<Node> node = edgeNodes.at(static_cast<size_t>(i) % edgeNodes.size());
+                            std::string nodeName = Names::FindName(node);
+                            auto stack = node->GetObject<NdndStack>();
+                            std::string prefix = "/data/" + nodeName + "/pfx" + std::to_string(i);
+                            stack->RegisterProducer(prefix);
+                        }
+                        // After DV convergence and prefix announcement, start stage 2
+                        // prefix-SVS silence checker so the sim stops when prefixes have
+                        // propagated (or after stableWindow of silence if no prefixes).
+                        if (stableWindow > 0)
+                        {
+                            const int64_t prefixSilenceNs = static_cast<int64_t>(stableWindow * 1e9);
+                            const int64_t prefixStartNs = Simulator::Now().GetNanoSeconds();
+                            auto pfxCheckerPtr = std::make_shared<std::function<void()>>();
+                            *pfxCheckerPtr = [pfxCheckerPtr, prefixSilenceNs, prefixStartNs,
+                                              traceInterval]() {
+                                int64_t nowNs = Simulator::Now().GetNanoSeconds();
+                                int64_t lastSvsNs = NdndSimGetLastPfxSvsDeliveryNs();
+                                int64_t refNs = prefixStartNs;
+                                if (lastSvsNs >= 0) {
+                                    refNs = lastSvsNs;
+                                }
+                                if ((nowNs - refNs) >= prefixSilenceNs)
+                                {
+                                    Simulator::Stop();
+                                    return;
+                                }
+                                Simulator::Schedule(Seconds(traceInterval), *pfxCheckerPtr);
+                            };
+                            Simulator::Schedule(Seconds(traceInterval), *pfxCheckerPtr);
+                        }
                         return;
                     }
-                    Simulator::Schedule(Seconds(traceInterval), *checkerPtr);
-                };
+                    else
+                    {
+                        // No prefixes: keep running until convergence metric stabilises
+                        // for snapshot export.
+                        if (!exportSnap.empty())
+                        {
+                            auto lastMetric = std::make_shared<int64_t>(-1);
+                            auto stableFor  = std::make_shared<double>(0.0);
+                            auto snapCheckerPtr = std::make_shared<std::function<void()>>();
+                            *snapCheckerPtr = [snapCheckerPtr, exportSnap, stableWindow,
+                                              traceInterval, lastMetric, stableFor]() {
+                                int64_t cur = NdndSimGetConvergenceMetric();
+                                if (cur == *lastMetric)
+                                {
+                                    *stableFor += traceInterval;
+                                }
+                                else
+                                {
+                                    *lastMetric = cur;
+                                    *stableFor  = 0.0;
+                                }
+                                if (*stableFor >= stableWindow)
+                                {
+                                    int rc = NdndSimExportSnapshot(exportSnap.c_str());
+                                    NS_ABORT_MSG_IF(rc != 0,
+                                                    "NdndSimExportSnapshot failed for: " << exportSnap);
+                                    Simulator::Stop();
+                                    return;
+                                }
+                                Simulator::Schedule(Seconds(traceInterval), *snapCheckerPtr);
+                            };
+                            Simulator::Schedule(Seconds(traceInterval), *snapCheckerPtr);
+                        }
+                    }
+                    return;
+                }
                 Simulator::Schedule(Seconds(traceInterval), *checkerPtr);
-            });
+            };
+            Simulator::Schedule(Seconds(traceInterval), *checkerPtr);
+        }
+        else if (numPrefixes > 0)
+        {
+            // stableWindow <= 0: no DV convergence check; announce prefixes immediately.
+            for (int i = 0; i < numPrefixes; ++i)
+            {
+                Ptr<Node> node = edgeNodes.at(static_cast<size_t>(i) % edgeNodes.size());
+                std::string nodeName = Names::FindName(node);
+                auto stack = node->GetObject<NdndStack>();
+                std::string prefix = "/data/" + nodeName + "/pfx" + std::to_string(i);
+                stack->RegisterProducer(prefix);
+            }
         }
     }
 
@@ -347,7 +400,9 @@ main(int argc, char* argv[])
         std::ofstream ofs(convTrace);
         NS_ABORT_MSG_IF(!ofs, "Failed to open convTrace output: " << convTrace);
 
-        int64_t convNs = NdndSimGetRoutingConvergenceNs(static_cast<int>(nodes.GetN()));
+        // DV routing convergence time: in-flight advertisement silence timestamp.
+        // Returns -1 if no advertisements were ever received.
+        int64_t convNs = NdndSimGetLastDvAdvReceiptNs();
         if (convNs >= 0)
         {
             ofs << (static_cast<double>(convNs) / 1e9) << std::endl;
