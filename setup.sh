@@ -143,12 +143,17 @@ cmake --build "$DEPS_DIR/ns-3/cmake-cache-op" -j$(nproc)
 ok "ns-3 + ndndSIM built (onephase) -> $DEPS_DIR/ns-3/build-op"
 
 # -- 6. NDNd binaries from local ndndSIM source --
-# The daemon is built from the pristine upstream ndnd submodule.
+# The daemon is built from the pristine upstream ndnd (dv2 branch).
 # The traffic tool is built from .transformed-ndnd because cmd/traffic/ is
 # added by the overlay (it does not exist in pristine upstream ndnd).
 # By the time this step runs ./ns3 build has already invoked go/build.sh, so
 # .transformed-ndnd is fully prepared and its go.work is in place.
-NDND_SRC="$DEPS_DIR/ns-3/contrib/ndndSIM/ndnd"
+NDND_SRC_TMP="$DEPS_DIR/ndnd-daemon"
+if [[ ! -d "$NDND_SRC_TMP" ]]; then
+    info "Cloning NDNd daemon source"
+    git clone --branch dv2 --depth 1 https://github.com/named-data/ndnd.git "$NDND_SRC_TMP"
+fi
+NDND_SRC="$NDND_SRC_TMP"
 TRANSFORMED_NDND="$DEPS_DIR/ns-3/contrib/ndndSIM/go/.transformed-ndnd-twophase"
 info "Building NDNd from local source ($NDND_SRC)"
 
