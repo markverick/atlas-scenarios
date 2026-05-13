@@ -100,11 +100,7 @@ fi
 cd "$DEPS_DIR/ns-3"
 mkdir -p contrib
 if [[ ! -d contrib/ndndSIM ]]; then
-    cd contrib
-    git clone https://github.com/markverick/ndndSIM.git ndndSIM
-    cd ndndSIM
-    git submodule update --init
-    cd ../..
+    git clone https://github.com/markverick/ndndSIM.git contrib/ndndSIM
 fi
 
 # Install atlas scenarios into ndndSIM examples
