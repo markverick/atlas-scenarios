@@ -72,7 +72,7 @@ fi
 export PATH="$DEPS_DIR/bin:$DEPS_DIR/gopath/bin:$PATH"
 export PYTHONPATH="$REPO_DIR:$PYTHONPATH"
 
-NDND_SRC="$NS3_DIR/contrib/ndndSIM/ndnd"
+NDND_SRC="$DEPS_DIR/ndnd-daemon"
 GOPATH_DIR="$DEPS_DIR/gopath"
 
 ensure_ns3_ready() {
