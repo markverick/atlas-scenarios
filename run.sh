@@ -166,10 +166,10 @@ build_ndnd_onephase() {
     local hash="51774b8"
     local out="$DEPS_DIR/bin/ndnd-onephase"
     local work_dir
-    # Create the temp dir as atlas user so git worktree entries (written into
-    # .git/modules/ndnd/worktrees/) are also atlas-owned.  Running git as root
-    # creates root-owned worktree metadata and blocks atlas user from creating
-    # subsequent worktrees (needed by the sim build.sh).
+    # Create the temp dir as atlas user so git worktree entries are also
+    # atlas-owned.  Running git as root creates root-owned worktree metadata
+    # and blocks atlas user from creating subsequent worktrees (needed by the
+    # sim build.sh).
     work_dir="$(run_as_atlas_user mktemp -d)"
     echo "[emu] Building ndnd-onephase daemon from $NDND_SRC at $hash (go: $go_bin)"
     mkdir -p "$DEPS_DIR/bin"
