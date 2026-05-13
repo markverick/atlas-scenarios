@@ -112,6 +112,23 @@ cp "$REPO_DIR/sim/atlas-scenario.cc"         contrib/ndndSIM/examples/ndndsim-at
 cp "$REPO_DIR/sim/atlas-churn-scenario.cc"   contrib/ndndSIM/examples/ndndsim-atlas-churn-scenario.cc
 cp "$REPO_DIR/sim/atlas-multihop-scenario.cc" contrib/ndndSIM/examples/ndndsim-atlas-multihop-scenario.cc
 cp "$REPO_DIR/sim/atlas-routing-scenario.cc" contrib/ndndSIM/examples/ndndsim-atlas-routing-scenario.cc
+cp "$REPO_DIR/sim/atlas-prefix-scale-scenario.cc" contrib/ndndSIM/examples/ndndsim-atlas-prefix-scale-scenario.cc
+if ! grep -q "ndndsim-atlas-prefix-scale-scenario" contrib/ndndSIM/examples/CMakeLists.txt; then
+    cat >> contrib/ndndSIM/examples/CMakeLists.txt <<'CMAKE'
+
+# Atlas prefix-scale scenario
+build_lib_example(
+    NAME ndndsim-atlas-prefix-scale-scenario
+    SOURCE_FILES ndndsim-atlas-prefix-scale-scenario.cc
+    LIBRARIES_TO_LINK
+        ${libndndSIM}
+        ${libcore}
+        ${libnetwork}
+        ${libinternet}
+        ${libpoint-to-point}
+)
+CMAKE
+fi
 if ! grep -q "ndndsim-atlas-scenario" contrib/ndndSIM/examples/CMakeLists.txt; then
     cat >> contrib/ndndSIM/examples/CMakeLists.txt <<'CMAKE'
 
