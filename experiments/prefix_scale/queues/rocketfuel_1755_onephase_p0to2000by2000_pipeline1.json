@@ -1,28 +1,24 @@
 {
-  "_comment": "Hypothesis test: SVS MaxPipelineSize=1 (fully serial) on rocketfuel_1755 at bw=10 Mbps. Baseline has pipeline=20 and sub-linear FIB. Pipeline=1 eliminates Interest bursts entirely — if congestion is driven by parallel fetching, FIB should converge perfectly. Run with: sudo ./jobs.sh start --fresh prefix_scale/rocketfuel_1755_onephase_pipeline1_3stage",
+  "_comment": "ndndSIM prefix-scale study for onephase on rocketfuel_1755 (prefix counts: 0, 2000). Each run starts fresh. Run with: sudo ./jobs.sh start --fresh prefix_scale/rocketfuel_1755_onephase_p0to2000by2000_pipeline1",
   "selector": "prefix_scale/rocketfuel_1755_onephase_p0to2000by2000_pipeline1",
   "name": "rocketfuel_1755_onephase_p0to2000by2000_pipeline1",
   "experiment": "prefix_scale",
   "topology": "rocketfuel_1755",
   "mode": "onephase",
-  "description": "rocketfuel_1755 onephase at bw=10 Mbps with SVS pipeline=1 (serial fetch). Eliminates Interest burst; tests whether MaxPipelineSize alone causes congestion-driven FIB sub-linearity.",
+  "description": "rocketfuel_1755 prefix-scale study (onephase) for p=0,2000. Each run starts fresh.",
   "run_root_template": "experiments/prefix_scale/results/rocketfuel_1755_onephase_p0to2000by2000_pipeline1/{timestamp}",
   "jobs": [
     {
-      "name": "build onephase",
+      "name": "build",
       "cmd": "./run.sh --env onephase build"
     },
     {
-      "name": "stage1: DV convergence snapshot (onephase, 0 prefixes, bw=10)",
-      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 0 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-export {run_root}/snap-stage1.json --out {run_root}/stage1"
+      "name": "p=0 onephase",
+      "cmd": "NDNDSIM_SVS_PIPELINE=1 ./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --adv-interval 1000 --dead-interval 3000 --window 86400 --prefix-counts 0 --out {run_root}/p0"
     },
     {
-      "name": "stage2: onephase prefix table measurement p0 (import DV snap, bw=10, pipeline=1)",
-      "cmd": "NDNDSIM_SVS_PIPELINE=1 ./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 0 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-stage1.json --out {run_root}/stage2-p0"
-    },
-    {
-      "name": "stage2: onephase prefix table measurement p2000 (import DV snap, bw=10, pipeline=1)",
-      "cmd": "NDNDSIM_SVS_PIPELINE=1 ./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 2000 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-stage1.json --out {run_root}/stage2-p2000"
+      "name": "p=2000 onephase",
+      "cmd": "NDNDSIM_SVS_PIPELINE=1 ./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --adv-interval 1000 --dead-interval 3000 --window 86400 --prefix-counts 2000 --out {run_root}/p2000"
     }
   ]
 }

@@ -1,36 +1,32 @@
 {
-  "_comment": "3-stage ndndSIM prefix-scale study for onephase on the core/edge topology. Stage 1: DV convergence → snapshot. Stage 2: per prefix count, import snap → announce prefixes → record tables. Run with: sudo ./jobs.sh start --fresh prefix_scale/core_edge_onephase_3stage",
+  "_comment": "ndndSIM prefix-scale study for onephase on core_edge (prefix counts: 500, 1000, 1500, 2000). Each run starts fresh. Run with: sudo ./jobs.sh start --fresh prefix_scale/core_edge_onephase_p0to2000by500",
   "selector": "prefix_scale/core_edge_onephase_p0to2000by500",
   "name": "core_edge_onephase_p0to2000by500",
   "experiment": "prefix_scale",
   "topology": "core_edge",
   "mode": "onephase",
-  "description": "3-stage core/edge prefix-scale table study (onephase): stage 1 DV convergence snapshot, stage 2 per-prefix table measurement.",
+  "description": "core_edge prefix-scale study (onephase) for p=500,1000,1500,2000. Each run starts fresh.",
   "run_root_template": "experiments/prefix_scale/results/core_edge_onephase_p0to2000by500/{timestamp}",
   "jobs": [
     {
-      "name": "build onephase",
+      "name": "build",
       "cmd": "./run.sh --env onephase build"
     },
     {
-      "name": "stage1: DV convergence snapshot (onephase, 0 prefixes)",
-      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology core_edge --prefix-counts 0 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-export {run_root}/snap-stage1.json --out {run_root}/stage1"
+      "name": "p=500 onephase",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology core_edge --adv-interval 1000 --dead-interval 3000 --window 86400 --prefix-counts 500 --out {run_root}/p500"
     },
     {
-      "name": "stage2: prefix table measurement p500 (import DV snap)",
-      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology core_edge --prefix-counts 500 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-stage1.json --snap-export {run_root}/snap-stage2-p500.json --out {run_root}/stage2-p500"
+      "name": "p=1000 onephase",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology core_edge --adv-interval 1000 --dead-interval 3000 --window 86400 --prefix-counts 1000 --out {run_root}/p1000"
     },
     {
-      "name": "stage2: prefix table measurement p1000 (import DV snap)",
-      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology core_edge --prefix-counts 1000 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-stage1.json --snap-export {run_root}/snap-stage2-p1000.json --out {run_root}/stage2-p1000"
+      "name": "p=1500 onephase",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology core_edge --adv-interval 1000 --dead-interval 3000 --window 86400 --prefix-counts 1500 --out {run_root}/p1500"
     },
     {
-      "name": "stage2: prefix table measurement p1500 (import DV snap)",
-      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology core_edge --prefix-counts 1500 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-stage1.json --snap-export {run_root}/snap-stage2-p1500.json --out {run_root}/stage2-p1500"
-    },
-    {
-      "name": "stage2: prefix table measurement p2000 (import DV snap)",
-      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology core_edge --prefix-counts 2000 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-stage1.json --snap-export {run_root}/snap-stage2-p2000.json --out {run_root}/stage2-p2000"
+      "name": "p=2000 onephase",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology core_edge --adv-interval 1000 --dead-interval 3000 --window 86400 --prefix-counts 2000 --out {run_root}/p2000"
     },
     {
       "name": "render core_edge onephase plots",

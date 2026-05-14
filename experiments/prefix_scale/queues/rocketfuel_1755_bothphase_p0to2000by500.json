@@ -1,64 +1,56 @@
 {
-  "_comment": "3-stage ndndSIM prefix-scale study for twophase+onephase on Rocketfuel AS 1755 (EBONE, 172 nodes: 111 core + 61 edge, 381 links). Stage 1: DV convergence → snapshot (per phase). Stage 2: p=0/500/1000/1500/2000, import snap → announce prefixes → record tables. Run with: sudo ./jobs.sh start --fresh prefix_scale/rocketfuel_1755_bothphase_p0to2000_by500",
+  "_comment": "ndndSIM prefix-scale study for twophase+onephase on rocketfuel_1755 (prefix counts: 0, 500, 1000, 1500, 2000). Each run starts fresh. Run with: sudo ./jobs.sh start --fresh prefix_scale/rocketfuel_1755_bothphase_p0to2000by500",
   "selector": "prefix_scale/rocketfuel_1755_bothphase_p0to2000by500",
   "name": "rocketfuel_1755_bothphase_p0to2000by500",
   "experiment": "prefix_scale",
   "topology": "rocketfuel_1755",
   "mode": "twophase+onephase",
-  "description": "3-stage Rocketfuel AS 1755 prefix-scale table study (twophase+onephase): stage 1 DV convergence snapshot per phase, stage 2 p0/500/1000/1500/2000 table measurement.",
+  "description": "rocketfuel_1755 prefix-scale study (twophase+onephase) for p=0,500,1000,1500,2000. Each run starts fresh.",
   "run_root_template": "experiments/prefix_scale/results/rocketfuel_1755_bothphase_p0to2000by500/{timestamp}",
   "jobs": [
     {
-      "name": "build: compile twophase + onephase ns-3 binaries",
+      "name": "build",
       "cmd": "./run.sh build && ./run.sh --env onephase build"
     },
     {
-      "name": "stage1 [twophase]: p=0 DV routing converge → SVS-metric silence (4.2s) → export snap",
-      "cmd": "./run.sh sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 0 --core-disable-prefix-egress-replication --adv-interval 1000 --dead-interval 3000 --window 86400 --conv-window 4.2 --snap-export {run_root}/snap-stage1-twophase.json --out {run_root}/stage1-twophase"
+      "name": "p=0 twophase",
+      "cmd": "./run.sh sim --no-build prefix_scale --topology rocketfuel_1755 --core-disable-prefix-egress-replication --adv-interval 1000 --dead-interval 3000 --window 86400 --prefix-counts 0 --out {run_root}/p0 --conv-window 5.2"
     },
     {
-      "name": "stage1 [onephase]: p=0 DV routing converge → metric silence (4.2s) → export snap",
-      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 0 --adv-interval 1000 --dead-interval 3000 --window 86400 --conv-window 4.2 --snap-export {run_root}/snap-stage1-onephase.json --out {run_root}/stage1-onephase"
+      "name": "p=0 onephase",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --adv-interval 1000 --dead-interval 3000 --window 86400 --prefix-counts 0 --out {run_root}/p0"
     },
     {
-      "name": "stage2 [twophase, p=0]: import snap → 5.2s silence (baseline, no prefixes) → record tables",
-      "cmd": "./run.sh sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 0 --core-disable-prefix-egress-replication --adv-interval 1000 --dead-interval 3000 --window 86400 --conv-window 5.2 --snap-import {run_root}/snap-stage1-twophase.json --snap-export {run_root}/snap-stage2-p0-twophase.json --out {run_root}/stage2-p0-twophase"
+      "name": "p=500 twophase",
+      "cmd": "./run.sh sim --no-build prefix_scale --topology rocketfuel_1755 --core-disable-prefix-egress-replication --adv-interval 1000 --dead-interval 3000 --window 86400 --prefix-counts 500 --out {run_root}/p500 --conv-window 5.2"
     },
     {
-      "name": "stage2 [onephase, p=0]: import snap → 5.2s silence (baseline, no prefixes) → record tables",
-      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 0 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-stage1-onephase.json --snap-export {run_root}/snap-stage2-p0-onephase.json --out {run_root}/stage2-p0-onephase"
+      "name": "p=500 onephase",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --adv-interval 1000 --dead-interval 3000 --window 86400 --prefix-counts 500 --out {run_root}/p500"
     },
     {
-      "name": "stage2 [twophase, p=500]: import snap → announce 500 pfx → SVS silence (5.2s) → record tables",
-      "cmd": "./run.sh sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 500 --core-disable-prefix-egress-replication --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-stage1-twophase.json --snap-export {run_root}/snap-stage2-p500-twophase.json --out {run_root}/stage2-p500-twophase"
+      "name": "p=1000 twophase",
+      "cmd": "./run.sh sim --no-build prefix_scale --topology rocketfuel_1755 --core-disable-prefix-egress-replication --adv-interval 1000 --dead-interval 3000 --window 86400 --prefix-counts 1000 --out {run_root}/p1000 --conv-window 5.2"
     },
     {
-      "name": "stage2 [onephase, p=500]: import snap → announce 500 pfx → activity silence (5.2s) → record tables",
-      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 500 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-stage1-onephase.json --snap-export {run_root}/snap-stage2-p500-onephase.json --out {run_root}/stage2-p500-onephase"
+      "name": "p=1000 onephase",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --adv-interval 1000 --dead-interval 3000 --window 86400 --prefix-counts 1000 --out {run_root}/p1000"
     },
     {
-      "name": "stage2 [twophase, p=1000]: import snap → announce 1000 pfx → SVS silence (5.2s) → record tables",
-      "cmd": "./run.sh sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 1000 --core-disable-prefix-egress-replication --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-stage1-twophase.json --snap-export {run_root}/snap-stage2-p1000-twophase.json --out {run_root}/stage2-p1000-twophase"
+      "name": "p=1500 twophase",
+      "cmd": "./run.sh sim --no-build prefix_scale --topology rocketfuel_1755 --core-disable-prefix-egress-replication --adv-interval 1000 --dead-interval 3000 --window 86400 --prefix-counts 1500 --out {run_root}/p1500 --conv-window 5.2"
     },
     {
-      "name": "stage2 [onephase, p=1000]: import snap → announce 1000 pfx → activity silence (5.2s) → record tables",
-      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 1000 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-stage1-onephase.json --snap-export {run_root}/snap-stage2-p1000-onephase.json --out {run_root}/stage2-p1000-onephase"
+      "name": "p=1500 onephase",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --adv-interval 1000 --dead-interval 3000 --window 86400 --prefix-counts 1500 --out {run_root}/p1500"
     },
     {
-      "name": "stage2 [twophase, p=1500]: import snap → announce 1500 pfx → SVS silence (5.2s) → record tables",
-      "cmd": "./run.sh sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 1500 --core-disable-prefix-egress-replication --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-stage1-twophase.json --snap-export {run_root}/snap-stage2-p1500-twophase.json --out {run_root}/stage2-p1500-twophase"
+      "name": "p=2000 twophase",
+      "cmd": "./run.sh sim --no-build prefix_scale --topology rocketfuel_1755 --core-disable-prefix-egress-replication --adv-interval 1000 --dead-interval 3000 --window 86400 --prefix-counts 2000 --out {run_root}/p2000 --conv-window 5.2"
     },
     {
-      "name": "stage2 [onephase, p=1500]: import snap → announce 1500 pfx → activity silence (5.2s) → record tables",
-      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 1500 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-stage1-onephase.json --snap-export {run_root}/snap-stage2-p1500-onephase.json --out {run_root}/stage2-p1500-onephase"
-    },
-    {
-      "name": "stage2 [twophase, p=2000]: import snap → announce 2000 pfx → SVS silence (5.2s) → record tables",
-      "cmd": "./run.sh sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 2000 --core-disable-prefix-egress-replication --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-stage1-twophase.json --snap-export {run_root}/snap-stage2-p2000-twophase.json --out {run_root}/stage2-p2000-twophase"
-    },
-    {
-      "name": "stage2 [onephase, p=2000]: import snap → announce 2000 pfx → activity silence (5.2s) → record tables",
-      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --prefix-counts 2000 --adv-interval 1000 --dead-interval 3000 --window 86400 --snap-import {run_root}/snap-stage1-onephase.json --snap-export {run_root}/snap-stage2-p2000-onephase.json --out {run_root}/stage2-p2000-onephase"
+      "name": "p=2000 onephase",
+      "cmd": "./run.sh --env onephase sim --no-build prefix_scale --topology rocketfuel_1755 --adv-interval 1000 --dead-interval 3000 --window 86400 --prefix-counts 2000 --out {run_root}/p2000"
     },
     {
       "name": "render: plot prefix-scale results for rocketfuel_1755 bothphase",

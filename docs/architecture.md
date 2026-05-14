@@ -136,8 +136,6 @@ DV advertisement received → updateRib() → updateFib()
 
 **PET** (Prefix Egress Table): `forwarder_pet`, twophase only. The forwarder's per-prefix forwarding table scoped to egress routes. A packet matching a PET entry is forwarded toward the announcing edge router.
 
-**Snapshot** (`snap-stage1.json`): JSON export of DV RIB + neighbor advert state + PET/SVS-ALO state. Imported by `ImportSnapshot()` before `Simulator::Run()` to skip the routing-convergence phase. After import, `runConvergenceHook()` must be called explicitly (injected by `ruleImportSnapshotConvergenceHook`) because `postUpdateRib` never fires (costs unchanged → `refresh()` returns false → no dirty flag → no callback).
-
 ---
 
 ## SIMULATION INTERNALS
@@ -167,41 +165,20 @@ DV advertisement received → updateRib() → updateFib()
 
 ## CONVERGENCE CHECKER (`atlas-prefix-scale-scenario.cc`)
 
-Three modes controlled by `stableWindow` and whether `importSnap` is set:
+All prefix-scale runs are fresh: each prefix count starts from a clean topology without any pre-loaded state.
 
-### Stage-1 (no snap-import, `exportSnap` set, `numPrefixes == 0`)
-- `RegisterRoutingConvergedCallback` fires when DV routing converges.
-- After that: polls `NdndSimGetConvergenceMetric()` every `traceInterval`. Stops when metric is unchanged for `stableWindow` **consecutive** seconds (`stableFor` accumulator resets to 0 on any change), then exports snapshot and stops.
-- `stableWindow` set by `--conv-window` in queue config (e.g. `2.0`).
-
-### Stage-1 (no snap-import, `exportSnap` set, `numPrefixes > 0`)
-- `RegisterRoutingConvergedCallback` exports snapshot (if set) at routing convergence, then immediately announces all prefixes. No stableWindow polling loop.
-
-### Stage-2/3 (snap-import, `stableWindow > 0`) — unified for both phases and all prefix counts
+### Fresh run (`stableWindow > 0`)
+- DV routing converges from scratch.
+- Once DV is converged: all prefixes are announced simultaneously (or staggered by `--announce-gap`).
 - **SVS silence checker**: stops when `(now - ref) >= silenceNs` where `ref = lastSvsDeliveryNs` if any SVS delivery has occurred, otherwise `ref = startNs` (sim time when the checker was installed).
   - p > 0: `ref` advances with each SVS delivery, so the checker stops only after the network has been idle for `stableWindow` seconds following the last delivery.
-  - p = 0: no prefixes announced → no SVS deliveries → `ref = startNs` → checker fires exactly `stableWindow` seconds after installation (a clean fixed wait for DV re-convergence after snap-import).
-- Default `stableWindow = adv_ms / 1000.0 * 5 + 0.2` (5× adv_interval + 0.2 s) for both phases and all p. Set by `sim/prefix_scale.py`; overridable with `--conv-window`.
+  - p = 0: no prefixes announced → no SVS deliveries → `ref = startNs` → checker fires exactly `stableWindow` seconds after installation.
+- Default `stableWindow` is auto-computed or set by `--conv-window` in queue config. Overridable with `--conv-window`.
 
-### `stableWindow < 0`
+### `stableWindow <= 0`
 No event-driven stop; simulation runs to hard `--simTime` ceiling.
 
-### Why onephase can't use the silence/stability window reliably
-- Inter-advertisement gaps (adv_interval=1000ms) create natural ~1s lulls that trigger false "stable" signals.
-- Early versions read the baseline before `Simulator::Run()`, catching pending t=0 DES events — e.g. p=500 showed initialMetric=150 but actual base was 184. The delayed-baseline approach fixes this.
-
 ---
-
-## QUEUE CONFIGS (reference)
-
-| Queue file | Stage1 `--window` | Stage2 `--window` | `--adv-interval` | `--dead-interval` |
-|---|---|---|---|---|
-| `core_edge_bothphase_3stage.json` | 200 | 300 | 1000 | 3000 |
-| `rocketfuel_2914_bothphase_3stage.json` | 200 | 200 | 1000 | 3000 |
-
-## Validation baselines
-- core_edge no-stage: `experiments/prefix_scale/results/core_edge_bothphase_0to2000_by500_tables/20260430-083209`
-- rocketfuel no-stage: `experiments/prefix_scale/results/rocketfuel_2914_bothphase_0to2000_by500_tables/` (latest timestamp)
 
 ## Key commits
 - ndndSIM `7e000e0`: added `NdndSimGetConvergenceMetric()` (phase-aware, sums forwarder_pet or forwarder_fib)

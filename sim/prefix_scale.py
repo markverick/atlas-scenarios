@@ -215,9 +215,7 @@ def main(argv=None):
                         help="Gap in ms between successive edge-node prefix announcements "
                              "(0 = all nodes announce simultaneously, default: 0)")
     parser.add_argument("--window", type=float, default=40.0,
-                        help="Maximum simulation duration in seconds (default: 40). "
-                             "Stage-2 runs (--snap-import with prefixes) stop early "
-                             "once prefix propagation converges.")
+                        help="Maximum simulation duration in seconds (default: 40).")
     parser.add_argument("--out", default="results/sim_prefix_scale",
                         help="Output directory (default: results/sim_prefix_scale)")
     parser.add_argument("--cores", type=int, default=0,
@@ -246,25 +244,6 @@ def main(argv=None):
         help=(
             "Set prefix_egre_state_replicate=false on edge nodes so remote "
             "prefix-egress state is not replicated into PET"
-        ),
-    )
-    parser.add_argument(
-        "--snap-export",
-        default=None,
-        metavar="PATH",
-        help=(
-            "Export DV routing state snapshot to PATH after routing converges. "
-            "Useful for Stage 1 of a 3-stage pipeline (use with --prefix-counts 0)."
-        ),
-    )
-    parser.add_argument(
-        "--snap-import",
-        default=None,
-        metavar="PATH",
-        help=(
-            "Import DV routing state snapshot from PATH before the simulation "
-            "starts, skipping DV convergence wait. "
-            "Useful for Stage 2/3 of a 3-stage pipeline."
         ),
     )
     parser.add_argument(
@@ -358,20 +337,6 @@ def main(argv=None):
                     f"\n=== Prefix scale: topology {args.topology}, phase {phase}, "
                     f"prefixes {prefix_count}, trial {trial} ==="
                 )
-                # SVS-delivery-silence checker: stop once no PES SVS delivery
-                # has occurred for stableWindow seconds.  Unified for both phases
-                # and all prefix counts.  Default = 5 × adv_interval + 0.2 s,
-                # matching the empirical working value for rocketfuel topologies.
-                stable_window: float | None = None
-                if args.conv_window is not None and not args.snap_import:
-                    # Explicit override for stage-1 (no snap-import).
-                    stable_window = args.conv_window
-                elif args.snap_import:
-                    adv_ms = args.adv_interval if args.adv_interval > 0 else 1000
-                    if args.conv_window is not None:
-                        stable_window = args.conv_window
-                    else:
-                        stable_window = adv_ms / 1000.0 * 5 + 0.2
                 run_prefix_scale_scenario(
                     ns3_dir,
                     topo=topo_rel,
@@ -386,9 +351,7 @@ def main(argv=None):
                     core_dv_config=core_dv_config,
                     edge_dv_config=edge_dv_config,
                     num_prefixes=prefix_count,
-                    export_snap=args.snap_export,
-                    import_snap=args.snap_import,
-                    stable_window=stable_window,
+                    stable_window=args.conv_window,
                     announce_gap_ms=args.announce_gap,
                     run_log=run_log,
                 )

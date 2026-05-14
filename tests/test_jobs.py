@@ -189,15 +189,19 @@ def test_core_edge_prefix_scale_queue_renders_plots_as_user():
     context, _ = build_run_context(path, spec, state, selector=selector, stem=queue_stem(path))
     jobs = load_jobs(path, context)
 
-    assert len(jobs) == 16
-    assert jobs[0]["name"] == "build twophase and onephase"
+    # Fresh runs: build + (twophase+onephase) per prefix count + render
+    assert len(jobs) == 14
+    assert jobs[0]["name"] == "build"
     assert jobs[0]["cmd"] == "./run.sh build && ./run.sh --env onephase build"
-    assert jobs[1]["name"].startswith("stage1 [twophase]")
-    assert "--snap-export" in jobs[1]["cmd"]
-    assert "--snap-import" not in jobs[1]["cmd"]
+    # p=0 twophase job
+    assert jobs[1]["name"] == "p=0 twophase"
     assert "--core-disable-prefix-egress-replication" in jobs[1]["cmd"]
-    assert jobs[2]["name"].startswith("stage1 [onephase]")
-    assert "--snap-export" in jobs[2]["cmd"]
+    assert "--snap-export" not in jobs[1]["cmd"]
+    assert "--snap-import" not in jobs[1]["cmd"]
+    # p=0 onephase job
+    assert jobs[2]["name"] == "p=0 onephase"
+    assert "--snap-export" not in jobs[2]["cmd"]
+    assert "--snap-import" not in jobs[2]["cmd"]
     assert jobs[-1]["cmd"] == f"./run.sh as-user python3 experiments/prefix_scale/plot.py --source-label sim --data {context['run_root']}"
 
 
@@ -217,16 +221,19 @@ def test_core_edge_prefix_scale_0to50_by10_queue_runs_both_phases():
     context, _ = build_run_context(path, spec, state, selector=selector, stem=queue_stem(path))
     jobs = load_jobs(path, context)
 
-    assert len(jobs) == 16
-    assert jobs[0]["name"] == "build twophase and onephase"
-    assert jobs[1]["name"].startswith("stage1 [twophase]")
-    assert "--snap-export" in jobs[1]["cmd"]
+    # Fresh runs: build + (twophase+onephase) per prefix count + render
+    assert len(jobs) == 14
+    assert jobs[0]["name"] == "build"
+    assert jobs[1]["name"] == "p=0 twophase"
     assert "--core-disable-prefix-egress-replication" in jobs[1]["cmd"]
-    assert jobs[2]["name"].startswith("stage1 [onephase]")
-    assert "--snap-export" in jobs[2]["cmd"]
-    # all stage2 jobs have snap-import
-    for job in jobs[3:-1]:
-        assert "--snap-import" in job["cmd"]
+    assert "--snap-export" not in jobs[1]["cmd"]
+    assert "--snap-import" not in jobs[1]["cmd"]
+    assert jobs[2]["name"] == "p=0 onephase"
+    assert "--snap-export" not in jobs[2]["cmd"]
+    assert "--snap-import" not in jobs[2]["cmd"]
+    # No snap-import in any job
+    for job in jobs:
+        assert "--snap-import" not in job["cmd"]
     assert jobs[-1]["cmd"] == f"./run.sh as-user python3 experiments/prefix_scale/plot.py --source-label sim --data {context['run_root']}"
 
 
@@ -246,13 +253,15 @@ def test_rocketfuel_prefix_scale_queue_runs_both_phases():
     context, _ = build_run_context(path, spec, state, selector=selector, stem=queue_stem(path))
     jobs = load_jobs(path, context)
 
-    assert len(jobs) == 16
-    assert jobs[0]["name"] == "build twophase and onephase"
-    assert jobs[1]["name"].startswith("stage1 [twophase]")
+    # Fresh runs: build + (twophase+onephase) per prefix count + render
+    assert len(jobs) == 14
+    assert jobs[0]["name"] == "build"
+    assert jobs[1]["name"] == "p=0 twophase"
     assert "--topology rocketfuel_4755" in jobs[1]["cmd"]
-    assert "--snap-export" in jobs[1]["cmd"]
     assert "--core-disable-prefix-egress-replication" in jobs[1]["cmd"]
-    assert jobs[2]["name"].startswith("stage1 [onephase]")
+    assert "--snap-export" not in jobs[1]["cmd"]
+    assert "--snap-import" not in jobs[1]["cmd"]
+    assert jobs[2]["name"] == "p=0 onephase"
     assert "--topology rocketfuel_4755" in jobs[2]["cmd"]
     assert jobs[-1]["cmd"] == f"./run.sh as-user python3 experiments/prefix_scale/plot.py --source-label sim --data {context['run_root']}"
 
@@ -273,13 +282,15 @@ def test_large_rocketfuel_prefix_scale_queue_runs_both_phases():
     context, _ = build_run_context(path, spec, state, selector=selector, stem=queue_stem(path))
     jobs = load_jobs(path, context)
 
-    assert len(jobs) == 16
-    assert jobs[0]["name"] == "build twophase and onephase"
-    assert jobs[1]["name"].startswith("stage1 [twophase]")
+    # Fresh runs: build + (twophase+onephase) per prefix count + render
+    assert len(jobs) == 14
+    assert jobs[0]["name"] == "build"
+    assert jobs[1]["name"] == "p=0 twophase"
     assert "--topology rocketfuel_2914" in jobs[1]["cmd"]
-    assert "--snap-export" in jobs[1]["cmd"]
     assert "--core-disable-prefix-egress-replication" in jobs[1]["cmd"]
-    assert jobs[2]["name"].startswith("stage1 [onephase]")
+    assert "--snap-export" not in jobs[1]["cmd"]
+    assert "--snap-import" not in jobs[1]["cmd"]
+    assert jobs[2]["name"] == "p=0 onephase"
     assert "--topology rocketfuel_2914" in jobs[2]["cmd"]
     assert jobs[-1]["cmd"] == f"./run.sh as-user python3 experiments/prefix_scale/plot.py --source-label sim --data {context['run_root']}"
 

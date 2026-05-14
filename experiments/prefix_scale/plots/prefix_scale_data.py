@@ -32,22 +32,6 @@ def load_churn_csv(path):
     return _load_csv(path)
 
 
-def _find_stage_dirs(data_dir):
-    """Return sorted list of (path, name) for all stage* subdirs that contain runs.csv."""
-    try:
-        entries = sorted(os.listdir(data_dir))
-    except OSError:
-        return []
-    result = []
-    for name in entries:
-        if not name.startswith("stage"):
-            continue
-        path = os.path.join(data_dir, name)
-        if os.path.isdir(path) and os.path.exists(os.path.join(path, "runs.csv")):
-            result.append((path, name))
-    return result
-
-
 def _has_classic_result_layout(data_dir):
     """True if data_dir has the classic {phase}/ subdirectory layout."""
     for phase in ("onephase", "twophase"):
@@ -61,47 +45,28 @@ def _has_classic_result_layout(data_dir):
     return True
 
 
-def _has_3stage_result_layout(data_dir):
-    """True if data_dir has the 3-stage layout: stage*/ subdirs with required CSVs."""
-    stage_dirs = _find_stage_dirs(data_dir)
-    if not stage_dirs:
+def _has_prefix_phase_layout(data_dir):
+    """True if data_dir has the prefix-phase layout (e.g., p0/onephase/, p0/twophase/)."""
+    if not os.path.isdir(data_dir):
         return False
-    return all(
-        os.path.exists(os.path.join(path, "role_table_summary.csv"))
-        for path, _ in stage_dirs
-    )
+    # Find p* directories
+    prefix_dirs = [d for d in os.listdir(data_dir) if d.startswith("p") and os.path.isdir(os.path.join(data_dir, d))]
+    if not prefix_dirs:
+        return False
+    # Check that at least one prefix dir has both phase subdirs with runs.csv
+    for prefix_dir in prefix_dirs[:3]:
+        for phase in ("onephase", "twophase"):
+            phase_dir = os.path.join(data_dir, prefix_dir, phase)
+            if not os.path.isdir(phase_dir):
+                return False
+            if not os.path.exists(os.path.join(phase_dir, "runs.csv")):
+                return False
+        return True
+    return False
 
 
 def has_core_edge_result_layout(data_dir):
-    return _has_classic_result_layout(data_dir) or _has_3stage_result_layout(data_dir)
-
-
-def _load_3stage_results(data_dir):
-    """Aggregate 3-stage results from stage* subdirs into a phase-keyed dict.
-
-    Always includes both 'onephase' and 'twophase' keys so callers don't need
-    to guard against missing phases.  Phases with no data will have empty lists.
-    """
-    by_phase = {
-        "onephase": {"runs": [], "role_table_summary": []},
-        "twophase": {"runs": [], "role_table_summary": []},
-    }
-    for stage_dir, stage_name in _find_stage_dirs(data_dir):
-        # Skip stage1: it's the pre-prefix baseline, not a measurement point.
-        # stage2-p* directories are the actual measurement stages.
-        if stage_name.startswith("stage1"):
-            continue
-        runs = _load_csv(os.path.join(stage_dir, "runs.csv"))
-        role_summary = _load_csv(os.path.join(stage_dir, "role_table_summary.csv"))
-        for row in runs:
-            phase = row.get("phase", "")
-            if phase in by_phase:
-                by_phase[phase]["runs"].append(row)
-        for row in role_summary:
-            phase = row.get("phase", "")
-            if phase in by_phase:
-                by_phase[phase]["role_table_summary"].append(row)
-    return by_phase
+    return _has_classic_result_layout(data_dir) or _has_prefix_phase_layout(data_dir)
 
 
 def load_core_edge_results(data_dir):
@@ -115,34 +80,54 @@ def load_core_edge_results(data_dir):
             }
         return results
 
-    if _has_3stage_result_layout(data_dir):
-        return _load_3stage_results(data_dir)
+    if _has_prefix_phase_layout(data_dir):
+        # Prefix-phase layout: aggregate from p*/{phase}/ directories
+        results = {"onephase": {"runs": [], "role_table_summary": []},
+                   "twophase": {"runs": [], "role_table_summary": []}}
+        prefix_dirs = sorted([d for d in os.listdir(data_dir)
+                            if d.startswith("p") and os.path.isdir(os.path.join(data_dir, d))])
+        for prefix_dir in prefix_dirs:
+            for phase in ("onephase", "twophase"):
+                phase_dir = os.path.join(data_dir, prefix_dir, phase)
+                runs_path = os.path.join(phase_dir, "runs.csv")
+                if os.path.exists(runs_path):
+                    results[phase]["runs"].extend(_load_csv(runs_path))
+                role_path = os.path.join(phase_dir, "role_table_summary.csv")
+                if os.path.exists(role_path):
+                    results[phase]["role_table_summary"].extend(_load_csv(role_path))
+        return results
 
-    raise FileNotFoundError(f"core/edge result layout not found under {data_dir}")
+    raise FileNotFoundError(f"result layout not found under {data_dir}")
 
 
 def detect_role_table_topology(data_dir):
     topologies = set()
+
+    def check_metadata(path):
+        if os.path.exists(path):
+            with open(path) as handle:
+                metadata = json.load(handle)
+            return metadata.get("topology")
+        return None
+
     # Classic layout: check {phase}/metadata.json
-    for phase in ("onephase", "twophase"):
-        metadata_path = os.path.join(data_dir, phase, "metadata.json")
-        if not os.path.exists(metadata_path):
-            continue
-        with open(metadata_path) as handle:
-            metadata = json.load(handle)
-        topology = metadata.get("topology")
-        if topology:
-            topologies.add(topology)
-    # 3-stage layout: check stage*/metadata.json
-    for stage_dir, _ in _find_stage_dirs(data_dir):
-        metadata_path = os.path.join(stage_dir, "metadata.json")
-        if not os.path.exists(metadata_path):
-            continue
-        with open(metadata_path) as handle:
-            metadata = json.load(handle)
-        topology = metadata.get("topology")
-        if topology:
-            topologies.add(topology)
+    if _has_classic_result_layout(data_dir):
+        for phase in ("onephase", "twophase"):
+            topology = check_metadata(os.path.join(data_dir, phase, "metadata.json"))
+            if topology:
+                topologies.add(topology)
+    # Prefix-phase layout: check p*/{phase}/metadata.json
+    elif _has_prefix_phase_layout(data_dir):
+        prefix_dirs = sorted([d for d in os.listdir(data_dir)
+                            if d.startswith("p") and os.path.isdir(os.path.join(data_dir, d))])
+        for prefix_dir in prefix_dirs:
+            for phase in ("onephase", "twophase"):
+                topology = check_metadata(os.path.join(data_dir, prefix_dir, phase, "metadata.json"))
+                if topology:
+                    topologies.add(topology)
+                    break  # Only need one per prefix
+            if topologies:
+                break  # Only need one prefix dir
 
     if len(topologies) > 1:
         raise ValueError(f"conflicting topology metadata under {data_dir}: {sorted(topologies)}")
@@ -193,10 +178,6 @@ def load_core_edge_link_trace_summaries(data_dir):
     # Classic layout: scan {data_dir}/{phase}/
     for phase in results:
         _scan_dir_for_traces(os.path.join(data_dir, phase))
-
-    # 3-stage layout: scan stage*/ dirs directly
-    for stage_dir, _ in _find_stage_dirs(data_dir):
-        _scan_dir_for_traces(stage_dir)
 
     return results
 

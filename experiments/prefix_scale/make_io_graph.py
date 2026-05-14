@@ -12,13 +12,14 @@ import matplotlib.ticker as ticker
 import numpy as np
 
 
-BASE  = 'experiments/prefix_scale/results/rocketfuel_1755_bothphase_3stage/20260503-231930'
-P10   = 'experiments/prefix_scale/results/rocketfuel_1755_onephase_pipeline10_3stage/20260504-032110'
-BW100 = 'experiments/prefix_scale/results/rocketfuel_1755_onephase_bw100_3stage/20260504-022029'
+# TODO: update these to point at fresh-run result directories
+BASE  = 'experiments/prefix_scale/results/rocketfuel_1755_bothphase/{timestamp}'
+P10   = 'experiments/prefix_scale/results/rocketfuel_1755_onephase_pipeline10/{timestamp}'
+BW100 = 'experiments/prefix_scale/results/rocketfuel_1755_onephase_bw100/{timestamp}'
 
 # Use the most recent completed gap10 run (any timestamp under that dir)
 def _latest_gap10_p2000():
-    pattern = 'experiments/prefix_scale/results/rocketfuel_1755_onephase_gap10_3stage/*/stage2-p2000-gap10/link-trace-onephase-p2000-t1.csv'
+    pattern = 'experiments/prefix_scale/results/rocketfuel_1755_onephase_gap10/*/p2000/link-trace-onephase-p2000-t1.csv'
     hits = sorted(glob.glob(pattern))
     return hits[-1] if hits else None
 
@@ -43,19 +44,19 @@ NUM_LINKS = 381  # rocketfuel_1755 link count
 FILES = [
     (
         'Baseline  gap=0, bw=10 Mbps  →  33 anomalous nodes',
-        BASE  + '/stage2-p2000-onephase/link-trace-onephase-p2000-t1.csv',
+        BASE  + '/p2000-onephase/link-trace-onephase-p2000-t1.csv',
         False,
         10,
     ),
     (
         'SVS pipeline=10  bw=10 Mbps  →  10 anomalous nodes',
-        P10   + '/stage2-p2000/link-trace-onephase-p2000-t1.csv',
+        P10   + '/p2000/link-trace-onephase-p2000-t1.csv',
         False,
         10,
     ),
     (
         'bw=100 Mbps, gap=0  →  0 anomalous nodes ✓',
-        BW100 + '/stage2-p2000-onephase/link-trace-onephase-p2000-t1.csv',
+        BW100 + '/p2000-onephase/link-trace-onephase-p2000-t1.csv',
         False,
         100,
     ),

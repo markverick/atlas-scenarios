@@ -474,23 +474,17 @@ def run_prefix_scale_scenario(ns3_dir, *, topo, edge_nodes, sim_time=40.0,
                               table_trace=None, drop_trace=None, dv_config=None,
                               core_dv_config=None, edge_dv_config=None,
                               network="/minindn", num_prefixes=0,
-                              export_snap=None, import_snap=None,
                               stable_window=None,
                               announce_gap_ms=0.0,
                               run_log=None):
     """Build ns-3 and run the generic prefix-scale table scenario.
 
     Args:
-        export_snap:    If set, export DV routing state to this JSON file after
-                        routing convergence (Stage 1 use case).
-        import_snap:    If set, import DV routing state from this JSON file before
-                        the simulation starts (Stage 2/3 use case).
-        stable_window:      Stability window in seconds for the event-driven prefix
-                            convergence checker (Stage 2 with import_snap + num_prefixes).
-                            Must be >= 2 * DV adv_interval to avoid stopping during
-                            inter-advertisement gaps.  Defaults to 2.0s if not set.
-        announce_gap_ms:    Gap in milliseconds between successive edge-node prefix
-                            announcements.  0 (default) = all nodes announce at once.
+        stable_window:  Stability window in seconds for the event-driven prefix
+                        convergence checker.  Must be >= 2 * DV adv_interval to avoid
+                        stopping during inter-advertisement gaps.
+        announce_gap_ms: Gap in milliseconds between successive edge-node prefix
+                        announcements.  0 (default) = all nodes announce at once.
     """
     if not edge_nodes:
         raise ValueError("edge_nodes must not be empty")
@@ -527,10 +521,6 @@ def run_prefix_scale_scenario(ns3_dir, *, topo, edge_nodes, sim_time=40.0,
         run_args.append(
             f"--edgeDvConfig={json.dumps(edge_dv_config, separators=(',', ':'))}"
         )
-    if export_snap:
-        run_args.append(f"--exportSnap={os.path.abspath(export_snap)}")
-    if import_snap:
-        run_args.append(f"--importSnap={os.path.abspath(import_snap)}")
     if stable_window is not None:
         run_args.append(f"--stableWindow={stable_window}")
     if announce_gap_ms:
@@ -547,9 +537,7 @@ def run_prefix_scale_scenario(ns3_dir, *, topo, edge_nodes, sim_time=40.0,
         else:
             try:
                 val = parse_conv_trace(conv_trace)
-                if val < 0 and not import_snap:
-                    # When importing a snapshot routing is pre-converged; -1 is
-                    # expected and not an error.
+                if val < 0:
                     errors.append(
                         f"conv_trace '{conv_trace}' reports convergence=-1 -- "
                         "DV routing never converged during the simulation"
@@ -580,12 +568,6 @@ def run_prefix_scale_scenario(ns3_dir, *, topo, edge_nodes, sim_time=40.0,
                     f"table_trace '{table_trace}' has no data rows -- "
                     "per-node table metrics were not recorded"
                 )
-
-    if export_snap:
-        if not os.path.isfile(os.path.abspath(export_snap)):
-            errors.append(
-                f"export_snap '{export_snap}' was not created by the simulation"
-            )
 
     if errors:
         raise RuntimeError(
