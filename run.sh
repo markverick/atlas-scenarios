@@ -13,6 +13,8 @@ set -eo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPS_DIR="$REPO_DIR/deps"
 NS3_DIR="$DEPS_DIR/ns-3"
+PINNED_GO_VERSION="1.24.3"
+PINNED_GO_BIN="$DEPS_DIR/gopath/pkg/mod/golang.org/toolchain@v0.0.1-go${PINNED_GO_VERSION}.linux-amd64/bin/go"
 
 RUN_UID="$(id -u)"
 
@@ -65,11 +67,13 @@ build_sim_run_cmd() {
     fi
 }
 
-# Put local binaries + Go in PATH
-if [[ -x /usr/local/go/bin/go ]]; then
-    export PATH="/usr/local/go/bin:$PATH"
+# Put local binaries + the setup-pinned Go toolchain in PATH.
+if [[ -x "$PINNED_GO_BIN" ]]; then
+    export PATH="$(dirname "$PINNED_GO_BIN"):$DEPS_DIR/bin:$DEPS_DIR/gopath/bin:$PATH"
+    export GOTOOLCHAIN=local
+else
+    export PATH="$DEPS_DIR/bin:$DEPS_DIR/gopath/bin:$PATH"
 fi
-export PATH="$DEPS_DIR/bin:$DEPS_DIR/gopath/bin:$PATH"
 export PYTHONPATH="$REPO_DIR:$PYTHONPATH"
 
 NDND_SRC="$DEPS_DIR/ndnd-daemon"
@@ -125,10 +129,13 @@ sync_churn_scenario(ns3_dir)
 
 # Locate the Go 1.24 toolchain (downloaded by setup into GOPATH).
 find_go_bin() {
-    local go_bin
-    go_bin="$(ls "$GOPATH_DIR"/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.*.linux-amd64/bin/go 2>/dev/null | sort -V | tail -1)"
+    local go_bin="$PINNED_GO_BIN"
+    if [[ ! -x "$go_bin" ]]; then
+        go_bin="$(ls "$GOPATH_DIR"/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.*.linux-amd64/bin/go 2>/dev/null | sort -V | tail -1)"
+    fi
     if [[ -z "$go_bin" || ! -x "$go_bin" ]]; then
-        go_bin="$(command -v go)"   # fallback to system Go
+        echo "ERROR: pinned Go $PINNED_GO_VERSION not found. Run ./setup.sh first." >&2
+        return 1
     fi
     echo "$go_bin"
 }

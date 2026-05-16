@@ -134,6 +134,11 @@ def detect_role_table_topology(data_dir):
     if len(topologies) == 1:
         return next(iter(topologies))
 
+    base = os.path.basename(os.path.abspath(data_dir))
+    for topology in ("core_edge", "rocketfuel_4755", "rocketfuel_1755", "rocketfuel_2914"):
+        if topology in base:
+            return topology
+
     raise ValueError(f"no topology field found in any metadata.json under {data_dir}")
 
 

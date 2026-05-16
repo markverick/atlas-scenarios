@@ -194,8 +194,10 @@ def select_queue_interactively(catalog):
     print(f"\n  {experiment['experiment']} queues:\n")
     for index, queue in enumerate(experiment["queues"], start=1):
         meta = _queue_meta_bits(queue)
-        suffix = f"  [{', '.join(meta)}]" if meta else ""
+        suffix = f"  {'  '.join(meta)}" if meta else ""
         print(f"  {index:>2}. {_queue_display_name(queue)}{suffix}")
+        if queue.get("description"):
+            print(f"      {queue['description']}")
 
     while True:
         queue_choice = _interactive_input("\nQueue number (q=cancel): ").strip()

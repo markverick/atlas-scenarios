@@ -51,6 +51,8 @@ def _resolve_source_label(args):
         if label == "emu":
             return "Emulation"
         return label
+    if has_core_edge_result_layout(args.data):
+        return "Simulation"
     return source_label_from_dir(args.data)
 
 
@@ -107,7 +109,7 @@ def main(argv=None):
         plot_core_edge_topology(out_dir, topology_key=topology_key)
         plot_core_edge_run_comparison(results_by_phase, out_dir, source_label, topology_key=topology_key)
         plot_core_edge_control_breakdown(args.data, out_dir, source_label, topology_key=topology_key)
-        # plot_core_edge_prefix_state_by_role(results_by_phase, out_dir, source_label, topology_key=topology_key)
+        plot_core_edge_prefix_state_by_role(results_by_phase, out_dir, source_label, topology_key=topology_key)
         plot_core_edge_forwarding_delta_by_role(results_by_phase, out_dir, source_label, topology_key=topology_key)
         plot_core_edge_table_average_by_role(results_by_phase, out_dir, source_label, topology_key=topology_key)
         plot_core_edge_table_average_by_role_reduced(results_by_phase, out_dir, source_label, topology_key=topology_key)

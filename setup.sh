@@ -2,7 +2,6 @@
 # setup.sh -- Build all dependencies from source inside deps/
 #
 # Prerequisites (must be installed system-wide):
-#   - go 1.22+    (https://go.dev/dl/)
 #   - gcc / g++   (11+)
 #   - cmake       (3.16+)
 #   - python3     + pip
@@ -17,36 +16,59 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPS_DIR="$REPO_DIR/deps"
 BIN_DIR="$DEPS_DIR/bin"
 
-# Prefer /usr/local/go if available (many systems have a newer Go there)
-if [[ -x /usr/local/go/bin/go ]]; then
-    export PATH="/usr/local/go/bin:$PATH"
-fi
+PINNED_GO_VERSION="1.24.3"
+PINNED_GO_SHA256="3333f6ea53afa971e9078895eaa4ac7204a8c6b5c68c10e6bc9a33e8e391bdd8"
 
 export GOPATH="$DEPS_DIR/gopath"
-export PATH="$BIN_DIR:$GOPATH/bin:$PATH"
+PINNED_GO_DIR="$GOPATH/pkg/mod/golang.org/toolchain@v0.0.1-go${PINNED_GO_VERSION}.linux-amd64"
+PINNED_GO_BIN="$PINNED_GO_DIR/bin/go"
+export PATH="$PINNED_GO_DIR/bin:$BIN_DIR:$GOPATH/bin:$PATH"
 export CGO_ENABLED=1
+export GOTOOLCHAIN=local
 
 info() { echo -e "\n\033[1;34m==>\033[0m \033[1m$*\033[0m"; }
 ok()   { echo -e "    \033[1;32mOK\033[0m $*"; }
 err()  { echo -e "    \033[1;31mFAIL\033[0m $*" >&2; }
 
+install_pinned_go() {
+    mkdir -p "$GOPATH/pkg/mod/golang.org"
+
+    if [[ -x "$PINNED_GO_BIN" ]]; then
+        local found_version
+        found_version="$("$PINNED_GO_BIN" version | awk '{print $3}')"
+        if [[ "$found_version" == "go$PINNED_GO_VERSION" ]]; then
+            ok "Pinned Go already installed: $("$PINNED_GO_BIN" version)"
+            return
+        fi
+        err "Unexpected Go at $PINNED_GO_BIN: $found_version"
+        rm -rf "$PINNED_GO_DIR"
+    fi
+
+    info "Installing pinned Go $PINNED_GO_VERSION"
+    local archive="$DEPS_DIR/go${PINNED_GO_VERSION}.linux-amd64.tar.gz"
+    local url="https://go.dev/dl/go${PINNED_GO_VERSION}.linux-amd64.tar.gz"
+    if [[ ! -f "$archive" ]]; then
+        wget -O "$archive" "$url"
+    fi
+
+    echo "${PINNED_GO_SHA256}  ${archive}" | sha256sum -c -
+    rm -rf "$PINNED_GO_DIR"
+    mkdir -p "$PINNED_GO_DIR"
+    tar -C "$PINNED_GO_DIR" --strip-components=1 -xzf "$archive"
+    ok "Pinned Go installed: $("$PINNED_GO_BIN" version)"
+}
+
 # -- Preflight checks --
 info "Checking prerequisites"
 MISSING=()
-for cmd in go gcc g++ cmake git python3 sudo; do
+for cmd in gcc g++ cmake git python3 sudo sha256sum tar; do
     command -v "$cmd" &>/dev/null || MISSING+=("$cmd")
 done
 if [[ ${#MISSING[@]} -gt 0 ]]; then
     err "Missing: ${MISSING[*]}"
     exit 1
 fi
-
-GO_VER=$(go version | grep -oP '\d+\.\d+' | head -1)
-if [[ "$(printf '%s\n' "1.22" "$GO_VER" | sort -V | head -1)" != "1.22" ]]; then
-    err "Go >= 1.22 required (found $GO_VER)"
-    exit 1
-fi
-ok "go $GO_VER, $(gcc --version | head -1), $(cmake --version | head -1)"
+ok "$(gcc --version | head -1), $(cmake --version | head -1)"
 
 mkdir -p "$DEPS_DIR" "$BIN_DIR"
 
@@ -62,6 +84,9 @@ sudo apt-get install -y --no-install-recommends \
     wget ca-certificates \
     cgroup-tools 2>/dev/null || true
 ok "System packages"
+
+install_pinned_go
+ok "Using Go toolchain: $("$PINNED_GO_BIN" version) at $PINNED_GO_BIN"
 
 # -- 2. Mininet from source --
 info "Building Mininet from source"
@@ -170,12 +195,7 @@ NDND_SRC="$NDND_SRC_TMP"
 TRANSFORMED_NDND="$DEPS_DIR/ns-3/contrib/ndndSIM/go/.transformed-ndnd-twophase"
 info "Building NDNd from local source ($NDND_SRC)"
 
-# Find Go toolchain that satisfies go.mod (go 1.24 / toolchain go1.24.x).
-# The cmake step auto-downloads it into GOPATH via the go toolchain directive.
-GO_BIN="$(ls "$GOPATH"/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.*.linux-amd64/bin/go 2>/dev/null | sort -V | tail -1)"
-if [[ -z "$GO_BIN" || ! -x "$GO_BIN" ]]; then
-    GO_BIN="$(command -v go)"
-fi
+GO_BIN="$PINNED_GO_BIN"
 
 (cd "$NDND_SRC" && GOPATH="$GOPATH" GOFLAGS=-mod=mod "$GO_BIN" build -o "$BIN_DIR/ndnd" ./cmd/ndnd/)
 sudo cp "$BIN_DIR/ndnd" /usr/local/bin/

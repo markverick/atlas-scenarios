@@ -277,7 +277,7 @@ def main(argv=None):
         prefer_active = args.command in {"status", "log", "attach", "stop"}
         active_only = args.command in {"attach", "stop"}
         queue_path = resolve_queue_path(getattr(args, "queue", None), prefer_active=prefer_active, active_only=active_only)
-        queue_selector = selector_from_path(queue_path)
+        queue_selector = getattr(args, "queue", None) or selector_from_path(queue_path)
 
         # Escalate to root for emu queues (MiniNDN requires root for network namespaces)
         if os.geteuid() != 0 and args.command in {"start", "run", "attach", "stop", "log"} and queue_requires_sudo(queue_path):
