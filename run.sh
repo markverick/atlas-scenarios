@@ -15,6 +15,8 @@ DEPS_DIR="$REPO_DIR/deps"
 NS3_DIR="$DEPS_DIR/ns-3"
 PINNED_GO_VERSION="1.24.3"
 PINNED_GO_BIN="$DEPS_DIR/gopath/pkg/mod/golang.org/toolchain@v0.0.1-go${PINNED_GO_VERSION}.linux-amd64/bin/go"
+TWOPHASE_NDND_HASH="a841cc2"
+ONEPHASE_NDND_HASH="51774b8"
 
 RUN_UID="$(id -u)"
 
@@ -140,15 +142,24 @@ find_go_bin() {
     echo "$go_bin"
 }
 
-# Build the ndnd daemon from the same Go source that ndndSIM uses.
+# Build the twophase ndnd daemon from pristine ndnd@dv2 at the pinned commit.
 # Called automatically before every emu run so the binary can never be stale.
 build_ndnd() {
     local go_bin
     go_bin="$(find_go_bin)"
     local out="$DEPS_DIR/bin/ndnd"
-    echo "[emu] Building ndnd daemon from $NDND_SRC (go: $go_bin)"
+    local work_dir
+    if ! git -C "$NDND_SRC" cat-file -e "$TWOPHASE_NDND_HASH^{commit}" 2>/dev/null; then
+        echo "ERROR: ndnd commit $TWOPHASE_NDND_HASH not found in $NDND_SRC. Run ./setup.sh first." >&2
+        exit 1
+    fi
+    work_dir="$(run_as_atlas_user mktemp -d)"
+    echo "[emu] Building ndnd daemon from $NDND_SRC at $TWOPHASE_NDND_HASH (go: $go_bin)"
     mkdir -p "$DEPS_DIR/bin"
-    (cd "$NDND_SRC" && run_as_atlas_user env "GOPATH=$GOPATH_DIR" "GOFLAGS=-mod=mod" "$go_bin" build -buildvcs=false -o "$out" ./cmd/ndnd/)
+    run_as_atlas_user git -C "$NDND_SRC" worktree add --detach "$work_dir" "$TWOPHASE_NDND_HASH"
+    (cd "$work_dir" && run_as_atlas_user env "GOWORK=off" "GOPATH=$GOPATH_DIR" "GOFLAGS=-mod=mod" "$go_bin" build -buildvcs=false -o "$out" ./cmd/ndnd/)
+    run_as_atlas_user git -C "$NDND_SRC" worktree remove --force "$work_dir" 2>/dev/null || true
+    run_as_atlas_user rm -rf "$work_dir" 2>/dev/null || true
     # Kill any leftover ndnd processes so the binary isn't "text file busy"
     # Retry until file is free (processes may respawn if emulation is still running)
     for _ in $(seq 1 30); do
@@ -170,7 +181,7 @@ build_ndnd() {
 build_ndnd_onephase() {
     local go_bin
     go_bin="$(find_go_bin)"
-    local hash="51774b8"
+    local hash="$ONEPHASE_NDND_HASH"
     local out="$DEPS_DIR/bin/ndnd-onephase"
     local work_dir
     # Create the temp dir as atlas user so git worktree entries are also

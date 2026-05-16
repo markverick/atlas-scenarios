@@ -18,6 +18,8 @@ BIN_DIR="$DEPS_DIR/bin"
 
 PINNED_GO_VERSION="1.24.3"
 PINNED_GO_SHA256="3333f6ea53afa971e9078895eaa4ac7204a8c6b5c68c10e6bc9a33e8e391bdd8"
+TWOPHASE_NDND_HASH="a841cc2"
+NDNDSIM_PATCH="$REPO_DIR/patches/ndndsim-dv2-a841cc2.patch"
 
 export GOPATH="$DEPS_DIR/gopath"
 PINNED_GO_DIR="$GOPATH/pkg/mod/golang.org/toolchain@v0.0.1-go${PINNED_GO_VERSION}.linux-amd64"
@@ -127,6 +129,15 @@ mkdir -p contrib
 if [[ ! -d contrib/ndndSIM ]]; then
     git clone https://github.com/markverick/ndndSIM.git contrib/ndndSIM
 fi
+if [[ -f "$NDNDSIM_PATCH" ]]; then
+    if git -C contrib/ndndSIM apply --reverse --check "$NDNDSIM_PATCH" &>/dev/null; then
+        ok "ndndSIM dv2 a841cc2 patch already applied"
+    else
+        info "Applying ndndSIM dv2 a841cc2 compatibility patch"
+        git -C contrib/ndndSIM apply "$NDNDSIM_PATCH"
+        ok "ndndSIM patched for ndnd@dv2 a841cc2"
+    fi
+fi
 
 # Install atlas scenarios into ndndSIM examples
 cp "$REPO_DIR/sim/atlas-scenario.cc"         contrib/ndndSIM/examples/ndndsim-atlas-scenario.cc
@@ -181,7 +192,7 @@ cmake --build "$DEPS_DIR/ns-3/cmake-cache-op" -j$(nproc)
 ok "ns-3 + ndndSIM built (onephase) -> $DEPS_DIR/ns-3/build-op"
 
 # -- 6. NDNd binaries from local ndndSIM source --
-# The daemon is built from the pristine upstream ndnd (dv2 branch).
+# The daemon is built from pristine upstream ndnd at the pinned dv2 commit.
 # The traffic tool is built from .transformed-ndnd because cmd/traffic/ is
 # added by the overlay (it does not exist in pristine upstream ndnd).
 # By the time this step runs ./ns3 build has already invoked go/build.sh, so
@@ -191,15 +202,23 @@ if [[ ! -d "$NDND_SRC_TMP" ]]; then
     info "Cloning NDNd daemon source"
     git clone --branch dv2 https://github.com/named-data/ndnd.git "$NDND_SRC_TMP"
 fi
+if ! git -C "$NDND_SRC_TMP" cat-file -e "$TWOPHASE_NDND_HASH^{commit}" 2>/dev/null; then
+    info "Fetching NDNd dv2 commit $TWOPHASE_NDND_HASH"
+    git -C "$NDND_SRC_TMP" fetch origin dv2
+fi
 NDND_SRC="$NDND_SRC_TMP"
 TRANSFORMED_NDND="$DEPS_DIR/ns-3/contrib/ndndSIM/go/.transformed-ndnd-twophase"
-info "Building NDNd from local source ($NDND_SRC)"
+info "Building NDNd from local source ($NDND_SRC @ $TWOPHASE_NDND_HASH)"
 
 GO_BIN="$PINNED_GO_BIN"
 
-(cd "$NDND_SRC" && GOPATH="$GOPATH" GOFLAGS=-mod=mod "$GO_BIN" build -o "$BIN_DIR/ndnd" ./cmd/ndnd/)
+NDND_BUILD_WORKTREE="$(mktemp -d)"
+git -C "$NDND_SRC" worktree add --detach "$NDND_BUILD_WORKTREE" "$TWOPHASE_NDND_HASH"
+(cd "$NDND_BUILD_WORKTREE" && GOPATH="$GOPATH" GOWORK=off GOFLAGS=-mod=mod "$GO_BIN" build -buildvcs=false -o "$BIN_DIR/ndnd" ./cmd/ndnd/)
+git -C "$NDND_SRC" worktree remove --force "$NDND_BUILD_WORKTREE" 2>/dev/null || true
+rm -rf "$NDND_BUILD_WORKTREE" 2>/dev/null || true
 sudo cp "$BIN_DIR/ndnd" /usr/local/bin/
-ok "NDNd daemon -> $BIN_DIR/ndnd (from pristine ndnd)"
+ok "NDNd daemon -> $BIN_DIR/ndnd (from pristine ndnd@$TWOPHASE_NDND_HASH)"
 
 # The traffic tool lives in cmd/traffic/ which is added by the overlay.
 # Build from .transformed-ndnd with GOWORK=off so we use the module's own go.mod.

@@ -158,7 +158,7 @@ DV advertisement received → updateRib() → updateFib()
 
 ### Two ndnd variants
 - `onephase`: `ndnd@main` commit `51774b8` — prefixes tracked in `forwarder_fib`. FIB installed via nfdc RIB manager.
-- `twophase`: `ndnd@dv2` commit `bbe06d2` — prefixes tracked in `forwarder_pet` and `dv_prefix_egress_state`. PET updated synchronously with DV prefix events.
+- `twophase`: `ndnd@dv2` commit `a841cc2` — prefixes tracked in `forwarder_pet` and DV prefix state. PET updated synchronously with DV prefix events.
 - Phase auto-detected in `NdndSimGetConvergenceMetric()` by checking if `forwarder_pet` appears in `SimTableMetrics()`
 
 ---

@@ -1,0 +1,1034 @@
+diff --git a/go/build.sh b/go/build.sh
+index 4145234..664553f 100755
+--- a/go/build.sh
++++ b/go/build.sh
+@@ -41,11 +41,9 @@ if [[ "$NDND_PHASE" == "onephase" ]]; then
+     NDND_GIT_BRANCH="${NDND_GIT_BRANCH:-main}"
+ else
+     # named-data/ndnd@dv2 — pristine upstream dv2 commit.
+-    # bbe06d2: "dv: move pes sync under localhop" — fixes PES SVS broadcast
+-    # bug where Interests forwarded by FIB after delivery to local faces
+-    # caused duplicate/looped traffic. PES SVS prefix now /localhop/<net>/...
+-    # and forwarder early-returns for /localhop multicast after local delivery.
+-    NDND_HASH="${NDND_HASH:-bbe06d2}"
++    # a841cc2: includes the PES→PSD rename, BIER multicast forwarding fixes,
++    # and the RIB snapshot race fix for PSD prefix updates.
++    NDND_HASH="${NDND_HASH:-a841cc2}"
+     NDND_GIT_BRANCH="${NDND_GIT_BRANCH:-dv2}"
+ fi
+ 
+diff --git a/go/ndndsim/hooks.go b/go/ndndsim/hooks.go
+index 9fb53d1..595be54 100644
+--- a/go/ndndsim/hooks.go
++++ b/go/ndndsim/hooks.go
+@@ -2,12 +2,12 @@
+ //
+ // At build time the ndndSIM transformer rewrites ndnd source:
+ //
+-//   go f()              →  ndndsim.Go(func() { f() })
+-//   time.Now()          →  ndndsim.Now()
+-//   time.AfterFunc(d,f) →  ndndsim.AfterFunc(d, f)
+-//   time.Sleep(d)       →  ndndsim.Sleep(d)
+-//   table.FibStrategyTable → simFib()  (package-local, from overlay)
+-//   table.Pet              → simPet()  (package-local, from overlay)
++//	go f()              →  ndndsim.Go(func() { f() })
++//	time.Now()          →  ndndsim.Now()
++//	time.AfterFunc(d,f) →  ndndsim.AfterFunc(d, f)
++//	time.Sleep(d)       →  ndndsim.Sleep(d)
++//	table.FibStrategyTable → simFib()  (package-local, from overlay)
++//	table.Pet              → simPet()  (package-local, from overlay)
+ //
+ // At runtime the sim binds a NodeHooks to each goroutine via BindNode.
+ // All transformed calls read the hooks for the current goroutine; unbound
+@@ -50,6 +50,15 @@ type NodeHooks struct {
+ 	// as interface{} to avoid an import cycle).  nil → use global MulticastStrategyTable.
+ 	MulticastFib interface{}
+ 
++	// Bift is the per-node BIER forwarding table (*fw/bier.BiftState).
++	// nil → use the global Bift.
++	Bift interface{}
++
++	// BierIndex is the per-node BFR-ID. BierIndexSet distinguishes the valid
++	// index 0 from the production fallback.
++	BierIndex    int
++	BierIndexSet bool
++
+ 	// KeyChain is a pre-built keychain (ndn.KeyChain) that bypasses
+ 	// the KeyChainUri file-based setup.  nil → use KeyChainUri.
+ 	KeyChain interface{}
+diff --git a/go/overlay-onephase/dv/dv/bier_phase.go b/go/overlay-onephase/dv/dv/bier_phase.go
+new file mode 100644
+index 0000000..2c08ccf
+--- /dev/null
++++ b/go/overlay-onephase/dv/dv/bier_phase.go
+@@ -0,0 +1,3 @@
++package dv
++
++func (dv *Router) registerPhaseBierRouters() {}
+diff --git a/go/overlay-onephase/sim/phase_features.go b/go/overlay-onephase/sim/phase_features.go
+index 897db98..6ef4c90 100644
+--- a/go/overlay-onephase/sim/phase_features.go
++++ b/go/overlay-onephase/sim/phase_features.go
+@@ -18,6 +18,10 @@ func newSimMulticastFib() table.FibStrategy {
+ 	return nil
+ }
+ 
++func newSimBift() any {
++	return nil
++}
++
+ func attachSimPetThread(*fw.Thread, any) {}
+ 
+ func cleanUpSimPetFace(any, uint64) {}
+@@ -56,4 +60,4 @@ func registerSimRoute(fwd *SimForwarder, prefix enc.Name, appFaceID uint64) erro
+ func unregisterSimRoute(fwd *SimForwarder, prefix enc.Name, appFaceID uint64) error {
+ 	fwd.RemoveRouteWithOrigin(prefix, appFaceID, uint64(mgmt.RouteOriginApp))
+ 	return nil
+-}
+\ No newline at end of file
++}
+diff --git a/go/overlay-twophase/dv/dv/bier_phase.go b/go/overlay-twophase/dv/dv/bier_phase.go
+new file mode 100644
+index 0000000..90e0c63
+--- /dev/null
++++ b/go/overlay-twophase/dv/dv/bier_phase.go
+@@ -0,0 +1,5 @@
++package dv
++
++func (dv *Router) registerPhaseBierRouters() {
++	dv.registerSimBierRouters()
++}
+diff --git a/go/overlay-twophase/sim/phase_features.go b/go/overlay-twophase/sim/phase_features.go
+index 4d02294..c0569c6 100644
+--- a/go/overlay-twophase/sim/phase_features.go
++++ b/go/overlay-twophase/sim/phase_features.go
+@@ -3,6 +3,7 @@ package sim
+ import (
+ 	"fmt"
+ 
++	"github.com/named-data/ndnd/fw/bier"
+ 	"github.com/named-data/ndnd/fw/defn"
+ 	"github.com/named-data/ndnd/fw/fw"
+ 	"github.com/named-data/ndnd/fw/table"
+@@ -19,6 +20,10 @@ func newSimMulticastFib() table.FibStrategy {
+ 	return table.NewMulticastStrategyTree()
+ }
+ 
++func newSimBift() any {
++	return &bier.BiftState{}
++}
++
+ func attachSimPetThread(thread *fw.Thread, pet any) {
+ 	thread.SetPet(pet.(*table.PrefixEgressTable))
+ }
+@@ -49,6 +54,10 @@ func decodeEgressRouter(fwd *SimForwarder, pkt *defn.Pkt, lp *defn.FwLpPacket) {
+ 	if lp.EgressRouter != nil {
+ 		pkt.EgressRouter = lp.EgressRouter.Name
+ 	}
++	if len(pkt.EgressRouter) > 0 && pkt.EgressRouter[0].Equal(enc.LOCALHOP) {
++		pkt.EgressRouter = nil
++		return
++	}
+ 	if rn, ok := fwd.hooks.RouterName.(enc.Name); ok && len(rn) > 0 && len(pkt.EgressRouter) > 0 && pkt.EgressRouter.Equal(rn) {
+ 		pkt.EgressRouter = nil
+ 	}
+@@ -155,4 +164,4 @@ func registerSimRoute(fwd *SimForwarder, prefix enc.Name, appFaceID uint64) erro
+ func unregisterSimRoute(fwd *SimForwarder, prefix enc.Name, appFaceID uint64) error {
+ 	fwd.pet.(*table.PrefixEgressTable).RemoveNextHopEnc(prefix, appFaceID)
+ 	return nil
+-}
+\ No newline at end of file
++}
+diff --git a/go/overlay/dv/dv/notify.go b/go/overlay/dv/dv/notify.go
+index 2b8319d..bd5914d 100644
+--- a/go/overlay/dv/dv/notify.go
++++ b/go/overlay/dv/dv/notify.go
+@@ -16,26 +16,28 @@ import (
+ // broadcast storm caused by pfxSvs flooding sync Interests over
+ // BroadcastStrategy before any PET-scoped nexthops exist.
+ func (dv *Router) runConvergenceHook() {
+-        dv.mutex.Lock()
+-        now := _ndndsim.Now()
+-        nodeRouter := dv.config.RouterName()
+-        var evts []table.RouterReachableEvent
+-        for _, router := range dv.rib.Entries() {
+-                dest := router.Name()
+-                if !dest.Equal(nodeRouter) {
+-                        evts = append(evts, table.RouterReachableEvent{
+-                                At:              now,
+-                                NodeRouter:      nodeRouter,
+-                                ReachableRouter: dest,
+-                        })
+-                }
+-        }
+-        dv.mutex.Unlock()
++	dv.mutex.Lock()
++	now := _ndndsim.Now()
++	nodeRouter := dv.config.RouterName()
++	var evts []table.RouterReachableEvent
++	for _, router := range dv.rib.Entries() {
++		dest := router.Name()
++		if !dest.Equal(nodeRouter) {
++			evts = append(evts, table.RouterReachableEvent{
++				At:              now,
++				NodeRouter:      nodeRouter,
++				ReachableRouter: dest,
++			})
++		}
++	}
++	dv.mutex.Unlock()
++
++	dv.registerPhaseBierRouters()
+ 
+-        // Start PES SVS sync once routing stabilises (deferred from Init).
+-        // Pass the current reachable-router count so startPfxOnce can debounce
+-        // only on topology growth, ignoring periodic re-advertisements.
+-        dv.startPfxOnce(len(evts))
++	// Start PES SVS sync once routing stabilises (deferred from Init).
++	// Pass the current reachable-router count so startPfxOnce can debounce
++	// only on topology growth, ignoring periodic re-advertisements.
++	dv.startPfxOnce(len(evts))
+ 	for _, ev := range evts {
+ 		table.NotifyRouterReachable(ev)
+ 	}
+diff --git a/go/overlay/sim/node.go b/go/overlay/sim/node.go
+index 3062c71..bf7ae8e 100644
+--- a/go/overlay/sim/node.go
++++ b/go/overlay/sim/node.go
+@@ -6,13 +6,13 @@ import (
+ 	"sync"
+ 	"time"
+ 
+-	_ndndsim "github.com/named-data/ndndsim"
+ 	"github.com/named-data/ndnd/dv/config"
+ 	"github.com/named-data/ndnd/fw/defn"
+ 	"github.com/named-data/ndnd/fw/face"
+ 	"github.com/named-data/ndnd/fw/table"
+ 	enc "github.com/named-data/ndnd/std/encoding"
+ 	"github.com/named-data/ndnd/std/ndn"
++	_ndndsim "github.com/named-data/ndndsim"
+ )
+ 
+ // simInitMu guards one-time initialisation of the face and table subsystems.
+@@ -99,6 +99,9 @@ func NewNode(id uint32, clock Clock) *Node {
+ 		Now:              clock.Now,
+ 		Synchronous:      true,
+ 		EnableFaceEvents: false,
++		Bift:             newSimBift(),
++		BierIndex:        int(id),
++		BierIndexSet:     true,
+ 	}
+ 
+ 	n := &Node{
+diff --git a/go/transform/inject.go b/go/transform/inject.go
+index 1edff70..8e62dd3 100644
+--- a/go/transform/inject.go
++++ b/go/transform/inject.go
+@@ -347,6 +347,28 @@ func (t *Thread) RunMaintenance() {
+ }
+ `
+ 
++// bierSimSnippet is injected into fw/bier/bier.go for per-node simulation
++// state.  Caller must set ndndsimUsed=true so _ndndsim is imported.
++const bierSimSnippet = `
++// simFib returns the per-node FIB for BIER's BuildFromFib path.
++func simFib() table.FibStrategy {
++	h := _ndndsim.GetHooks()
++	if h.Fib == nil {
++		return table.FibStrategyTable
++	}
++	return h.Fib.(table.FibStrategy)
++}
++
++// SimBift returns the per-node BIFT for the current simulation node.
++func SimBift() *BiftState {
++	h := _ndndsim.GetHooks()
++	if h.Bift == nil {
++		return Bift
++	}
++	return h.Bift.(*BiftState)
++}
++`
++
+ // nfdcSimSnippet is injected into dv/nfdc/nfdc.go.
+ // Caller must set ndndsimUsed=true so that _ndndsim is imported.
+ const nfdcSimSnippet = `
+@@ -488,7 +510,7 @@ var _pfxReachable sync.Map // *Router → int
+ // It is called from runConvergenceHook() in notify.go on every RIB update,
+ // with the current number of reachable routers passed as reachableCount.
+ //
+-// PES subscriptions are set up here for all known neighbors before pfxSvs.Start().
++// PSD subscriptions are set up here for all known neighbors before pfxSvs.Start().
+ // We call the three sub-components of PrefixModule.Start() directly instead of
+ // Start() itself because Start() calls pfx.pfx.Reset() which wipes announcements
+ // queued before convergence.
+@@ -505,7 +527,7 @@ func (dv *Router) startPfxOnce(reachableCount int) {
+ 		prev.(func())()
+ 	}
+ 
+-	// Subscribe to PES routers before starting pfxSvs.
++	// Subscribe to PSD routers before starting pfxSvs.
+ 	selfName := dv.config.RouterName()
+ 	for _, ns := range dv.neighbors.GetAll() {
+ 		router := ns.Name
+@@ -518,7 +540,7 @@ func (dv *Router) startPfxOnce(reachableCount int) {
+ 		}
+ 		dv.pfx.pfxSeen[routerHash] = router.Clone()
+ 		dv.pfx.pfxSubs[routerHash] = router.Clone()
+-		if dv.pfx.replicatePes && dv.pfx.nfdc != nil {
++		if dv.pfx.replicatePsd && dv.pfx.nfdc != nil {
+ 			route := dv.pfx.pfxGroup.Append(router...)
+ 			dv.pfx.nfdc.Exec(nfdc.NfdMgmtCmd{
+ 				Module:  "pet",
+@@ -597,6 +619,33 @@ func (dv *Router) NumPendingFetchInterests() uint64 {
+ 	}
+ 	return dv.pfx.pfxSvs.NumPendingFetchInterests()
+ }
++
++func simBfrIDFromRouterName(name enc.Name) (int, bool) {
++	if len(name) == 0 {
++		return 0, false
++	}
++	var id int
++	if _, err := fmt.Sscanf(name[len(name)-1].String(), "node%d", &id); err != nil {
++		return 0, false
++	}
++	return id, true
++}
++
++func (dv *Router) registerSimBierRouters() {
++	dv.mutex.Lock()
++	routers := []enc.Name{dv.config.RouterName()}
++	for _, entry := range dv.rib.Entries() {
++		routers = append(routers, entry.Name().Clone())
++	}
++	dv.mutex.Unlock()
++
++	for _, router := range routers {
++		if id, ok := simBfrIDFromRouterName(router); ok {
++			bier.SimBift().RegisterRouter(router, id)
++		}
++	}
++	bier.SimBift().BuildFromFib()
++}
+ `
+ 
+ // ---------------------------------------------------------------------------
+@@ -917,7 +966,7 @@ func applySvsAloSnapContentStruct(file *ast.File, fset *token.FileSet) bool {
+ 		newField := &ast.Field{
+ 			Names: []*ast.Ident{ast.NewIdent("snapContent")},
+ 			Type: &ast.MapType{
+-				Key:   ast.NewIdent("string"),
++				Key: ast.NewIdent("string"),
+ 				Value: &ast.MapType{
+ 					Key:   ast.NewIdent("uint64"),
+ 					Value: ast.NewIdent("enc.Wire"),
+@@ -1110,7 +1159,7 @@ func applySvsAloSnapContentInit(file *ast.File, fset *token.FileSet) bool {
+ 			// Add initSnapContent call after this statement
+ 			callStmt := &ast.ExprStmt{
+ 				X: &ast.CallExpr{
+-					Fun: &ast.Ident{Name: "initSnapContent"},
++					Fun:  &ast.Ident{Name: "initSnapContent"},
+ 					Args: []ast.Expr{ast.NewIdent("s")},
+ 				},
+ 			}
+@@ -1411,6 +1460,12 @@ func applyThreadSimExtensions(file *ast.File, fset *token.FileSet) bool {
+ 	return true
+ }
+ 
++func applyBierSimExtensions(file *ast.File, fset *token.FileSet) bool {
++	patchCfgBierIndex(file)
++	injectDecls(file, fset, bierSimSnippet)
++	return true
++}
++
+ // applyNfdcSimExtensions injects simExec into dv/nfdc/nfdc.go.
+ // Caller must set ndndsimUsed=true so that _ndndsim is imported.
+ func applyNfdcSimExtensions(file *ast.File, fset *token.FileSet) bool {
+@@ -1429,6 +1484,7 @@ func applyRouterSimExtensions(file *ast.File, fset *token.FileSet) bool {
+ 	injectDecls(file, fset, routerSimSnippet)
+ 	// ndn_sync is not in the upstream router.go; needed for injected methods.
+ 	addNamedImport(file, "ndn_sync", "github.com/named-data/ndnd/std/sync")
++	addNamedImport(file, "bier", "github.com/named-data/ndnd/fw/bier")
+ 	// enc and log are needed by Init, LinkMulticastPrefixes, PrefixAnnounceCmd, PrefixWithdrawCmd.
+ 	addNamedImport(file, "enc", "github.com/named-data/ndnd/std/encoding")
+ 	addNamedImport(file, "log", "github.com/named-data/ndnd/std/log")
+@@ -1697,6 +1753,7 @@ func (dv *Router) startPfxOnce(_ int) {
+ 	}
+ }
+ `
++
+ // ---------------------------------------------------------------------------
+ 
+ func applyFibStrategyTreeExtensionsOp(file *ast.File, fset *token.FileSet) bool {
+diff --git a/go/transform/rewrite.go b/go/transform/rewrite.go
+index 26d6d37..abe0991 100644
+--- a/go/transform/rewrite.go
++++ b/go/transform/rewrite.go
+@@ -19,224 +19,232 @@ import (
+ 
+ // packageRewrite describes the rewrite rules for a single package directory.
+ type packageRewrite struct {
+-pkgDir    string // absolute path to the package inside the output tree
+-simModule string // import path for the ndndsim shim package
++	pkgDir    string // absolute path to the package inside the output tree
++	simModule string // import path for the ndndsim shim package
+ 
+-// Per-file rules keyed on base filename (e.g. "nfdc.go").
+-fileRules map[string][]fileRule
++	// Per-file rules keyed on base filename (e.g. "nfdc.go").
++	fileRules map[string][]fileRule
+ }
+ 
+ // fileRule is an additional rule applied only to a specific file.
+ type fileRule int
+ 
+ const (
+-// Simple AST-substitution rules.
+-ruleNfdcChannelSend          fileRule = iota // m.channel <- cmd  →  m.simExec(cmd)
+-ruleKeychainNewKeyChain                       // keychain.NewKeyChain(…) → simNewKeyChain(…)
+-ruleFaceEventsGuard                           // prepend guard to startFaceEvents()
+-rulePetGlobalPointer                          // var Pet = PrefixEgressTable{…} → var Pet = NewPrefixEgressTable()
+-ruleSimTicker                                 // *time.Ticker field → *simTicker; time.NewTicker → newSimTicker
+-ruleStorageNewMemoryStore                     // storage.NewMemoryStore() → simNewStore()
+-ruleFibGlobalPointerInternal                  // FibStrategyTable.Foo → simFib().Foo  (within fw/table pkg)
+-ruleDeadNonceListMutex                        // add sync.RWMutex to DeadNonceList
+-rulePostUpdateRibConvergenceHook              // dv/dv/table_algo.go: append dv.runConvergenceHook() to postUpdateRib
+-rulePrefixEventHooks                          // dv/table prefix announce/add hooks for convergence metrics
+-// Code-injection rules (eliminate former *_sim.go overlay files).
+-ruleInjectFibStrategyTreeExtensions   // fw/table/fib-strategy-tree.go (twophase)
+-ruleInjectFibHashTableExtensions      // fw/table/fib-strategy-hashtable.go
+-ruleInjectPetConstructor              // fw/table/pet.go
+-ruleInjectRibSimFunctions             // fw/table/rib.go  (needs _ndndsim import)
+-ruleInjectSvsSimExtensions            // std/sync/svs.go
+-ruleSvsDeterministicRng               // std/sync/svs.go: per-instance seeded RNG
+-ruleInjectSvsAloSimExtensions         // std/sync/svs_alo.go
+-ruleSvsAloInitialStatePatch            // std/sync/svs_alo_initial_state.go: skip seqNo=0
+-ruleSvsAloOnSvsUpdatePatch            // std/sync/svs_alo.go: skip fetch for newly discovered publishers
+-ruleSvsAloConsumeCheckPatch           // std/sync/svs_alo_data.go: guard against Known=0/Latest=1
+-ruleSvsChannels                       // std/sync/svs.go: recvSv/stop sends → sim methods
+-ruleSvsAloChannels                    // std/sync/svs_alo.go: stop/publpipe sends → sim methods
+-ruleInjectSvsAloDataChannels          // std/sync/svs_alo_data.go: outpipe/errpipe sends
+-ruleSvsAloSnapContent                // std/sync/svs_alo.go: store/restore content in snapshots
+-ruleSvsAloSnapContentData            // std/sync/svs_alo_data.go: store content in produceObject
+-ruleSvsAloSnapContentState          // std/sync/svs_alo_initial_state.go: encode/decode content in snapshots
+-ruleInjectThreadSimExtensions         // fw/fw/thread.go (twophase: includes simPet)
+-ruleInjectNfdcSimExtensions           // dv/nfdc/nfdc.go  (needs _ndndsim import)
+-ruleInjectPrefixSimExtensions         // dv/dv/prefix.go
+-ruleInjectRouterSimExtensions         // dv/dv/router.go (twophase: pfx.Start)
+-ruleSvsALOMaxPipelineSim              // dv/dv/prefix.go (twophase) + dv/dv/router.go (onephase)
+-ruleDvAdvReceiptCallback              // dv/dv/advert_data.go: stamp in-flight DV adv receipts
+-rulePfxSvsDeliveryCallback           // dv/dv/prefix.go: stamp in-flight prefix SVS deliveries
+-rulePfxSvsDeliveryCallbackOp        // dv/dv/table_algo.go (onephase): stamp in-flight prefix SVS deliveries
+-rulePfxSvsDeliveryCallbackInApplyOp // dv/table/prefix_table.go (onephase): stamp in-flight prefix SVS deliveries in Apply
+-
+-// Onephase variants (named-data/ndnd@main@51774b8: no PET, no prefix.go,
+-// no MulticastStrategyTable, different router.go pfxSvs API).
+-ruleInjectFibStrategyTreeExtensionsOp // fw/table/fib-strategy-tree.go (onephase)
+-ruleInjectThreadSimExtensionsOp       // fw/fw/thread.go (onephase: no simPet/simMulticastFib)
+-ruleInjectRouterSimExtensionsOp       // dv/dv/router.go (onephase: pfxSvs.Start)
++	// Simple AST-substitution rules.
++	ruleNfdcChannelSend              fileRule = iota // m.channel <- cmd  →  m.simExec(cmd)
++	ruleKeychainNewKeyChain                          // keychain.NewKeyChain(…) → simNewKeyChain(…)
++	ruleFaceEventsGuard                              // prepend guard to startFaceEvents()
++	rulePetGlobalPointer                             // var Pet = PrefixEgressTable{…} → var Pet = NewPrefixEgressTable()
++	ruleSimTicker                                    // *time.Ticker field → *simTicker; time.NewTicker → newSimTicker
++	ruleStorageNewMemoryStore                        // storage.NewMemoryStore() → simNewStore()
++	ruleFibGlobalPointerInternal                     // FibStrategyTable.Foo → simFib().Foo  (within fw/table pkg)
++	ruleDeadNonceListMutex                           // add sync.RWMutex to DeadNonceList
++	rulePostUpdateRibConvergenceHook                 // dv/dv/table_algo.go: append dv.runConvergenceHook() to postUpdateRib
++	rulePrefixEventHooks                             // dv/table prefix announce/add hooks for convergence metrics
++	// Code-injection rules (eliminate former *_sim.go overlay files).
++	ruleInjectFibStrategyTreeExtensions // fw/table/fib-strategy-tree.go (twophase)
++	ruleInjectFibHashTableExtensions    // fw/table/fib-strategy-hashtable.go
++	ruleInjectPetConstructor            // fw/table/pet.go
++	ruleInjectRibSimFunctions           // fw/table/rib.go  (needs _ndndsim import)
++	ruleInjectSvsSimExtensions          // std/sync/svs.go
++	ruleSvsDeterministicRng             // std/sync/svs.go: per-instance seeded RNG
++	ruleInjectSvsAloSimExtensions       // std/sync/svs_alo.go
++	ruleSvsAloInitialStatePatch         // std/sync/svs_alo_initial_state.go: skip seqNo=0
++	ruleSvsAloOnSvsUpdatePatch          // std/sync/svs_alo.go: skip fetch for newly discovered publishers
++	ruleSvsAloConsumeCheckPatch         // std/sync/svs_alo_data.go: guard against Known=0/Latest=1
++	ruleSvsChannels                     // std/sync/svs.go: recvSv/stop sends → sim methods
++	ruleSvsAloChannels                  // std/sync/svs_alo.go: stop/publpipe sends → sim methods
++	ruleInjectSvsAloDataChannels        // std/sync/svs_alo_data.go: outpipe/errpipe sends
++	ruleSvsAloSnapContent               // std/sync/svs_alo.go: store/restore content in snapshots
++	ruleSvsAloSnapContentData           // std/sync/svs_alo_data.go: store content in produceObject
++	ruleSvsAloSnapContentState          // std/sync/svs_alo_initial_state.go: encode/decode content in snapshots
++	ruleInjectThreadSimExtensions       // fw/fw/thread.go (twophase: includes simPet)
++	ruleInjectBierSimExtensions         // fw/bier/bier.go: per-node BIFT/FIB/BIER index
++	ruleBierGlobalPointer               // bier.Bift → bier.SimBift()
++	ruleInjectNfdcSimExtensions         // dv/nfdc/nfdc.go  (needs _ndndsim import)
++	ruleInjectPrefixSimExtensions       // dv/dv/prefix.go
++	ruleInjectRouterSimExtensions       // dv/dv/router.go (twophase: pfx.Start)
++	ruleSvsALOMaxPipelineSim            // dv/dv/prefix.go (twophase) + dv/dv/router.go (onephase)
++	ruleDvAdvReceiptCallback            // dv/dv/advert_data.go: stamp in-flight DV adv receipts
++	rulePfxSvsDeliveryCallback          // dv/dv/prefix.go: stamp in-flight prefix SVS deliveries
++	rulePfxSvsDeliveryCallbackOp        // dv/dv/table_algo.go (onephase): stamp in-flight prefix SVS deliveries
++	rulePfxSvsDeliveryCallbackInApplyOp // dv/table/prefix_table.go (onephase): stamp in-flight prefix SVS deliveries in Apply
++
++	// Onephase variants (named-data/ndnd@main@51774b8: no PET, no prefix.go,
++	// no MulticastStrategyTable, different router.go pfxSvs API).
++	ruleInjectFibStrategyTreeExtensionsOp // fw/table/fib-strategy-tree.go (onephase)
++	ruleInjectThreadSimExtensionsOp       // fw/fw/thread.go (onephase: no simPet/simMulticastFib)
++	ruleInjectRouterSimExtensionsOp       // dv/dv/router.go (onephase: pfxSvs.Start)
+ )
+ 
+ // targetRewrites returns the full set of package-level rewrite descriptors.
+ // phase must be "twophase" (named-data/ndnd@dv2) or "onephase" (named-data/ndnd@main@51774b8).
+ func targetRewrites(outDir, simModule, phase string) []packageRewrite {
+-pkg := func(rel string, fileRules map[string][]fileRule) packageRewrite {
+-return packageRewrite{
+-pkgDir:    filepath.Join(outDir, filepath.FromSlash(rel)),
+-simModule: simModule,
+-fileRules: fileRules,
+-}
+-}
++	pkg := func(rel string, fileRules map[string][]fileRule) packageRewrite {
++		return packageRewrite{
++			pkgDir:    filepath.Join(outDir, filepath.FromSlash(rel)),
++			simModule: simModule,
++			fileRules: fileRules,
++		}
++	}
+ 
+-if phase == "onephase" {
+-// Onephase (named-data/ndnd@main@51774b8):
+-//   • No fw/table/pet.go                  → skip pet rules
+-//   • No dv/dv/prefix.go                  → skip prefix rules
+-//   • No table.MulticastStrategyTable     → simpler thread snippet
+-//   • fw/table/fib-strategy-tree.go uses direct struct construction
+-//   • dv/dv/router.go uses pfxSvs.Start() instead of pfx.Start()
+-return []packageRewrite{
+-pkg("fw/fw", map[string][]fileRule{
+-"thread.go": {ruleInjectThreadSimExtensionsOp},
+-}),
+-pkg("fw/table", map[string][]fileRule{
+-"fib-strategy-tree.go":      {ruleInjectFibStrategyTreeExtensionsOp},
+-"fib-strategy-hashtable.go": {ruleInjectFibHashTableExtensions},
+-"rib.go":                    {ruleFibGlobalPointerInternal, ruleInjectRibSimFunctions},
+-"dead-nonce-list.go":        {ruleDeadNonceListMutex},
+-}),
+-// dv/table: apply global rewrites (time.Now→_ndndsim.Now,
+-// time.Since→_ndndsim.Now().Sub, go→_ndndsim.Go) to all files.
+-// Fixes lastSeen tracking and IsDead() in neighbor_table.go.
+-pkg("dv/table", map[string][]fileRule{}),
+-pkg("dv/table", map[string][]fileRule{
+-"prefix_table.go": {rulePrefixEventHooks, rulePfxSvsDeliveryCallbackInApplyOp},
+-}),
+-pkg("dv/dv", map[string][]fileRule{
+-		"table_algo.go":  {rulePostUpdateRibConvergenceHook, rulePfxSvsDeliveryCallbackOp},
+-		"router.go":      {ruleKeychainNewKeyChain, ruleInjectRouterSimExtensionsOp, ruleSvsALOMaxPipelineSim},
+-		"advert_data.go": {ruleDvAdvReceiptCallback},
+-	}),
+-pkg("dv/nfdc", map[string][]fileRule{
+-"nfdc.go": {ruleNfdcChannelSend, ruleInjectNfdcSimExtensions},
+-}),
+-pkg("std/sync", map[string][]fileRule{
+-"svs.go":          {ruleSimTicker, ruleSvsDeterministicRng, ruleInjectSvsSimExtensions, ruleSvsChannels},
+-"svs_alo.go":      {ruleSvsAloChannels, ruleInjectSvsAloSimExtensions, ruleSvsAloSnapContent},
+-"svs_alo_initial_state.go": {ruleSvsAloInitialStatePatch, ruleSvsAloSnapContentState},
+-"svs_alo_data.go":         {ruleInjectSvsAloDataChannels, ruleSvsAloSnapContentData},
+-}),
+-}
+-}
++	if phase == "onephase" {
++		// Onephase (named-data/ndnd@main@51774b8):
++		//   - No fw/table/pet.go                  → skip pet rules
++		//   - No dv/dv/prefix.go                  → skip prefix rules
++		//   - No table.MulticastStrategyTable     → simpler thread snippet
++		//   - fw/table/fib-strategy-tree.go uses direct struct construction
++		//   - dv/dv/router.go uses pfxSvs.Start() instead of pfx.Start()
++		return []packageRewrite{
++			pkg("fw/fw", map[string][]fileRule{
++				"thread.go": {ruleInjectThreadSimExtensionsOp},
++			}),
++			pkg("fw/table", map[string][]fileRule{
++				"fib-strategy-tree.go":      {ruleInjectFibStrategyTreeExtensionsOp},
++				"fib-strategy-hashtable.go": {ruleInjectFibHashTableExtensions},
++				"rib.go":                    {ruleFibGlobalPointerInternal, ruleInjectRibSimFunctions},
++				"dead-nonce-list.go":        {ruleDeadNonceListMutex},
++			}),
++			// dv/table: apply global rewrites (time.Now→_ndndsim.Now,
++			// time.Since→_ndndsim.Now().Sub, go→_ndndsim.Go) to all files.
++			// Fixes lastSeen tracking and IsDead() in neighbor_table.go.
++			pkg("dv/table", map[string][]fileRule{}),
++			pkg("dv/table", map[string][]fileRule{
++				"prefix_table.go": {rulePrefixEventHooks, rulePfxSvsDeliveryCallbackInApplyOp},
++			}),
++			pkg("dv/dv", map[string][]fileRule{
++				"table_algo.go":  {rulePostUpdateRibConvergenceHook, rulePfxSvsDeliveryCallbackOp},
++				"router.go":      {ruleKeychainNewKeyChain, ruleInjectRouterSimExtensionsOp, ruleSvsALOMaxPipelineSim},
++				"advert_data.go": {ruleDvAdvReceiptCallback},
++			}),
++			pkg("dv/nfdc", map[string][]fileRule{
++				"nfdc.go": {ruleNfdcChannelSend, ruleInjectNfdcSimExtensions},
++			}),
++			pkg("std/sync", map[string][]fileRule{
++				"svs.go":                   {ruleSimTicker, ruleSvsDeterministicRng, ruleInjectSvsSimExtensions, ruleSvsChannels},
++				"svs_alo.go":               {ruleSvsAloChannels, ruleInjectSvsAloSimExtensions, ruleSvsAloSnapContent},
++				"svs_alo_initial_state.go": {ruleSvsAloInitialStatePatch, ruleSvsAloSnapContentState},
++				"svs_alo_data.go":          {ruleInjectSvsAloDataChannels, ruleSvsAloSnapContentData},
++			}),
++		}
++	}
+ 
+-// Twophase (named-data/ndnd@dv2@76aeb89c) — default.
+-return []packageRewrite{
+-// fw/fw: inject Thread sim helpers (eliminates thread_sim.go overlay).
+-pkg("fw/fw", map[string][]fileRule{
+-"thread.go": {ruleInjectThreadSimExtensions},
+-}),
+-// fw/table: inject sim constructors and safety fixes (eliminates fib_sim.go,
+-// pet_sim.go, and rib_sim.go overlays).
+-pkg("fw/table", map[string][]fileRule{
+-"fib-strategy-tree.go":      {ruleInjectFibStrategyTreeExtensions},
+-"fib-strategy-hashtable.go": {ruleInjectFibHashTableExtensions},
+-"pet.go":                    {rulePetGlobalPointer, ruleInjectPetConstructor},
+-"rib.go":                    {ruleFibGlobalPointerInternal, ruleInjectRibSimFunctions},
+-"dead-nonce-list.go":        {ruleDeadNonceListMutex},
+-}),
+-// dv/table: apply global rewrites (time.Now→_ndndsim.Now,
+-// time.Since→_ndndsim.Now().Sub, go→_ndndsim.Go) to all files.
+-// Fixes lastSeen tracking and IsDead() in neighbor_table.go.
+-pkg("dv/table", map[string][]fileRule{}),
+-pkg("dv/table", map[string][]fileRule{
+-"prefix_state.go": {rulePrefixEventHooks},
+-}),
+-// dv/dv: inject Router and PrefixModule sim methods (eliminates router_sim.go
+-// and prefix_sim.go overlays).
+-pkg("dv/dv", map[string][]fileRule{
+-		"table_algo.go": {rulePostUpdateRibConvergenceHook},
+-"router.go": {ruleKeychainNewKeyChain, ruleInjectRouterSimExtensions},
+-"prefix.go": {ruleFaceEventsGuard, ruleInjectPrefixSimExtensions, ruleSvsALOMaxPipelineSim, rulePfxSvsDeliveryCallback},
+-"advert_data.go": {ruleDvAdvReceiptCallback},
+-}),
+-// dv/nfdc: inject simExec (eliminates nfdc_sim.go overlay).
+-pkg("dv/nfdc", map[string][]fileRule{
+-"nfdc.go": {ruleNfdcChannelSend, ruleInjectNfdcSimExtensions},
+-}),
+-// std/sync: eliminate goroutines via direct-delivery sim helpers.
+-	pkg("std/sync", map[string][]fileRule{
+-		"svs.go":          {ruleSimTicker, ruleSvsDeterministicRng, ruleInjectSvsSimExtensions, ruleSvsChannels},
+-		"svs_alo.go":      {ruleSvsAloChannels, ruleInjectSvsAloSimExtensions, ruleSvsAloOnSvsUpdatePatch, ruleSvsAloSnapContent},
+-		"svs_alo_initial_state.go": {ruleSvsAloInitialStatePatch, ruleSvsAloSnapContentState},
+-			"svs_alo_data.go":         {ruleInjectSvsAloDataChannels, ruleSvsAloConsumeCheckPatch, ruleSvsAloSnapContentData},
+-}),
+-}
++	// Twophase (named-data/ndnd@dv2@a841cc2) — default.
++	return []packageRewrite{
++		// fw/fw: inject Thread sim helpers (eliminates thread_sim.go overlay).
++		pkg("fw/fw", map[string][]fileRule{
++			"thread.go": {ruleBierGlobalPointer, ruleInjectThreadSimExtensions},
++			"bier.go":   {ruleBierGlobalPointer},
++		}),
++		// fw/bier: BIER was moved out of strategy code in dv2@a841cc2.  In sim it
++		// must use per-node BIFT state and the per-node FIB hook rather than globals.
++		pkg("fw/bier", map[string][]fileRule{
++			"bier.go": {ruleInjectBierSimExtensions},
++		}),
++		// fw/table: inject sim constructors and safety fixes (eliminates fib_sim.go,
++		// pet_sim.go, and rib_sim.go overlays).
++		pkg("fw/table", map[string][]fileRule{
++			"fib-strategy-tree.go":      {ruleInjectFibStrategyTreeExtensions},
++			"fib-strategy-hashtable.go": {ruleInjectFibHashTableExtensions},
++			"pet.go":                    {rulePetGlobalPointer, ruleInjectPetConstructor},
++			"rib.go":                    {ruleFibGlobalPointerInternal, ruleInjectRibSimFunctions},
++			"dead-nonce-list.go":        {ruleDeadNonceListMutex},
++		}),
++		// dv/table: apply global rewrites (time.Now→_ndndsim.Now,
++		// time.Since→_ndndsim.Now().Sub, go→_ndndsim.Go) to all files.
++		// Fixes lastSeen tracking and IsDead() in neighbor_table.go.
++		pkg("dv/table", map[string][]fileRule{}),
++		pkg("dv/table", map[string][]fileRule{
++			"prefix_state.go": {rulePrefixEventHooks},
++		}),
++		// dv/dv: inject Router and PrefixModule sim methods (eliminates router_sim.go
++		// and prefix_sim.go overlays).
++		pkg("dv/dv", map[string][]fileRule{
++			"table_algo.go":  {rulePostUpdateRibConvergenceHook, ruleBierGlobalPointer},
++			"router.go":      {ruleKeychainNewKeyChain, ruleInjectRouterSimExtensions},
++			"prefix.go":      {ruleFaceEventsGuard, ruleInjectPrefixSimExtensions, ruleSvsALOMaxPipelineSim, rulePfxSvsDeliveryCallback},
++			"advert_data.go": {ruleDvAdvReceiptCallback},
++		}),
++		// dv/nfdc: inject simExec (eliminates nfdc_sim.go overlay).
++		pkg("dv/nfdc", map[string][]fileRule{
++			"nfdc.go": {ruleNfdcChannelSend, ruleInjectNfdcSimExtensions},
++		}),
++		// std/sync: eliminate goroutines via direct-delivery sim helpers.
++		pkg("std/sync", map[string][]fileRule{
++			"svs.go":                   {ruleSimTicker, ruleSvsDeterministicRng, ruleInjectSvsSimExtensions, ruleSvsChannels},
++			"svs_alo.go":               {ruleSvsAloChannels, ruleInjectSvsAloSimExtensions, ruleSvsAloOnSvsUpdatePatch, ruleSvsAloSnapContent},
++			"svs_alo_initial_state.go": {ruleSvsAloInitialStatePatch, ruleSvsAloSnapContentState},
++			"svs_alo_data.go":          {ruleInjectSvsAloDataChannels, ruleSvsAloConsumeCheckPatch, ruleSvsAloSnapContentData},
++		}),
++	}
+ }
+ 
+ func rewritePackage(r packageRewrite) error {
+-entries, err := os.ReadDir(r.pkgDir)
+-if err != nil {
+-return err
+-}
+-for _, e := range entries {
+-if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
+-continue
+-}
+-fpath := filepath.Join(r.pkgDir, e.Name())
+-if err := rewriteFile(fpath, r.simModule, r.fileRules[e.Name()]); err != nil {
+-return err
+-}
+-}
+-return nil
++	entries, err := os.ReadDir(r.pkgDir)
++	if err != nil {
++		return err
++	}
++	for _, e := range entries {
++		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
++			continue
++		}
++		fpath := filepath.Join(r.pkgDir, e.Name())
++		if err := rewriteFile(fpath, r.simModule, r.fileRules[e.Name()]); err != nil {
++			return err
++		}
++	}
++	return nil
+ }
+ 
+ // rewriteFile parses, rewrites, and writes back a single Go source file.
+ func rewriteFile(fpath, simModule string, extraRules []fileRule) error {
+-fset := token.NewFileSet()
+-file, err := parser.ParseFile(fset, fpath, nil, parser.ParseComments)
+-if err != nil {
+-return err
+-}
++	fset := token.NewFileSet()
++	file, err := parser.ParseFile(fset, fpath, nil, parser.ParseComments)
++	if err != nil {
++		return err
++	}
+ 
+-// Apply global rewrites (go→_ndndsim.Go, time.Now→_ndndsim.Now, table.Pet→simPet, …).
+-modified, ndndsimUsed := applyGlobalRewrites(file)
++	// Apply global rewrites (go→_ndndsim.Go, time.Now→_ndndsim.Now, table.Pet→simPet, …).
++	modified, ndndsimUsed := applyGlobalRewrites(file)
+ 
+-// Apply per-file rules.
+-for _, rule := range extraRules {
+-switch rule {
++	// Apply per-file rules.
++	for _, rule := range extraRules {
++		switch rule {
+ 
+-// --- Simple AST-substitution rules ---
++		// --- Simple AST-substitution rules ---
+ 
+-case ruleNfdcChannelSend:
+-// simExec is package-local; no _ndndsim import needed.
+-modified = applyNfdcChannelSend(file) || modified
++		case ruleNfdcChannelSend:
++			// simExec is package-local; no _ndndsim import needed.
++			modified = applyNfdcChannelSend(file) || modified
+ 
+-case ruleKeychainNewKeyChain:
+-// simNewKeyChain is package-local; no _ndndsim import needed.
+-modified = applyKeychainReplace(file) || modified
++		case ruleKeychainNewKeyChain:
++			// simNewKeyChain is package-local; no _ndndsim import needed.
++			modified = applyKeychainReplace(file) || modified
+ 
+-case ruleFaceEventsGuard:
+-// Injects _ndndsim.EnableFaceEvents() call.
+-if applyFaceEventsGuard(file, simModule) {
+-modified = true
+-ndndsimUsed = true
+-}
++		case ruleFaceEventsGuard:
++			// Injects _ndndsim.EnableFaceEvents() call.
++			if applyFaceEventsGuard(file, simModule) {
++				modified = true
++				ndndsimUsed = true
++			}
+ 
+-case rulePetGlobalPointer:
+-modified = applyPetGlobalPointer(file) || modified
++		case rulePetGlobalPointer:
++			modified = applyPetGlobalPointer(file) || modified
+ 
+-case ruleSimTicker:
+-// newSimTicker is package-local; no _ndndsim import needed here.
+-modified = applySimTicker(file) || modified
++		case ruleSimTicker:
++			// newSimTicker is package-local; no _ndndsim import needed here.
++			modified = applySimTicker(file) || modified
+ 
+-case ruleStorageNewMemoryStore:
+-// simNewStore is package-local; no _ndndsim import needed.
+-modified = applyStorageNewMemoryStore(file) || modified
++		case ruleStorageNewMemoryStore:
++			// simNewStore is package-local; no _ndndsim import needed.
++			modified = applyStorageNewMemoryStore(file) || modified
+ 
+-case ruleFibGlobalPointerInternal:
+-// simFib is package-local; no _ndndsim import needed.
+-modified = applyFibGlobalPointerInternal(file) || modified
++		case ruleFibGlobalPointerInternal:
++			// simFib is package-local; no _ndndsim import needed.
++			modified = applyFibGlobalPointerInternal(file) || modified
+ 
+-case ruleDeadNonceListMutex:
+-modified = applyDeadNonceListMutex(file, fset) || modified
++		case ruleDeadNonceListMutex:
++			modified = applyDeadNonceListMutex(file, fset) || modified
+ 
+ 		case rulePostUpdateRibConvergenceHook:
+ 			modified = applyPostUpdateRibConvergenceHook(file) || modified
+@@ -247,27 +255,27 @@ modified = applyDeadNonceListMutex(file, fset) || modified
+ 				ndndsimUsed = true
+ 			}
+ 
+-// --- Code-injection rules ---
++		// --- Code-injection rules ---
+ 
+-case ruleInjectFibStrategyTreeExtensions:
+-modified = applyFibStrategyTreeExtensions(file, fset) || modified
++		case ruleInjectFibStrategyTreeExtensions:
++			modified = applyFibStrategyTreeExtensions(file, fset) || modified
+ 
+-case ruleInjectFibHashTableExtensions:
+-modified = applyFibHashTableExtensions(file, fset) || modified
++		case ruleInjectFibHashTableExtensions:
++			modified = applyFibHashTableExtensions(file, fset) || modified
+ 
+-case ruleInjectPetConstructor:
+-modified = applyPetConstructor(file, fset) || modified
++		case ruleInjectPetConstructor:
++			modified = applyPetConstructor(file, fset) || modified
+ 
+-case ruleInjectRibSimFunctions:
+-// Injected simFib() calls _ndndsim.GetHooks().
+-if applyRibSimExtensions(file, fset) {
+-modified = true
+-ndndsimUsed = true
+-}
++		case ruleInjectRibSimFunctions:
++			// Injected simFib() calls _ndndsim.GetHooks().
++			if applyRibSimExtensions(file, fset) {
++				modified = true
++				ndndsimUsed = true
++			}
+ 
+-case ruleInjectSvsSimExtensions:
+-// _ndndsim, time, sync/atomic already imported in svs.go.
+-modified = applySvsSimExtensions(file, fset) || modified
++		case ruleInjectSvsSimExtensions:
++			// _ndndsim, time, sync/atomic already imported in svs.go.
++			modified = applySvsSimExtensions(file, fset) || modified
+ 
+ 		case ruleSvsDeterministicRng:
+ 			modified = applySvsDeterministicRNG(file) || modified
+@@ -305,70 +313,76 @@ modified = applySvsSimExtensions(file, fset) || modified
+ 			modified = applySvsAloSnapContentHelpers(file, fset) || modified
+ 			modified = applySvsAloSnapContentInit(file, fset) || modified
+ 
++		case ruleInjectThreadSimExtensions:
++			// _ndndsim, defn, table already in thread.go; sync added inside.
++			modified = applyThreadSimExtensions(file, fset) || modified
+ 
++		case ruleInjectBierSimExtensions:
++			if applyBierSimExtensions(file, fset) {
++				modified = true
++				ndndsimUsed = true
++			}
+ 
+-		case ruleInjectThreadSimExtensions:
+-// _ndndsim, defn, table already in thread.go; sync added inside.
+-modified = applyThreadSimExtensions(file, fset) || modified
+-
+-case ruleInjectNfdcSimExtensions:
+-// Injected simExec() calls _ndndsim.IsSynchronous().
+-if applyNfdcSimExtensions(file, fset) {
+-modified = true
+-ndndsimUsed = true
+-}
++		case ruleBierGlobalPointer:
++			modified = applyBierGlobalPointer(file) || modified
+ 
+-case ruleInjectPrefixSimExtensions:
+-// ndn_sync already imported in prefix.go.
+-modified = applyPrefixSimExtensions(file, fset) || modified
++		case ruleInjectNfdcSimExtensions:
++			// Injected simExec() calls _ndndsim.IsSynchronous().
++			if applyNfdcSimExtensions(file, fset) {
++				modified = true
++				ndndsimUsed = true
++			}
+ 
+-case ruleInjectRouterSimExtensions:
+-// _ndndsim already in router.go from global go→_ndndsim.Go rule.
+-// ndn_sync is added inside applyRouterSimExtensions.
+-modified = applyRouterSimExtensions(file, fset) || modified
++		case ruleInjectPrefixSimExtensions:
++			// ndn_sync already imported in prefix.go.
++			modified = applyPrefixSimExtensions(file, fset) || modified
+ 
+-case ruleDvAdvReceiptCallback:
+-// Inject ndndsim.NdndsimRecordDvAdvReceipt() in advert_data.go dataHandler.
+-if applyDvAdvReceiptCallback(file) {
+-modified = true
+-ndndsimUsed = true
+-}
++		case ruleInjectRouterSimExtensions:
++			// _ndndsim already in router.go from global go→_ndndsim.Go rule.
++			// ndn_sync is added inside applyRouterSimExtensions.
++			modified = applyRouterSimExtensions(file, fset) || modified
+ 
+-case rulePfxSvsDeliveryCallback:
+-// Inject ndndsim.NdndsimRecordPfxSvsDelivery() in prefix.go SubscribePublisher callback.
+-if applyPfxSvsDeliveryCallback(file) {
+-modified = true
+-ndndsimUsed = true
+-}
++		case ruleDvAdvReceiptCallback:
++			// Inject ndndsim.NdndsimRecordDvAdvReceipt() in advert_data.go dataHandler.
++			if applyDvAdvReceiptCallback(file) {
++				modified = true
++				ndndsimUsed = true
++			}
+ 
+-case rulePfxSvsDeliveryCallbackOp:
+-// Inject ndndsim.NdndsimRecordPfxSvsDelivery() in onephase table_algo.go SubscribePublisher callback.
+-if applyPfxSvsDeliveryCallbackOp(file) {
+-modified = true
+-ndndsimUsed = true
+-}
++		case rulePfxSvsDeliveryCallback:
++			// Inject ndndsim.NdndsimRecordPfxSvsDelivery() in prefix.go SubscribePublisher callback.
++			if applyPfxSvsDeliveryCallback(file) {
++				modified = true
++				ndndsimUsed = true
++			}
+ 
+-case rulePfxSvsDeliveryCallbackInApplyOp:
+-// Inject ndndsim.NdndsimRecordPfxSvsDelivery() in onephase prefix_table.go Apply function.
+-if applyPfxSvsDeliveryCallbackInApplyOp(file) {
+-modified = true
+-ndndsimUsed = true
+-}
++		case rulePfxSvsDeliveryCallbackOp:
++			// Inject ndndsim.NdndsimRecordPfxSvsDelivery() in onephase table_algo.go SubscribePublisher callback.
++			if applyPfxSvsDeliveryCallbackOp(file) {
++				modified = true
++				ndndsimUsed = true
++			}
+ 
++		case rulePfxSvsDeliveryCallbackInApplyOp:
++			// Inject ndndsim.NdndsimRecordPfxSvsDelivery() in onephase prefix_table.go Apply function.
++			if applyPfxSvsDeliveryCallbackInApplyOp(file) {
++				modified = true
++				ndndsimUsed = true
++			}
+ 
+-// --- Onephase code-injection rules ---
++		// --- Onephase code-injection rules ---
+ 
+-case ruleInjectFibStrategyTreeExtensionsOp:
+-// Onephase: direct struct construction (no newStrategyTableTree helper).
+-modified = applyFibStrategyTreeExtensionsOp(file, fset) || modified
++		case ruleInjectFibStrategyTreeExtensionsOp:
++			// Onephase: direct struct construction (no newStrategyTableTree helper).
++			modified = applyFibStrategyTreeExtensionsOp(file, fset) || modified
+ 
+-case ruleInjectThreadSimExtensionsOp:
+-// Onephase: no simPet / simMulticastFib (types don't exist at 51774b8).
+-modified = applyThreadSimExtensionsOp(file, fset) || modified
++		case ruleInjectThreadSimExtensionsOp:
++			// Onephase: no simPet / simMulticastFib (types don't exist at 51774b8).
++			modified = applyThreadSimExtensionsOp(file, fset) || modified
+ 
+-case ruleInjectRouterSimExtensionsOp:
+-// Onephase: uses pfxSvs.Start/Stop instead of pfx.Start/Stop.
+-modified = applyRouterSimExtensionsOp(file, fset) || modified
++		case ruleInjectRouterSimExtensionsOp:
++			// Onephase: uses pfxSvs.Start/Stop instead of pfx.Start/Stop.
++			modified = applyRouterSimExtensionsOp(file, fset) || modified
+ 
+ 		}
+ 	}
+diff --git a/go/transform/rules.go b/go/transform/rules.go
+index 6c7d150..a886f5c 100644
+--- a/go/transform/rules.go
++++ b/go/transform/rules.go
+@@ -960,6 +960,71 @@ func applyFibGlobalPointerInternal(file *ast.File) bool {
+ 	return modified
+ }
+ 
++// applyBierGlobalPointer rewrites cross-package references to the global BIFT
++// into a hook-aware accessor.
++func applyBierGlobalPointer(file *ast.File) bool {
++	modified := false
++	astutil.Apply(file, func(c *astutil.Cursor) bool {
++		sel, ok := c.Node().(*ast.SelectorExpr)
++		if !ok {
++			return true
++		}
++		pkg, ok := sel.X.(*ast.Ident)
++		if !ok || pkg.Name != "bier" || sel.Sel.Name != "Bift" {
++			return true
++		}
++		c.Replace(&ast.CallExpr{
++			Fun: &ast.SelectorExpr{
++				X:   ast.NewIdent("bier"),
++				Sel: ast.NewIdent("SimBift"),
++			},
++		})
++		modified = true
++		return true
++	}, nil)
++	return modified
++}
++
++// patchCfgBierIndex makes fw/bier.CfgBierIndex consult the per-node hook
++// before falling back to the production global config.
++func patchCfgBierIndex(file *ast.File) bool {
++	for _, decl := range file.Decls {
++		fd, ok := decl.(*ast.FuncDecl)
++		if !ok || fd.Name.Name != "CfgBierIndex" || fd.Body == nil {
++			continue
++		}
++		fd.Body.List = []ast.Stmt{
++			&ast.AssignStmt{
++				Lhs: []ast.Expr{ast.NewIdent("h")},
++				Tok: token.DEFINE,
++				Rhs: []ast.Expr{&ast.CallExpr{Fun: &ast.SelectorExpr{
++					X:   ast.NewIdent("_ndndsim"),
++					Sel: ast.NewIdent("GetHooks"),
++				}}},
++			},
++			&ast.IfStmt{
++				Cond: &ast.SelectorExpr{X: ast.NewIdent("h"), Sel: ast.NewIdent("BierIndexSet")},
++				Body: &ast.BlockStmt{List: []ast.Stmt{
++					&ast.ReturnStmt{Results: []ast.Expr{
++						&ast.SelectorExpr{X: ast.NewIdent("h"), Sel: ast.NewIdent("BierIndex")},
++					}},
++				}},
++			},
++			&ast.ReturnStmt{Results: []ast.Expr{
++				&ast.SelectorExpr{
++					X: &ast.SelectorExpr{
++						X:   &ast.SelectorExpr{X: ast.NewIdent("core"), Sel: ast.NewIdent("C")},
++						Sel: ast.NewIdent("Fw"),
++					},
++					Sel: ast.NewIdent("BierIndex"),
++				},
++			}},
++		}
++		return true
++	}
++	return false
++}
++
+ // ---------------------------------------------------------------------------
+ // Rule: add sync.RWMutex to DeadNonceList (fw/table/dead-nonce-list.go)
+ // ---------------------------------------------------------------------------

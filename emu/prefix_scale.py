@@ -4,7 +4,7 @@
 Measures DV routing convergence and control-plane traffic as a function of
 the number of prefixes announced from edge nodes, for both twophase and
 onephase ndnd.  Uses the pristine (unpatched) ndnd binary for each phase:
-  - twophase  → /usr/local/bin/ndnd          (named-data/ndnd@dv2  76aeb89c)
+  - twophase  → /usr/local/bin/ndnd          (named-data/ndnd@dv2  a841cc2)
   - onephase  → /usr/local/bin/ndnd-onephase (named-data/ndnd@main 51774b8)
 
 Usage (needs sudo):
