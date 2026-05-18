@@ -45,6 +45,14 @@ fix_results_owner() {
     fi
 }
 
+sync_ndndsim_overrides() {
+    local overrides="$REPO_DIR/ndndsim-overrides"
+    local ndndsim_dir="$NS3_DIR/contrib/ndndSIM"
+    if [[ -d "$overrides" && -d "$ndndsim_dir" ]]; then
+        cp -a "$overrides"/. "$ndndsim_dir"/
+    fi
+}
+
 require_atlas_user() {
     if [[ "$RUN_UID" -eq 0 && -z "$ATLAS_USER" ]]; then
         echo "ERROR: ATLAS_USER or SUDO_USER must be set when running this command under sudo" >&2
@@ -88,6 +96,7 @@ ensure_ns3_ready() {
         echo "Run ./setup.sh first"
         exit 1
     fi
+    sync_ndndsim_overrides
 
     # Sync scenario .cc files from sim/ into ns-3 examples before building,
     # so cmake always compiles the latest sources.
@@ -227,6 +236,7 @@ Commands:
   setup                      Install all dependencies from source
     as-user <cmd...>           Run a command as the real user when invoked under sudo
   build                      Build all binaries (ns-3, ndnd, ndnd-traffic)
+  build-sim                  Build ns-3/ndndSIM only
   emu [--no-build] demo      Run 3-node file transfer demo (needs sudo)
   emu [--no-build] scalability [opts]  Run NxN grid scalability test (needs sudo)
   emu [--no-build] routing [opts]      Run routing-only traffic measurement (needs sudo)
@@ -297,6 +307,14 @@ case "$1" in
         build_ndnd
         build_ndnd_onephase
         build_ndnd_traffic "$ENV_PHASE"
+        fix_results_owner
+        echo "[build] Done"
+        exit 0
+        ;;
+    build-sim)
+        shift
+        echo "[build] Building ns-3/ndndSIM only (env: $ENV_PHASE)"
+        ensure_ns3_ready "$ENV_PHASE"
         fix_results_owner
         echo "[build] Done"
         exit 0

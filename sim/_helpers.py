@@ -404,7 +404,8 @@ def sync_prefix_scale_scenario(ns3_dir):
 def run_routing_scenario(ns3_dir, *, topo, sim_time=30.0, cores=0,
                          conv_trace=None, link_trace=None, packet_trace=None,
                          dv_config=None, network="/minindn",
-                         num_prefixes=0,
+                         num_prefixes=0, total_prefixes=None,
+                         synthetic_routing=False, prefix_introduce_time=None,
                          run_log=None):
     """Build ns-3 and run the routing-only scenario (no app traffic)."""
     sync_scenario(ns3_dir)
@@ -430,6 +431,12 @@ def run_routing_scenario(ns3_dir, *, topo, sim_time=30.0, cores=0,
         run_args.append(f"--dvConfig={json.dumps(dv_config, separators=(',', ':'))}")
     if num_prefixes > 0:
         run_args.append(f"--numPrefixes={num_prefixes}")
+    if total_prefixes is not None:
+        run_args.append(f"--totalPrefixes={total_prefixes}")
+    if synthetic_routing:
+        run_args.append("--syntheticRouting=true")
+    if prefix_introduce_time is not None:
+        run_args.append(f"--prefixIntroduceTime={prefix_introduce_time}")
 
     _run_exe(_find_scenario_exe(ns3_dir, "ndndsim-atlas-routing-scenario"),
              run_args, run_log)
@@ -442,7 +449,7 @@ def run_routing_scenario(ns3_dir, *, topo, sim_time=30.0, cores=0,
         else:
             try:
                 val = parse_conv_trace(conv_trace)
-                if val < 0:
+                if val < 0 and not synthetic_routing:
                     errors.append(
                         f"conv_trace '{conv_trace}' reports convergence=-1 -- "
                         "DV routing never converged during the simulation"

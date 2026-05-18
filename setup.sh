@@ -19,7 +19,7 @@ BIN_DIR="$DEPS_DIR/bin"
 PINNED_GO_VERSION="1.24.3"
 PINNED_GO_SHA256="3333f6ea53afa971e9078895eaa4ac7204a8c6b5c68c10e6bc9a33e8e391bdd8"
 TWOPHASE_NDND_HASH="a841cc2"
-NDNDSIM_PATCH="$REPO_DIR/patches/ndndsim-dv2-a841cc2.patch"
+NDNDSIM_OVERRIDES="$REPO_DIR/ndndsim-overrides"
 
 export GOPATH="$DEPS_DIR/gopath"
 PINNED_GO_DIR="$GOPATH/pkg/mod/golang.org/toolchain@v0.0.1-go${PINNED_GO_VERSION}.linux-amd64"
@@ -129,14 +129,10 @@ mkdir -p contrib
 if [[ ! -d contrib/ndndSIM ]]; then
     git clone https://github.com/markverick/ndndSIM.git contrib/ndndSIM
 fi
-if [[ -f "$NDNDSIM_PATCH" ]]; then
-    if git -C contrib/ndndSIM apply --reverse --check "$NDNDSIM_PATCH" &>/dev/null; then
-        ok "ndndSIM dv2 a841cc2 patch already applied"
-    else
-        info "Applying ndndSIM dv2 a841cc2 compatibility patch"
-        git -C contrib/ndndSIM apply "$NDNDSIM_PATCH"
-        ok "ndndSIM patched for ndnd@dv2 a841cc2"
-    fi
+if [[ -d "$NDNDSIM_OVERRIDES" ]]; then
+    info "Installing ndndSIM transformer/overlay overrides"
+    cp -a "$NDNDSIM_OVERRIDES"/. contrib/ndndSIM/
+    ok "ndndSIM overrides installed"
 fi
 
 # Install atlas scenarios into ndndSIM examples

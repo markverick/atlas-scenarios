@@ -292,13 +292,13 @@ def parse_link_trace(link_trace_path):
     with open(link_trace_path) as f:
         reader = csv.DictReader(f)
         for row in reader:
-            for cat in ("DvAdvert", "PrefixSync", "Mgmt",
+            for cat in ("DvAdvert", "PFS", "PSD", "PrefixSync", "Mgmt",
                         "UserInterest", "UserData", "Other"):
                 pkts = int(row.get(f"{cat}_Pkts", 0))
                 bts = int(row.get(f"{cat}_Bytes", 0))
                 result["total_packets"] += pkts
                 result["total_bytes"] += bts
-                if cat in ("DvAdvert", "PrefixSync", "Mgmt"):
+                if cat in ("DvAdvert", "PFS", "PSD", "PrefixSync", "Mgmt"):
                     result["control_packets"] += pkts
                     result["control_bytes"] += bts
                 elif cat in ("UserInterest", "UserData"):
