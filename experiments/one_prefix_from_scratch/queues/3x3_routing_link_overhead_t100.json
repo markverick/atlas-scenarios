@@ -1,0 +1,28 @@
+{
+  "selector": "one_prefix_from_scratch/3x3_routing_link_overhead_t100",
+  "name": "3x3 one-prefix routing link traffic from scratch, T=100..150",
+  "description": "Start DV from scratch at T=0, introduce one prefix at T=105, and count PFS/PSD prefix update packets per link from T=100 to T=150.",
+  "run_root_template": "experiments/one_prefix_from_scratch/results/3x3_routing_link_overhead_t100/{timestamp}",
+  "jobs": [
+    {
+      "name": "build twophase",
+      "cmd": "NDND_SKIP_TESTS=1 ./run.sh build-sim"
+    },
+    {
+      "name": "twophase p1",
+      "cmd": "./run.sh sim --no-build routing --allow-no-convergence --grids 3 --trials 1 --window 150 --total-prefixes 1 --prefix-introduce-time 105 --out {run_root}/twophase/p1"
+    },
+    {
+      "name": "build onephase",
+      "cmd": "NDND_SKIP_TESTS=1 ./run.sh --env onephase build-sim"
+    },
+    {
+      "name": "onephase p1",
+      "cmd": "./run.sh --env onephase sim --no-build routing --allow-no-convergence --grids 3 --trials 1 --window 150 --total-prefixes 1 --prefix-introduce-time 105 --out {run_root}/onephase/p1"
+    },
+    {
+      "name": "aggregate prefix update traffic T=100..150",
+      "cmd": "./run.sh as-user python3 experiments/one_prefix_from_scratch/routing_link_traffic.py --data {run_root} --start-time 100 --end-time 150 --out {run_root}/routing_link_traffic_prefix_event.csv --plot-out {run_root}/plots/packet_traffic_prefix_event_boxplot.png"
+    }
+  ]
+}

@@ -137,6 +137,54 @@ def core_edge_stats():
     return len(core_edge_nodes()), len(core_edge_links())
 
 
+def sprint_pop_path():
+    """Return the path to the checked-in Sprint PoP Mini-NDN topology."""
+    return _rocketfuel_repo_path(
+        "deps",
+        "mini-ndn",
+        "topologies",
+        "sprint_pop.conf",
+    )
+
+
+def sprint_pop_nodes(conf_path=None):
+    """Return the ordered node list for the Sprint PoP topology."""
+    nodes, _ = parse_minindn_conf(conf_path or sprint_pop_path())
+    return nodes
+
+
+def sprint_pop_links(conf_path=None):
+    """Return link pairs for the Sprint PoP topology."""
+    _, links = parse_minindn_conf(conf_path or sprint_pop_path())
+    return [(src, dst) for src, dst, _ in links]
+
+
+def sprint_pop_roles(conf_path=None):
+    """Return node-role lists for Sprint; every router is an edge."""
+    return {
+        "core": [],
+        "edge": sprint_pop_nodes(conf_path),
+    }
+
+
+def sprint_pop_stats(conf_path=None):
+    """Return (num_nodes, num_links) for the Sprint PoP topology."""
+    return conf_stats(conf_path or sprint_pop_path())
+
+
+def generate_ndnsim_sprint_pop_topo(conf_path=None, bw="10Mbps",
+                                    delay_ms=10, path=None,
+                                    queue_size=100):
+    """Write an ndnSIM topology file for the Sprint PoP topology."""
+    return generate_ndnsim_topo_from_conf(
+        conf_path or sprint_pop_path(),
+        bw=bw,
+        delay_ms=delay_ms,
+        path=path,
+        queue_size=queue_size,
+    )
+
+
 def rocketfuel_1755_path():
     """Return the path to the checked-in Rocketfuel AS 1755 maps file."""
     return _rocketfuel_repo_path(

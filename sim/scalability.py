@@ -11,9 +11,11 @@ from lib.topology import (
     core_edge_stats,
     generate_ndnsim_core_edge_topo,
     generate_ndnsim_rocketfuel_1755_topo,
+    generate_ndnsim_sprint_pop_topo,
     generate_ndnsim_topo,
     grid_stats,
     rocketfuel_1755_stats,
+    sprint_pop_stats,
 )
 from lib.result_adapter import ResultWriter, TrialResult, parse_conv_trace, parse_link_trace, sim_trial_result
 from sim._helpers import resolve_ns3_dir, run_routing_scenario, run_scenario
@@ -53,6 +55,15 @@ def _routing_topologies(args, *, ns3_dir, topo_dir, bw_mbps, delay_ms):
             queue_size=args.queue_size,
         )
         num_nodes, num_links = rocketfuel_1755_stats()
+    elif args.topology == "sprint":
+        topo_path = os.path.join(topo_dir, "topo-sprint-pop-atlas.txt")
+        generate_ndnsim_sprint_pop_topo(
+            bw=f"{bw_mbps}Mbps",
+            delay_ms=delay_ms,
+            path=topo_path,
+            queue_size=args.queue_size,
+        )
+        num_nodes, num_links = sprint_pop_stats()
     else:
         raise ValueError(f"Unsupported routing topology: {args.topology}")
 
@@ -77,17 +88,17 @@ def main(argv=None, routing=False):
     parser.add_argument("--ns3-dir", default=None,
                         help="Path to ns-3 root (default: deps/ns-3 or NS3_DIR env)")
     if routing:
-        parser.add_argument("--topology", choices=("grid", "core_edge", "rocketfuel_1755"),
+        parser.add_argument("--topology", choices=("grid", "core_edge", "rocketfuel_1755", "sprint"),
                             default="grid",
                             help="Topology preset for routing-only measurement")
         parser.add_argument("--queue-size", type=int, default=100,
                             help="Per-link queue size in packets for preset topologies")
         parser.add_argument("--total-prefixes", type=int, default=None,
                             help="Total prefixes to introduce from node0")
-        parser.add_argument("--synthetic-routing", action="store_true",
-                            help="Seed routing tables before introducing prefixes")
         parser.add_argument("--prefix-introduce-time", type=float, default=None,
-                            help="Simulation time to introduce the synthetic prefix")
+                            help="Simulation time to introduce total-prefixes from node0")
+        parser.add_argument("--allow-no-convergence", action="store_true",
+                            help="Keep routing outputs even when convergence_s stays -1")
     if not routing:
         parser.add_argument(
             "--allow-no-convergence",
@@ -141,8 +152,8 @@ def main(argv=None, routing=False):
                         packet_trace=pkt_csv,
                         dv_config=dv_config or None,
                         total_prefixes=args.total_prefixes,
-                        synthetic_routing=args.synthetic_routing,
                         prefix_introduce_time=args.prefix_introduce_time,
+                        allow_no_convergence=args.allow_no_convergence,
                     )
                     conv = parse_conv_trace(conv_file)
                     result = TrialResult(
